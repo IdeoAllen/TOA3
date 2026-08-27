@@ -1,5 +1,7 @@
 # TOA3 — 赋能培训运营助手 3.0
 
+**GitHub**：https://github.com/IdeoAllen/TOA3
+
 PySide6 + Qt Designer + JSON 主题 → QSS 全局皮肤。
 
 ## 与 TOA2 关系
