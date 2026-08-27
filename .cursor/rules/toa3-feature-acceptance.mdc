@@ -1,0 +1,46 @@
+---
+description: 功能调试与验收确认铁律（HiDPI/性能/状态灯/UI 规格）— 本会话踩坑固化
+alwaysApply: true
+---
+
+# TOA3 · 功能调试确认（验收铁律）
+
+与主理人联调、改 bug、标完成时必须遵守。真相源：`docs/功能清单与优先级.md`、`config/migration_manifest.yml`。
+
+## 完成状态（绿灯）
+
+- `done` = 核心可用 **且** `gaps` 为空；有缺口一律 `mvp`（运行时也会降级）
+- 禁止「有页面就标 done」；Hold/薄能力（如创建图片）保持 `mvp`/`Hold`
+- 改清单后跑 `python scripts/audit_migration.py`
+
+## 性能
+
+- 进页/热键路径：**禁止**同步联网探测（设置页教训：DMS health 曾卡 30s）
+- 重页签 **懒加载**；日志/大列表延后到该页签首次打开
+- 重活进线程；大图/历史有上限
+
+## HiDPI / 截图与自绘层
+
+- 窗口几何用 **Qt 逻辑像素**；抓屏位图必须设正确 `devicePixelRatio`
+- 绘制用 `drawPixmap(self.rect(), pix)`；裁剪用逻辑选区×dpr
+- 自绘工具栏按钮须覆盖全局 QSS：`padding:0` + 固定 min/max 高宽，防被撑高
+
+## 图标清晰度（硬门禁）
+
+- 所有图标**禁止模糊 / 锯齿 / 发虚**；统一经 `services/icon_registry`（`get_icon` / `icon_pixmap`）
+- SVG 按**物理像素**光栅化并设 DPR；卡片用 `icon_pixmap`，禁止 `QIcon.pixmap(逻辑尺寸)` 后再放大
+- 新增图标须在 125%/150%/200% 缩放下目测锐利；规范正文见 `docs/standards/控件库规范.md`
+
+## UI 规格
+
+- 业务页外层用 `page_content_margins()`；勿 `margins(0)` 导致贴边
+- 按钮/页签高度跟 `widgets/metrics.py`；改主题后 `python scripts/gen_qss_from_theme.py`
+- 弹窗用 `BaseDialog` / `FormEditDialog`；禁止业务页自绘 `QMessageBox` 散落
+- **生成完成**：一律 `show_saved(parent, text, path)` — 绿色「完成」+「打开所在目录」；禁止用蓝色 `show_info` 冒充
+- **焦点**：业务页覆写 `BasePage.primary_focus_widget`；`__init__` 末尾 `apply_page_focus_policy()` 串联 Tab；进页壳层自动 `schedule_primary_focus()`；新建/切换/编辑主内容后回到主输入且光标在文末
+
+## 联调闭环
+
+1. 改完重启 `python -m app.main`（Windows 强杀旧进程 exit `4294967295` 属正常）  
+2. 主理人点验 → 记入该模块 `gaps` 或清 gaps  
+3. 未过 Top3+三独到处 → 不得把 Wave★ 模块标 `done`

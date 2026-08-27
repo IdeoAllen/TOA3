@@ -1,0 +1,37 @@
+---
+description: TOA3 DMS 授权——license 账本模型，禁止绕过校验
+globs: services/**/*.py,app/login_dialog.py,app/main.py,config/license.json,config/app*.yml
+alwaysApply: false
+---
+
+# TOA3 · 授权（License）
+
+## 双产品边界
+
+- **DMS 免费**，与 TOA **无强绑定**；TOA 不得硬依赖 DMS 可达。
+- 联网账本目标：**TOA License 服务**（独立 API）；详见 `docs/architecture/16-TOA授权与单机联网模式规划.md`。
+
+## 模型（收敛目标）
+
+- **身份**：license code（HMAC `TOA2-*`），**不是** DMS Web 密码。
+- **账本**：TOA License API（`license.service_url`）；**过渡**可仍读 DMS `/api/toa-license/*`。
+- **本地**：`license.json`（`resolve_path("license_file")`）。
+- **SKU**：`config/feature_packs.yml` + `access_control`。
+
+## 实施要求
+
+1. 联网客户端集中在 `services/dms_license_client.py`（将重命名为 `license_client`）。
+2. 登录窗：单机 / 激活 / 试用；生产禁止 `skip_login`。
+3. `access_control`：`local_free` vs 付费 features。
+4. 离线：仅相对 **License 服务** 的宽限；与 DMS 无关。
+
+## 禁止
+
+- 硬编码 `is_licensed=True` 进生产路径
+- 削弱 HMAC / sync / reconcile（针对 License 服务）
+- 把 TOA 商业逻辑写进 DMS 业务模块
+- Agent 调用 DMS「批准发版」接口（见 `dms-release-deploy.mdc`）
+
+## Portal
+
+TOA 下载与购买说明；**不**合并 DMS UserManage 与 TOA 操作员。

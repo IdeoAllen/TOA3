@@ -1,0 +1,28 @@
+---
+description: TOA3 模板与数据存储——只用 storage_paths，禁止散落路径
+globs: modules/**/*.py,services/**/*.py,config/storage.yml,assets/**/*
+alwaysApply: false
+---
+
+# TOA3 存储与模板
+
+## 分层
+
+| 层 | 目录 | 可写 | 入 git |
+|----|------|------|--------|
+| 随包模板/示例 | `assets/templates`, `assets/samples` | 否 | 是 |
+| 用户数据 | `data/module/<id>`, `data/shared` | 是 | 否 |
+| 用户模板 | `data/user/templates` | 是 | 否 |
+| 生成输出 | `output/<id>/<yyyy-mm>` | 是 | 否 |
+
+## 铁律
+
+1. 模块 **禁止** 硬编码 `data/`、`output/`、`templates/` 字符串路径。
+2. 统一使用 `services.storage_paths`（`module_output_dir`, `resolve_template`, …）。
+3. 新模块须在 `config/storage.yml` 登记 templates/samples。
+4. 大模板 pptx **不要** 重复提交多份；放 `assets/templates` 或 sync 脚本从 TOA2 拉取。
+5. 生成文件 **只** 写入 `output/`，不污染 `assets/`。
+
+## 兼容 TOA2
+
+`legacy_template_keys` 映射 app.yml 旧键 → `assets` 相对路径。

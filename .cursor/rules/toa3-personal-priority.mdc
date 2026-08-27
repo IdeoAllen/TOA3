@@ -1,0 +1,26 @@
+---
+description: 个人最高频八件套优先；培训线后置；菜单可维护
+alwaysApply: true
+---
+
+# TOA3 · 个人高频与推进顺序
+
+## 主线（Wave★）
+
+按序做强，未达标前不扩培训主链：
+
+1. screenshot_tool  2. clipboard_history  3. quick_notepad  
+4. quadrant_tasks（missing）  5. watermark_remover  6. image_watermark  
+7. directory_generator  8. screenshot_translate（挂截图，勿空菜单）
+
+真相源：`docs/功能清单与优先级.md` §0.5
+
+## 降级
+
+- `pomodoro`、`image_creator`：非八件套 → P2/Hold，菜单可隐藏  
+- 培训模块：八件套达标后再排
+
+## 菜单
+
+- 入口只来自 `config/app.yml` / `data/user/menu.yml`  
+- 禁止在 `home_page` / `shell` 写死工具列表

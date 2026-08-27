@@ -1,0 +1,114 @@
+---
+description: TOA3 办公套件定位、壳层一级工具栏/二级侧栏、系统无感介入——产品架构硬约束
+alwaysApply: true
+---
+
+# TOA3 · 办公套件定位与壳层设计
+
+## 产品定位（硬口径）
+
+**办公室人员安装本软件，即等于同时安装并集成常用办公效率工具**，包括但不限于：
+
+| 子模块（子系统） | 代表能力 | 功能模块示例 |
+|----|----------|----------|
+| 剪贴板 | 历史、搜索、钉选、快速粘贴 | `clipboard_history` |
+| 截图 | 区域/全屏、标注、翻译、OCR 链 | `screenshot_tool` + `services/screenshot_*` |
+| 目录 | 生成、检查、交付结构 | `directory_generator`, `directory_inspector`, `enhanced_directory_inspector` |
+| 文件 | 重命名、合成、表格转换 | `batch_rename`, `document_composer`, `excel_row_to_column` |
+| 桌面 | Finder 式浏览、标签、预览 | `column_preview` |
+| 办公增效 | 记事、任务、剪贴板、截图入口 | `quick_notepad`, `quadrant_tasks`, Wave★ 八件套 |
+| 业务 | 培训运营专属 | `table_card_generator`, `schedule_reminder`, … |
+
+**集成承诺**（与 `config/product.yml` `vision` 同源）：
+
+- 每项能力对标品类头部，**宁少勿滥**；集成到一处，免去到处找软件。
+- 同类能力**不输独立 App 的主路径**；否则是败笔。
+- 本地优先、可离线；结果在 `data/` / `output/` 可追溯。
+
+文案真相源：`config/product.yml` → `services/product_vision.py` → 首页/关于。
+
+## 壳层信息架构（目标态 · 改造方向）
+
+### 术语（主理人裁定）
+
+| 层级 | 用户称谓 | 架构称谓 | 位置 | 配置键 |
+|------|----------|----------|------|--------|
+| **一级** | **子模块**（亦称 **子系统**） | `group` / domain | 顶栏 Tab | `menu_items[].group` + `GROUP_ORDER` |
+| **二级** | **功能模块** | `module` / menu item | 侧栏 | `menu_items[].id` |
+| **三级** | **任务页** | `BasePage` | 主内容区 | `module_path` |
+
+**口径**：每个顶栏 Tab 是一个 **子模块**，在架构上也是一个相对独立的 **子系统**（如办公子系统、图片子系统、业务子系统）。代码中仍用 `group_id` / `select_domain`，文档与 UI 对用户说「子模块」。
+
+### 一级 · 顶栏子模块（Sub-module Bar / 工具栏）
+
+**职责**：切换「子系统」，不是切换具体功能模块。
+
+| group_id | 展示名 | 子系统说明 |
+|----------|--------|------------|
+| `home` | 首页 | 总览与快捷入口 |
+| `office` | 办公 | 记事、剪贴板、截图、任务、番茄钟 |
+| `image` | 图片 | 水印、格式、扫描件等 |
+| `directory` | 目录 | 目录生成/检查/交付 |
+| `file` | 文件 | 重命名、合成、表格 |
+| `business` | 业务 | 培训运营 |
+| `system` | 系统 | 设置、控件库 |
+
+**硬规则**：
+
+1. **一级子模块只来自** `menu.menu_items[].group` + `services/menu_registry.GROUP_ORDER`；禁止在 `home_page` / 业务页写死列表。
+2. 顶栏子模块切换 = `MainShell.select_domain(group_id)`；**不得**在业务页内自建第二套顶栏子模块。
+3. `ShellSubHeader` 承载子模块 Tab 条；禁止依赖已废弃的「模块」下拉才能发现功能。
+
+### 二级 · 侧栏（Nav）
+
+**职责**：展示**当前子模块（子系统）**下的 `menu_items`（功能模块），可折叠分组标题可选保留为子模块内小节。
+
+**硬规则**：
+
+1. 侧栏条目只来自 `config/app.yml` / `data/user/menu.yml` + `migration_manifest` 可见性。
+2. 切换子模块时侧栏**整页替换**为该子系统功能模块列表；记住上次打开的功能模块（按子模块持久化 optional P2）。
+3. 侧栏只显示 `show: true` 且 manifest 允许的模块（见 `toa3-product-core.mdc`）。
+
+### 三级 · 模块宿主
+
+`QStackedWidget` + `BasePage` 懒加载；**禁止** `QTabWidget` 作模块外壳。
+
+## 系统介入层（无感 · 便捷 · 实用）
+
+在**不影响用户正常使用其它应用**的前提下，提供「随时介入工作流」的能力。分层如下：
+
+| 层 | 行为 | 现有实现 | 约束 |
+|----|------|----------|------|
+| **Ambient ambient** | 后台监听，无 UI | 剪贴板 watcher、定时任务 | 低 CPU；可设置页关闭 |
+| **Summon 唤起** | 热键/托盘 → 主窗或模块 | `hotkey_service`, `tray_service`, `_summon_module` | 热键可配 `none`；多开见 `edition_isolation` |
+| **Overlay 覆盖** | 全屏/浮层，Esc 即退 | 截图标注、剪贴板快贴 popup | **禁止**阻塞 OS 无退出；禁止进页同步联网 |
+| **Chain 链式** | 上一动作产出喂下一模块 | 截图→OCR→工具页 | 链式**提示**不强制跳转 |
+| **Palette 命令** | Ctrl+K 搜模块/动作 | roadmap P0 占位 | 与域/侧栏菜单同源，不另建菜单 |
+
+### 介入设计铁律
+
+1. **默认不打断**：主窗可 `close_to_tray`；无热键则不抢焦点。
+2. **一次一事**：覆盖层完成或 Esc 必须回到用户原上下文。
+3. **跟手键位**：全局热键少而精，定义在 `config/app.yml` `hotkeys`；页内快捷键不覆盖系统级冲突键。
+4. **入口双轨**：同一能力必须 **壳内可发现**（子模块→侧栏）+ **系统可唤起**（热键/托盘/覆盖层至少其一，Wave★ 模块必选）。
+5. **不造第二菜单**：系统介入不得绕过 `menu_registry` 登记影子功能模块。
+
+## 实现与改造顺序（建议）
+
+1. **文档与配置对齐** — `product.yml` / 本规则 / `docs/architecture/12-*.md`
+2. **壳层** — `app/shell.py`：`select_domain`、顶栏子模块 Tab、侧栏按子系统过滤（保持 `rebuild_nav` 单一入口）
+3. **介入** — 八件套每项补齐 Summon + Overlay 路径；manifest `gaps` 写清缺项
+4. **验收** — 主理人「安装后是否愿卸载独立剪贴板/截图/…」对照表
+
+## 禁止
+
+- 为发版把未验收模块 `show: true` 堆满侧栏
+- 业务页自建顶栏子模块或功能模块列表（违反 `toa3-personal-priority.mdc`）
+- 覆盖层/热键路径同步 DMS 探测卡 30s（见验收铁律）
+- Agent 擅自改 Portal 远程菜单下发（见 `toa3-portal-integration.mdc`）
+
+## 文档
+
+- 详述：`docs/architecture/12-办公套件壳层与系统介入.md`
+- 愿景：`config/product.yml` · `docs/产品愿景.md`
+- 壳代码：`app/shell.py` · `services/menu_registry.py`

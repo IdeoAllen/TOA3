@@ -1,0 +1,13 @@
+{
+  "name": "dshm",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 管理终端 —— 借鉴 Codex 的会话恢复与 Claude Code 的 status/usage 面板",
+  "type": "module",
+  "bin": {
+    "dshm": "bin/dshm.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

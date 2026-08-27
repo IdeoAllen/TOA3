@@ -1,0 +1,86 @@
+{
+    "交付材料生成": {
+        "liren": {
+            "利刃交付材料模版.pptx": {
+                "1": {
+                    "1": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片-PPT&钉钉/05-当站全部物料拆箱合照(含水)-PPT/1.jpg"
+                    },
+                    "2": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片-PPT&钉钉/05-当站全部物料拆箱合照(含水)-PPT/2.jpg"
+                    },
+                    "3": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片-PPT&钉钉/01-布置完成的全景照片-PPT/3.jpg"
+                    },
+                    "4": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片-PPT&钉钉/05-当站全部物料拆箱合照(含水)-PPT/4.jpg"
+                    }
+                },
+                "2": {
+                    "1-6": {
+                        "type": "dir_prefix",
+                        "prefix": "02-助教打卡照片-PPT",
+                        "sort_by": "create_time",
+                        "sort_order": "asc",
+                        "max_count": 6,
+                        "recursive": true
+                    },
+                    "7": {
+                        "type": "exact_filename",
+                        "filename": "01-签到表照片（最后一天完整版）&成绩确认表&车辆使用表-PPT&钉钉/11.jpg"
+                    }
+                }
+            }
+        },
+        "poxiao": {
+            "破晓交付材料模版.pptx": {
+                "1": {
+                    "1": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片PPT&钉钉/03-当站全部物料拆箱合照(含水)-PPT/1.jpg"
+                    },
+                    "2": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片PPT&钉钉/03-当站全部物料拆箱合照(含水)-PPT/2.jpg"
+                    },
+                    "3": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片PPT&钉钉/01-布置完成的全景照片-PPT/3.jpg"
+                    },
+                    "4": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片PPT&钉钉/03-当站全部物料拆箱合照(含水)-PPT/4.jpg"
+                    }
+                },
+                "2": {
+                    "1-6": {
+                        "type": "dir_prefix",
+                        "prefix": "02-助教打卡照片-PPT",
+                        "sort_by": "create_time",
+                        "sort_order": "asc",
+                        "max_count": 6,
+                        "recursive": true
+                    },
+                    "7": {
+                        "type": "exact_filename",
+                        "filename": "01-签到表照片（最后一天完整版）-PPT/11.jpg"
+                    }
+                },
+                "3": {
+                    "1": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片PPT&钉钉/04-衣服&奖品-PPT/12.jpg"
+                    },
+                    "2": {
+                        "type": "exact_filename",
+                        "filename": "03-教室布置照片PPT&钉钉/04-衣服&奖品-PPT/13.jpg"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+  <!-- 窗口边框 -->
+  <rect x="10" y="10" width="580" height="380" rx="5" fill="#f0f0f0" stroke="#808080" stroke-width="1"/>
+  
+  <!-- 标题栏 -->
+  <rect x="10" y="10" width="580" height="30" rx="5" ry="5" fill="#e0e0e0" stroke="#808080" stroke-width="1"/>
+  <text x="20" y="30" font-family="Arial" font-size="14" fill="#000000">数字化运营助手 - 主窗口</text>
+  
+  <!-- 菜单栏 -->
+  <rect x="10" y="40" width="580" height="25" fill="#d0d0d0" stroke="#808080" stroke-width="1"/>
+  <text x="20" y="58" font-family="Arial" font-size="12" fill="#000000">文件</text>
+  <text x="60" y="58" font-family="Arial" font-size="12" fill="#000000">功能</text>
+  <text x="100" y="58" font-family="Arial" font-size="12" fill="#000000">帮助</text>
+  
+  <!-- 标签页 -->
+  <rect x="10" y="65" width="120" height="25" fill="#ffffff" stroke="#808080" stroke-width="1"/>
+  <text x="20" y="83" font-family="Arial" font-size="12" fill="#000000">目录检查工具</text>
+  <rect x="130" y="65" width="120" height="25" fill="#e0e0e0" stroke="#808080" stroke-width="1"/>
+  <text x="140" y="83" font-family="Arial" font-size="12" fill="#000000">简历信息提取</text>
+  <rect x="250" y="65" width="120" height="25" fill="#e0e0e0" stroke="#808080" stroke-width="1"/>
+  <text x="260" y="83" font-family="Arial" font-size="12" fill="#000000">日程提醒</text>
+  <rect x="370" y="65" width="120" height="25" fill="#e0e0e0" stroke="#808080" stroke-width="1"/>
+  <text x="380" y="83" font-family="Arial" font-size="12" fill="#000000">批量文件夹生成</text>
+  
+  <!-- 状态栏 -->
+  <rect x="10" y="375" width="580" height="15" fill="#d0d0d0" stroke="#808080" stroke-width="1"/>
+  <text x="20" y="387" font-family="Arial" font-size="10" fill="#000000">当前状态：就绪 - 2023/12/01 12:00:00</text>
+</svg>

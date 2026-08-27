@@ -1,0 +1,34 @@
+---
+description: TOA3 模块迁移——stub 到实装清单与 MIGRATED_MODULES
+globs: modules/**/*.py,services/menu_registry.py,app/module_loader.py
+alwaysApply: false
+---
+
+# TOA3 模块迁移
+
+## 状态
+
+- 菜单列表：`config/app.yml` → `services/menu_registry.py`
+- 已实装：登记 `MIGRATED_MODULES` + `app/module_loader.py`
+- 未迁移：`modules/stub/stub_page.py`
+
+## 迁移步骤
+
+1. 在 `modules/<name>/` 实现 `BasePage` 子类
+2. 布局优先 `ui/*.ui`（Designer），逻辑在 `*_page.py`
+3. 控件只用 `widgets/` + gallery 对照
+4. 将 id 加入 `MIGRATED_MODULES`
+5. 菜单项 `module_path` 可与 TOA2 同名（便于对照），**运行时以 MIGRATED_MODULES 为准**
+6. 跑 `scripts/verify_mvp.py`；模块专属 smoke 补充
+
+## 禁止
+
+- 在模块内实现第二套顶栏/侧栏
+- 从 TOA2 整页复制 tkinter UI
+- 未登记就删除 stub（保持可导航）
+
+## 优先级
+
+业务价值 + 热键唤起（如 `summon_module_id: deduction_note_formatter`）优先。
+
+规范：`docs/architecture/06-业务模块规范.md`

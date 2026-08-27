@@ -1,0 +1,17 @@
+# 单机版发行配置 — 与 config/feature_packs.yml local_free 对齐
+id: standalone
+label: 单机版
+window_title_suffix: " · 单机版"
+
+menu_whitelist:
+  - home
+  - system_settings
+  - notifications
+  - job_scheduler
+  - quick_notepad
+  - pomodoro
+  - screenshot_tool
+  - clipboard_history
+  - quadrant_tasks
+
+hide_non_whitelist: true

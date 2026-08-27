@@ -1,0 +1,42 @@
+# 体验版（小范围调研）菜单白名单 — manifest=done + 壳层必备
+id: experience
+label: 体验版
+window_title_suffix: " · 体验版"
+
+# 侧栏可见模块；不在名单且 hide_non_whitelist=true 的条目隐藏
+menu_whitelist:
+  - home
+  - theme_preview
+  - system_settings
+  - notifications
+  - job_scheduler
+  - deduction_note_formatter
+  - watermark_photo_generator
+  - photo_extractor
+  - directory_inspector
+  - enhanced_directory_inspector
+  - excel_row_to_column
+  - document_composer
+  - schedule_format_converter
+  - table_card_generator
+  - teaching_assistant_resume
+  - resume_extractor
+
+hide_non_whitelist: true
+
+# 侧栏额外展示：manifest=mvp、首页已有入口，标为实验（体验版调研用）
+experimental_menu_ids:
+  - web_workspace
+  - quick_notepad
+  - quadrant_tasks
+  - pomodoro
+  - screenshot_tool
+  - ocr_tool
+  - clipboard_history
+  - llm_assistant
+  - harness_agent
+  - watermark_remover
+  - image_watermark
+  - image_creator
+  - directory_generator
+  - column_preview

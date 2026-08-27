@@ -1,0 +1,37 @@
+---
+description: TOA3 Portal 集成边界——license 用 DMS，菜单本地 yaml
+alwaysApply: true
+---
+
+# TOA3 · Portal 集成决策（已裁定）
+
+## 双产品边界
+
+- **DMS** 与 **TOA** 为两套独立产品，**无强绑定**；DMS **免费**，不按模块收费。
+- TOA 商业授权（试用/付费/SKU）走 **TOA License 服务** 或本机 HMAC 码，**不**以 DMS 为运行时依赖。
+- 详见：`docs/architecture/16-TOA授权与单机联网模式规划.md`
+
+## 裁定（v1 生产 → v2 收敛中）
+
+| 领域 | 主数据 | 角色 |
+|------|--------|------|
+| TOA 桌面授权 | license code + `license.json` | **TOA 云服务** `https://toa-service.yczh.tech`；DMS `AdminToaLicense` 仅过渡 |
+| TOA 运营台 | 授权 + 版本发布 | `https://toa-service.yczh.tech/admin/` |
+| TOA 菜单 | `config/app.yml` `menu.menu_items` | 本机 yaml；Portal **无**远程菜单 API |
+| DMS Web 账号 | DMS UserManage | 仅 DMS 交付业务；**≠** TOA 操作员 |
+| TOA 安装包 | Inno 产物 | Portal 下载页 |
+| DMS 安装/入口 | DMS 自身 | Portal 链接；与 TOA 授权无关 |
+
+## 不做的（除非新开架构评审）
+
+- Portal 统一维护 TOA 侧栏菜单并在线下发
+- TOA 桌面改用 DMS 用户名密码登录
+- TOA 激活/校验 **硬依赖** DMS 可达
+- 把 DMS 做成 TOA 商业账本或按模块售卖
+
+## P2 可选
+
+- 只读 menu manifest + 本地缓存（紧急隐藏模块）；本地 yaml 仍为 fallback
+- DMS 内保留「运营助手授权」外链到 TOA 运营台（非 DMS 功能）
+
+完整分析：`docs/architecture/10-必备能力与Portal评估.md`

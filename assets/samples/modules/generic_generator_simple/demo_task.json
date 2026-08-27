@@ -1,0 +1,10 @@
+{
+  "task_id": "demo_task_json",
+  "task_name": "JSON格式数据源演示任务",
+  "template_path": "{{base_dir}}/examples/generic_generator/showcase/simple_demo_template.txt",
+  "output_dir": "{{base_dir}}/examples/generic_generator/showcase/output",
+  "file_name_format": "{company}_{date}_json_report",
+  "data_source_type": "json",
+  "created_at": "2023-10-01 10:10:00",
+  "updated_at": "2023-10-01 10:10:00"
+}

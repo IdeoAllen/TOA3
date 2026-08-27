@@ -1,0 +1,357 @@
+# TOA3 迁移清单：status = done | mvp | stub | missing
+# done  = 核心能力已对齐且可日常使用，gaps 必须为空（有缺口不得绿灯）
+# mvp   = 有页面能用，但未做强 / 未过 Top3+三独到处验收
+# stub  = 仅占位空页
+# missing = 清单有、产品尚无模块
+#
+# 首页指示灯：done 绿 · mvp 琥珀 · stub/missing 灰
+# 个人最高频八件套见 docs/功能清单与优先级.md §0.5
+
+modules:
+  home:
+    status: done
+    priority: P0
+    toa2_ref: modules/home/
+    note: 首页壳与快捷入口
+
+  theme_preview:
+    status: done
+    priority: P0
+    toa2_ref: modules/theme_preview/
+    note: 控件库（主题风格预览）
+
+  system_settings:
+    status: done
+    priority: P0
+    toa2_ref: modules/system_settings/
+    note: 系统设置（进页性能已修；能力探测勿默认联网；任务/通知已拆到侧栏模块）
+
+  job_scheduler:
+    status: mvp
+    priority: P1
+    toa2_ref: —
+    note: 从系统设置「任务与通知」拆出；复用 services.job_scheduler + 原 JobsSection UI
+    gaps:
+      - 主理人点验侧栏入口与增删改/立即执行
+      - Top3/三独到处未做（IA 搬迁；增强调度 UX 前补 research）
+
+  notifications:
+    status: mvp
+    priority: P1
+    toa2_ref: —
+    note: 从系统设置拆出的通知半边；复用 notify_bus；原页签仅有任务无通知 UI
+    gaps:
+      - 无持久化通知历史（仅本会话环形缓冲）
+      - 无按通道静音/偏好落盘
+      - 邮件细项仍在能力接入；主理人点验试发与托盘气泡
+      - Top3/三独到处未做（增强前补 research）
+
+  __about__:
+    status: done
+    priority: P0
+    note: 关于弹窗（顶栏 AboutDialog）
+
+  # —— Wave★ 个人八件套（未做强前一律 mvp / missing）——
+  screenshot_tool:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: common/wechat_screenshot.py
+    note: 个人最高频·截图；§3.5 主理人已签收；钉图/放大镜下一迭代；勿因 gaps 标 done
+    gaps:
+      - 放大镜（下一迭代）
+      - 桌面钉住/钉图（下一迭代，不阻塞本轮）
+
+  clipboard_history:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: —
+    note: 个人最高频·剪贴板；Top3 approved；兑现搜索/隐私/送记事本
+    gaps:
+      - 主理人点验搜索/隐私/送记事本后清 gaps
+
+  quick_notepad:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: —
+    note: Wave★-3；Top3 v2 approved；单面WYSIWYG+自动保存+投喂链
+    gaps:
+      - 主理人点验：去编辑预览叠层、自动保存、从剪贴板/最近历史/送入记事（含图）
+      - 主理人点验：简约↔多功能正文不丢、导入MD与复制HTML
+
+  web_workspace:
+    status: mvp
+    priority: P1
+    office_freq: high
+    toa2_ref: —
+    note: 内嵌 WebEngine · 可配置多站点（腾讯/钉钉/飞书默认）· 登录态持久化
+    gaps:
+      - Top3 与三独到处待主理人确认
+      - 各 SaaS 登录/SSO 联调点验
+      - 离线/无 WebEngine 环境提示
+
+  quadrant_tasks:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: —
+    note: Wave★-4 MVP；四象限看板+拖拽+截止+本地JSON；进页状态栏逾期轻提醒
+    gaps:
+      - 主理人点验拖拽/持久/逾期状态栏后清 gaps
+      - 全局热键唤起（可选 polish）
+
+  watermark_remover:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: modules/watermark_remover/
+    note: 擦除豆包/角标；产品策略「最强优先、不可用则降级」；AI=watermark_ai，未配则本地
+    gaps:
+      - watermark_ai / LaMa 等强引擎真正接入（现为 integrations 占位）
+      - 主理人点验大图预览/多选后清 gaps
+
+  image_watermark:
+    status: mvp
+    priority: P2
+    office_freq: low
+    toa2_ref: —
+    note: TOA3 曾做日常通用加水印；主理人裁定侧栏隐藏，加水印以业务「生成水印照片」为准
+    gaps:
+      - 若日后要开日常通用入口，须与 watermark_photo_generator 文案边界再论证
+
+  directory_generator:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: modules/directory_generator/
+    note: 个人最高频·快速建多文件夹；Top3 approved；模板+粘贴名单+预览
+    gaps:
+      - 主理人点验模板/幂等后清 gaps
+
+  screenshot_translate:
+    status: missing
+    priority: P0
+    office_freq: high
+    toa2_ref: —
+    note: 能力已挂截图工具栏（OCR+LLM 对照弹窗）；有意无独立空菜单；Top3 approved
+    gaps:
+      - 主理人点验工具栏翻译后可考虑是否要独立入口
+      - 专用翻译引擎（现走 LLM）可后续评估
+
+  # —— 其它白领 ——
+  pomodoro:
+    status: mvp
+    priority: P2
+    office_freq: low
+    toa2_ref: —
+    note: 未进八件套；可菜单隐藏
+
+  ocr_tool:
+    status: mvp
+    priority: P0
+    office_freq: high
+    toa2_ref: —
+    note: 框选 OCR；中文引擎与安装引导未做强
+    gaps:
+      - 中文引擎评估与安装引导
+
+  llm_assistant:
+    status: mvp
+    priority: P1
+    office_freq: high
+    toa2_ref: —
+    note: 配置在系统设置·能力接入；已迁入 AI 子模块
+    gaps:
+      - 多轮会话持久化
+      - 流式输出
+
+  harness_agent:
+    status: done
+    priority: P1
+    office_freq: high
+    toa2_ref: —
+    note: DeepSeek Harness Sidecar + 三栏指挥台；Top3 approved；主理人 2026-08-27 验收通过
+
+  image_creator:
+    status: mvp
+    priority: P2
+    office_freq: low
+    toa2_ref: —
+    note: Hold/低频；仅有空白图生成，非「完成」
+    gaps:
+      - 非个人高频，不做强除非明确需求
+      - 能力仍薄（仅纯色/噪点底图）
+
+  image_adjust:
+    status: mvp
+    priority: P2
+    office_freq: medium
+    toa2_ref: —
+    note: 旋转/翻转可用，未做强
+    gaps:
+      - 批量与 EXIF 无损方向
+
+  batch_rename:
+    status: Hold
+    priority: P2
+    office_freq: low
+    toa2_ref: —
+    note: 菜单已隐藏；主理人判定无清晰场景
+    gaps:
+      - 无强需求前不进菜单
+
+  image_to_scan:
+    status: mvp
+    priority: P1
+    office_freq: high
+    toa2_ref: modules/image_to_scan/
+    note: 扫描件 PDF 可用，未做强
+    gaps:
+      - 透视/去阴影质量
+
+  image_format_convert:
+    status: mvp
+    priority: P1
+    office_freq: high
+    toa2_ref: —
+    note: 预设转换可用，未做强
+    gaps:
+      - 体积/画质曲线与批量体验
+
+  # —— 培训业务 ——
+  deduction_note_formatter:
+    status: done
+    priority: P0
+    toa2_ref: modules/deduction_note_formatter/
+    note: Ctrl+Shift+V 流水线已对齐
+
+  watermark_photo_generator:
+    status: done
+    priority: P1
+    office_freq: low
+    toa2_ref: modules/watermark_photo_generator/
+    note: 班级水印规则写回已对齐
+
+  photo_extractor:
+    status: done
+    priority: P1
+    office_freq: low
+    toa2_ref: modules/photo_extractor/
+    note: Word/PPT/PDF/长图导出已对齐
+
+  directory_inspector:
+    status: done
+    priority: P1
+    toa2_ref: —
+    note: >-
+      TOA3「目录结构检查」：相对路径清单/类型统计/空目录与命名；
+      非 TOA2 DirectoryCheckerApp（Word 大纲贴图 + Excel 图片统计）。
+      后者见 deliverable_directory_check。
+    gaps: []
+
+  # TOA2 原「目录检查工具」DirectoryCheckerApp：班级交付目录 → Word 大纲+贴图 / Excel 图片统计
+  deliverable_directory_check:
+    status: missing
+    priority: P1
+    toa2_ref: modules/directory_inspector/directory_checker.py
+    note: 与 directory_inspector、enhanced_directory_inspector 并列，三者都要
+    gaps:
+      - 待迁 TOA2 DirectoryCheckerApp（Word 封面大纲贴图 + Excel 层级图片统计）
+      - 菜单业务侧「目录检查工具」；现 directory_inspector 建议改名「目录结构检查」
+      - Top3 research：docs/research/deliverable_directory_check-top3.md 待主理人确认三独到处
+
+  column_preview:
+    status: mvp
+    priority: P1
+    toa2_ref: —
+    note: MACOS风格桌面；三模式+标签+新建；Top3 approved
+    gaps:
+      - 主理人点验三模式/标签/折叠/新建后清 gaps
+      - PDF/Office 内嵌预览（可选）
+
+  enhanced_directory_inspector:
+    status: done
+    priority: P1
+    toa2_ref: modules/directory_inspector/enhanced_directory_inspector_page.py
+    gaps: []
+
+  excel_row_to_column:
+    status: done
+    priority: P2
+    toa2_ref: modules/excel_row_to_column/
+    gaps: []
+
+  document_composer:
+    status: done
+    priority: P2
+    toa2_ref: modules/document_composer/
+    gaps: []
+
+  generic_generator_simple:
+    status: mvp
+    priority: P2
+    toa2_ref: modules/generic_generator_simple/
+    gaps:
+      - JSON 任务批量
+      - 样例模板库
+
+  generic_generator:
+    status: stub
+    priority: P1
+    toa2_ref: modules/generic_generator/
+    gaps:
+      - Excel 映射驱动批量生成
+      - GUI 任务配置
+      - 与 TOA2 generic_generator_gui 对齐
+
+  schedule_format_converter:
+    status: done
+    priority: P1
+    toa2_ref: modules/schedule_format_converter/
+    gaps: []
+
+  table_card_generator:
+    status: done
+    priority: P1
+    toa2_ref: modules/table_card_generator/
+    gaps: []
+
+  teaching_assistant_resume:
+    status: done
+    priority: P1
+    toa2_ref: modules/teaching_assistant_resume/
+    gaps: []
+
+  resume_extractor:
+    status: done
+    priority: P2
+    toa2_ref: modules/resume_extractor/
+    # 环境依赖：图片型 PDF 需 Tesseract + Poppler/PyMuPDF；旧版 .ppt 请另存为 .pptx
+    gaps: []
+
+  schedule_reminder:
+    status: mvp
+    priority: P1
+    toa2_ref: modules/schedule_reminder/
+    gaps:
+      - 钉钉/邮件提醒联动
+
+  pdf_toolkit:
+    status: stub
+    priority: P2
+    toa2_ref: —
+    gaps:
+      - PDF 合并
+      - PDF 拆分
+      - 按页提取
+
+  excel_cleaner:
+    status: stub
+    priority: P2
+    toa2_ref: —
+    gaps:
+      - 空行/重复行清洗
+      - 列格式规范化
+      - 批量工作簿处理

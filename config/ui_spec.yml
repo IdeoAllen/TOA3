@@ -1,0 +1,45 @@
+# 窗口与布局规格（全应用统一）
+
+shell:
+  min_width: 800
+  min_height: 680
+  default_width: 1280
+  default_height: 920
+  header_height: 52
+  nav_width: 200
+  status_visible: true
+
+page:
+  margin: 20
+  spacing: 12
+  max_form_width: 640
+
+# 弹窗：show 时按内容定高、规格定宽并屏幕居中；禁止用户拉伸
+dialogs:
+  login:
+    width: 440
+    min_width: 400
+    min_height: 240
+  small:
+    width: 420
+    min_width: 380
+    min_height: 180
+  medium:
+    width: 520
+    min_width: 480
+    min_height: 220
+  large:
+    width: 780
+    min_width: 720
+    min_height: 320
+  settings:
+    width: 560
+    min_width: 520
+    min_height: 280
+
+message:
+  error_title: 操作失败
+  warning_title: 请注意
+  info_title: 提示
+  confirm_title: 请确认
+  success_title: 完成

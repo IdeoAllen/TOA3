@@ -1,0 +1,2388 @@
+{
+  "$schema": "TOA Custom Theme Schema v3.0",
+  "name": "dms_copper",
+  "display_name": "古铜",
+  "description": "DMS 古铜：暖墨侧栏 + 青铜强调",
+  "author": "DMS → TOA port",
+  "version": "1.0",
+  "mode": "light",
+  "palette": {
+    "primary": "#A16207",
+    "primary_hover": "#854D0E",
+    "primary_pressed": "#713F12",
+    "primary_disabled_bg": "#F4EFE7",
+    "primary_disabled_fg": "#C4B6A2",
+    "primary_focus_ring": "#A16207",
+    "accent": "#A16207",
+    "accent_hover": "#854D0E",
+    "accent_pressed": "#713F12",
+    "background": "#F2EFE9",
+    "surface": "#FFFCF8",
+    "surface_raised": "#F8F5F0",
+    "surface_overlay": "#F4EFE7",
+    "surface_inset": "#EBE6DE",
+    "surface_sidebar": "#1C1814",
+    "text_primary": "#241C14",
+    "text_secondary": "#5C4D3C",
+    "text_disabled": "#8A7864",
+    "text_on_primary": "#FFFFFF",
+    "text_on_accent": "#FFFFFF",
+    "text_link": "#A16207",
+    "text_link_hover": "#854D0E",
+    "border_default": "#DDD4C6",
+    "border_strong": "#C4B6A2",
+    "border_focus": "#A16207",
+    "border_disabled": "#DDD4C6",
+    "border_input": "#C4B6A2",
+    "border_input_hover": "#241C14",
+    "row_even": "#FFFCF8",
+    "row_odd": "#F8F5F0",
+    "row_hover": "#F4EFE7",
+    "row_selected": "#FEF3C7",
+    "row_selected_text": "#241C14",
+    "row_active": "#EBE6DE",
+    "header_bg": "#1C1814",
+    "header_fg": "#FFF8EB",
+    "header_hover": "#2A231C",
+    "header_border": "#1C1814",
+    "header_gradient_start": "#1C1814",
+    "header_gradient_end": "#2A231C",
+    "nav_bg": "#1C1814",
+    "nav_fg": "#FFF8F0",
+    "nav_hover_bg": "#2A231C",
+    "nav_active_bg": "#3A3128",
+    "nav_active_fg": "#FFF8EB",
+    "nav_indicator": "#C48C3A",
+    "success": "#3F6212",
+    "success_bg": "#ECFCCB",
+    "warning": "#B45309",
+    "warning_bg": "#FFEDD5",
+    "danger": "#B91C1C",
+    "danger_bg": "#FEE2E2",
+    "danger_hover": "#991B1B",
+    "info": "#92400E",
+    "info_bg": "#FFEDD5",
+    "card_bg": "#FFFCF8",
+    "card_border": "#DDD4C6",
+    "card_shadow": "0 2px 8px rgba(0,0,0,0.08)",
+    "separator": "#DDD4C6",
+    "separator_strong": "#C4B6A2",
+    "badge_bg": "#B91C1C",
+    "badge_fg": "#FFFFFF",
+    "link_fg": "#A16207",
+    "link_hover_fg": "#854D0E",
+    "toggle_on_bg": "#A16207",
+    "toggle_on_fg": "#FFFFFF",
+    "toggle_off_bg": "#C4B6A2",
+    "toggle_off_fg": "#241C14",
+    "progress_bg": "#F4EFE7",
+    "progress_fill": "#A16207",
+    "tooltip_bg": "#FFFCF8",
+    "tooltip_fg": "#241C14",
+    "tooltip_border": "#DDD4C6",
+    "shadow_small": "0 1px 2px rgba(0,0,0,0.06)",
+    "shadow_medium": "0 8px 24px rgba(0,0,0,0.08)",
+    "shadow_large": "0 12px 40px rgba(0,0,0,0.12)",
+    "input_bg": "#FFFCF8",
+    "input_fg": "#241C14",
+    "input_border": "#C4B6A2",
+    "input_border_hover": "#241C14",
+    "input_border_focus": "#A16207",
+    "input_placeholder": "#8A7864",
+    "input_disabled_bg": "#F4EFE7",
+    "tab_active_bg": "#FFFCF8",
+    "tab_active_fg": "#241C14",
+    "tab_inactive_bg": "#F2EFE9",
+    "tab_inactive_fg": "#5C4D3C",
+    "tab_hover_bg": "#F4EFE7",
+    "tab_indicator": "#A16207",
+    "statusbar_bg": "#1C1814",
+    "statusbar_fg": "#FFF8EB",
+    "scrollbar_track": "#F2EFE9",
+    "scrollbar_thumb": "#C4B6A2",
+    "scrollbar_thumb_hover": "#5C4D3C"
+  },
+  "controls": {
+    "TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}",
+        "bordercolor": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}",
+        "bordercolor": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Soft.TButton": {
+      "normal": {
+        "background": "{info_bg}",
+        "foreground": "{primary}",
+        "bordercolor": "{info_bg}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{row_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{row_active}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Outline.TButton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{primary_hover}",
+        "foreground": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{primary_pressed}",
+        "foreground": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Accent.TButton": {
+      "normal": {
+        "background": "{accent}",
+        "foreground": "{text_on_accent}",
+        "bordercolor": "{accent}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{accent_hover}",
+        "bordercolor": "{accent_hover}"
+      },
+      "pressed": {
+        "background": "{accent_pressed}",
+        "bordercolor": "{accent_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Secondary.TButton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_strong}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{text_secondary}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{text_primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Ghost.TButton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{background}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{row_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{row_active}"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{background}"
+      }
+    },
+    "Danger.TButton": {
+      "normal": {
+        "background": "{danger}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{danger}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{danger_hover}",
+        "bordercolor": "{danger_hover}"
+      },
+      "pressed": {
+        "background": "{danger}",
+        "bordercolor": "{danger}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Main.TFrame": {
+      "normal": {
+        "background": "{surface_inset}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Surface.TFrame": {
+      "normal": {
+        "background": "{surface_raised}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Inset.TFrame": {
+      "normal": {
+        "background": "{surface_inset}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Surface.TLabel": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Title.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "font": "header",
+        "borderwidth": 0,
+        "relief": "flat"
+      }
+    },
+    "Subtitle.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "font": "subtitle",
+        "borderwidth": 0,
+        "relief": "flat"
+      }
+    },
+    "Caption.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "font": "caption",
+        "borderwidth": 0,
+        "relief": "flat"
+      }
+    },
+    "Primary.TLabel": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{header_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Card.TFrame": {
+      "normal": {
+        "background": "{card_bg}",
+        "bordercolor": "{card_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Card.TLabel": {
+      "normal": {
+        "background": "{card_bg}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TEntry": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}"
+      }
+    },
+    "TCombobox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "fieldbackground": "{input_disabled_bg}",
+        "arrowcolor": "{text_disabled}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "fieldbackground": "{surface_overlay}"
+      }
+    },
+    "TCheckbutton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "indicatorcolor": "{border_strong}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "indicatorcolor": "{primary}",
+        "background": "{background}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}",
+        "indicatorcolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 1
+      }
+    },
+    "Toggle.TCheckbutton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "indicatorcolor": "{toggle_off_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "indicatorcolor": "{toggle_on_bg}",
+        "background": "{background}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}",
+        "indicatorcolor": "{border_disabled}"
+      }
+    },
+    "TRadiobutton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "indicatorcolor": "{border_strong}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "indicatorcolor": "{primary}",
+        "background": "{background}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}",
+        "indicatorcolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 1
+      }
+    },
+    "TNotebook": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "tabmargins": [
+          2,
+          2,
+          2,
+          0
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Shell.TNotebook": {
+      "normal": {
+        "background": "{surface_inset}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "tabmargins": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          13,
+          "normal"
+        ]
+      }
+    },
+    "TNotebook.Tab": {
+      "normal": {
+        "background": "{tab_inactive_bg}",
+        "foreground": "{tab_inactive_fg}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "padding": [
+          12,
+          6
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{tab_hover_bg}",
+        "bordercolor": "{border_strong}"
+      },
+      "selected": {
+        "background": "{tab_active_bg}",
+        "foreground": "{tab_active_fg}",
+        "bordercolor": "{border_default}",
+        "borderwidth": "1 1 0 1"
+      }
+    },
+    "Underline.TNotebook.Tab": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "bordercolor": "{background}",
+        "borderwidth": "0 0 2 0",
+        "relief": "flat",
+        "padding": [
+          12,
+          6
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{background}",
+        "foreground": "{text_primary}"
+      },
+      "selected": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{tab_indicator}",
+        "borderwidth": "0 0 2 0"
+      }
+    },
+    "Treeview": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{background}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "background": "{row_selected}",
+        "foreground": "{row_selected_text}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Treeview.Heading": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{border_strong}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      }
+    },
+    "TScrollbar": {
+      "normal": {
+        "background": "{scrollbar_track}",
+        "bordercolor": "{scrollbar_track}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "troughcolor": "{scrollbar_track}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{scrollbar_thumb_hover}"
+      },
+      "pressed": {
+        "background": "{text_secondary}"
+      },
+      "disabled": {
+        "background": "{scrollbar_track}",
+        "arrowcolor": "{text_disabled}"
+      }
+    },
+    "TProgressbar": {
+      "normal": {
+        "background": "{progress_fill}",
+        "bordercolor": "{progress_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "troughcolor": "{progress_bg}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "disabled": {
+        "background": "{border_disabled}",
+        "troughcolor": "{surface_overlay}"
+      }
+    },
+    "TScale": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "troughcolor": "{progress_bg}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}"
+      }
+    },
+    "TSpinbox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      }
+    },
+    "TLabelframe": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "groove",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TSeparator": {
+      "normal": {
+        "background": "{separator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Accent.TSeparator": {
+      "normal": {
+        "background": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TMenubutton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{border_strong}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "arrowcolor": "{text_disabled}"
+      }
+    },
+    "StatusBar.TFrame": {
+      "normal": {
+        "background": "{statusbar_bg}",
+        "bordercolor": "{header_border}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          13,
+          "normal"
+        ]
+      }
+    },
+    "StatusBar.TLabel": {
+      "normal": {
+        "background": "{statusbar_bg}",
+        "foreground": "{statusbar_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          13,
+          "normal"
+        ]
+      }
+    },
+    "StatusBarEdition.TLabel": {
+      "normal": {
+        "background": "{statusbar_bg}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          13,
+          "normal"
+        ]
+      }
+    },
+    "Header.TFrame": {
+      "normal": {
+        "background": "{header_bg}",
+        "bordercolor": "{header_border}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Header.TLabel": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{header_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Nav.TButton": {
+      "normal": {
+        "background": "{nav_bg}",
+        "foreground": "{nav_fg}",
+        "bordercolor": "{nav_bg}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{nav_hover_bg}",
+        "bordercolor": "{nav_hover_bg}"
+      },
+      "pressed": {
+        "background": "{nav_active_bg}",
+        "foreground": "{nav_active_fg}"
+      },
+      "selected": {
+        "background": "{nav_active_bg}",
+        "foreground": "{nav_active_fg}",
+        "bordercolor": "{nav_indicator}",
+        "borderwidth": "0 0 0 3"
+      },
+      "disabled": {
+        "background": "{nav_bg}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Nav.Underline.TButton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "bordercolor": "{background}",
+        "borderwidth": "0 0 2 0",
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "foreground": "{text_primary}"
+      },
+      "selected": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": "0 0 2 0"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Success.TLabel": {
+      "normal": {
+        "background": "{success_bg}",
+        "foreground": "{success}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Warning.TLabel": {
+      "normal": {
+        "background": "{warning_bg}",
+        "foreground": "{warning}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Danger.TLabel": {
+      "normal": {
+        "background": "{danger_bg}",
+        "foreground": "{danger}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Info.TLabel": {
+      "normal": {
+        "background": "{info_bg}",
+        "foreground": "{info}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Success.TFrame": {
+      "normal": {
+        "background": "{success_bg}",
+        "bordercolor": "{success}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Warning.TFrame": {
+      "normal": {
+        "background": "{warning_bg}",
+        "bordercolor": "{warning}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Danger.TFrame": {
+      "normal": {
+        "background": "{danger_bg}",
+        "bordercolor": "{danger}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Info.TFrame": {
+      "normal": {
+        "background": "{info_bg}",
+        "bordercolor": "{info}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Badge.TLabel": {
+      "normal": {
+        "background": "{badge_bg}",
+        "foreground": "{badge_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Link.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{link_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "foreground": "{link_hover_fg}"
+      }
+    },
+    "TPanedwindow": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Sash.TPanedwindow": {
+      "normal": {
+        "background": "{separator_strong}",
+        "bordercolor": "{separator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Surface.TFrame": {
+      "normal": {
+        "background": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Home.Surface.TFrame": {
+      "normal": {
+        "background": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Title.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          14,
+          "bold"
+        ]
+      }
+    },
+    "Page.Section.TLabel": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          12,
+          "bold"
+        ]
+      }
+    },
+    "Page.Body.TLabel": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Hint.TLabel": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          9,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListHeader.TFrame": {
+      "normal": {
+        "background": "{header_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          12,
+          "bold"
+        ]
+      }
+    },
+    "Page.ListHeader.TLabel": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          12,
+          "bold"
+        ]
+      }
+    },
+    "Page.ListRow.TFrame": {
+      "normal": {
+        "background": "{row_even}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRowAlt.TFrame": {
+      "normal": {
+        "background": "{row_odd}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListDivider.TFrame": {
+      "normal": {
+        "background": "{separator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRow.TLabel": {
+      "normal": {
+        "background": "{row_even}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRowAlt.TLabel": {
+      "normal": {
+        "background": "{row_odd}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRow.TCheckbutton": {
+      "normal": {
+        "background": "{row_even}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRowAlt.TCheckbutton": {
+      "normal": {
+        "background": "{row_odd}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TLabelframe": {
+      "normal": {
+        "background": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TLabelframe.Label": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          12,
+          "bold"
+        ]
+      }
+    },
+    "Page.Success.TLabel": {
+      "normal": {
+        "background": "{success_bg}",
+        "foreground": "{success}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Warning.TLabel": {
+      "normal": {
+        "background": "{warning_bg}",
+        "foreground": "{warning}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Danger.TLabel": {
+      "normal": {
+        "background": "{danger_bg}",
+        "foreground": "{danger}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Info.TLabel": {
+      "normal": {
+        "background": "{info_bg}",
+        "foreground": "{info}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Muted.TLabel": {
+      "normal": {
+        "background": "{card_bg}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          9,
+          "normal"
+        ]
+      }
+    },
+    "Page.TEntry": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "fieldbackground": "{input_bg}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "fieldbackground": "{surface_overlay}"
+      }
+    },
+    "Page.TCombobox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      }
+    },
+    "Page.TSpinbox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      }
+    },
+    "Page.TCheckbutton": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}"
+      },
+      "selected": {
+        "indicatorcolor": "{primary}",
+        "indicatorbackground": "{primary}"
+      }
+    },
+    "Page.TRadiobutton": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}"
+      },
+      "selected": {
+        "indicatorcolor": "{primary}",
+        "indicatorbackground": "{primary}"
+      }
+    },
+    "Page.Treeview": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "fieldbackground": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "selected": {
+        "background": "{row_selected}",
+        "foreground": "{row_selected_text}"
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.Treeview.Heading": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{header_fg}",
+        "bordercolor": "{header_border}",
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{header_hover}"
+      }
+    },
+    "Page.Horizontal.TProgressbar": {
+      "normal": {
+        "background": "{progress_fill}",
+        "troughcolor": "{progress_bg}",
+        "bordercolor": "{border_default}",
+        "lightcolor": "{progress_fill}",
+        "darkcolor": "{progress_fill}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Vertical.TProgressbar": {
+      "normal": {
+        "background": "{progress_fill}",
+        "troughcolor": "{progress_bg}",
+        "bordercolor": "{border_default}",
+        "lightcolor": "{progress_fill}",
+        "darkcolor": "{progress_fill}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TScrollbar": {
+      "normal": {
+        "background": "{scrollbar_thumb}",
+        "troughcolor": "{scrollbar_track}",
+        "arrowcolor": "{text_secondary}",
+        "bordercolor": "{border_default}",
+        "lightcolor": "{scrollbar_thumb}",
+        "darkcolor": "{scrollbar_thumb}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{scrollbar_thumb_hover}"
+      },
+      "pressed": {
+        "background": "{primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "arrowcolor": "{text_disabled}"
+      }
+    },
+    "Page.TSeparator": {
+      "normal": {
+        "background": "{separator}",
+        "borderwidth": 0,
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TNotebook": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "tabmargins": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TNotebook.Tab": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "bordercolor": "{border_default}",
+        "padding": [
+          12,
+          6
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      },
+      "selected": {
+        "background": "{surface}",
+        "foreground": "{primary}"
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "foreground": "{text_primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.TPanedwindow": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Primary.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ],
+        "padding": [
+          16,
+          8
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}",
+        "bordercolor": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}",
+        "bordercolor": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Page.Secondary.TButton": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_strong}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ],
+        "padding": [
+          16,
+          8
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{text_secondary}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{text_primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Page.Danger.TButton": {
+      "normal": {
+        "background": "{danger}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{danger}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ],
+        "padding": [
+          16,
+          8
+        ]
+      },
+      "hover": {
+        "background": "{danger_hover}",
+        "bordercolor": "{danger_hover}"
+      },
+      "pressed": {
+        "background": "{danger}",
+        "bordercolor": "{danger}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Page.Row.TButton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ],
+        "padding": [
+          16,
+          8
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.Nav.TButton": {
+      "normal": {
+        "background": "{nav_hover_bg}",
+        "foreground": "{primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ],
+        "padding": [
+          16,
+          8
+        ]
+      },
+      "hover": {
+        "background": "{nav_active_bg}",
+        "foreground": "{primary}"
+      },
+      "selected": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.NavActive.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ],
+        "padding": [
+          16,
+          8
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{border_default}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Settings.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Settings.TButton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Primary.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}",
+        "bordercolor": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}",
+        "bordercolor": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Settings.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Shell.Chrome.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}"
+      }
+    },
+    "Shell.ChromeGhost.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      }
+    },
+    "Shell.Chrome.TLabel": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          13,
+          "normal"
+        ]
+      }
+    },
+    "Shell.ChromeHint.TLabel": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{nav_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          9,
+          "normal"
+        ]
+      }
+    },
+    "Shell.Menu.TMenubutton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      }
+    },
+    "Shell.NavIdle.TButton": {
+      "normal": {
+        "background": "{nav_bg}",
+        "foreground": "{nav_fg}",
+        "bordercolor": "{nav_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      },
+      "hover": {
+        "background": "{nav_hover_bg}"
+      }
+    },
+    "Shell.NavActive.TButton": {
+      "normal": {
+        "background": "{nav_active_bg}",
+        "foreground": "{nav_active_fg}",
+        "bordercolor": "{nav_indicator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "bold"
+        ]
+      }
+    },
+    "App.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Home.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Path.TEntry": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "fieldbackground": "{input_bg}",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          12,
+          8
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "fieldbackground": "{surface_overlay}"
+      }
+    },
+    "Notebook.TNotebook": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "tabmargins": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "List Bullet": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Microsoft YaHei UI",
+          10,
+          "normal"
+        ]
+      }
+    }
+  },
+  "metrics": {
+    "border_radius": 8,
+    "border_radius_large": 12,
+    "border_width": 1,
+    "button_padding": [
+      16,
+      8
+    ],
+    "input_padding": [
+      12,
+      8
+    ],
+    "tab_padding": [
+      14,
+      8
+    ],
+    "tree_row_height": 32,
+    "card_padding": 16,
+    "spacing_xs": 4,
+    "spacing_sm": 8,
+    "spacing_md": 16,
+    "spacing_lg": 24,
+    "spacing_xl": 32
+  },
+  "fonts": {
+    "font_page_title": [
+      "Microsoft YaHei UI",
+      14,
+      "bold"
+    ],
+    "font_section": [
+      "Microsoft YaHei UI",
+      12,
+      "bold"
+    ],
+    "font_shell": [
+      "Microsoft YaHei UI",
+      13,
+      "normal"
+    ],
+    "font_body": [
+      "Microsoft YaHei UI",
+      10,
+      "normal"
+    ],
+    "font_button": [
+      "Microsoft YaHei UI",
+      10,
+      "bold"
+    ],
+    "font_small": [
+      "Microsoft YaHei UI",
+      9,
+      "normal"
+    ],
+    "font_caption": [
+      "Microsoft YaHei UI",
+      8,
+      "normal"
+    ],
+    "font_mono": [
+      "Cascadia Code",
+      10,
+      "normal"
+    ],
+    "body_bold": [
+      "Microsoft YaHei UI",
+      10,
+      "bold"
+    ],
+    "title": [
+      "Microsoft YaHei UI",
+      14,
+      "bold"
+    ],
+    "subtitle": [
+      "Microsoft YaHei UI",
+      13,
+      "normal"
+    ],
+    "header": [
+      "Microsoft YaHei UI",
+      15,
+      "bold"
+    ],
+    "section": [
+      "Microsoft YaHei UI",
+      12,
+      "bold"
+    ],
+    "small": [
+      "Microsoft YaHei UI",
+      9,
+      "normal"
+    ],
+    "caption": [
+      "Microsoft YaHei UI",
+      8,
+      "normal"
+    ],
+    "mono": [
+      "Cascadia Code",
+      10,
+      "normal"
+    ],
+    "code": [
+      "Cascadia Code",
+      10,
+      "normal"
+    ]
+  },
+  "swatch": {
+    "sidebar": "#1C1814",
+    "accent": "#A16207"
+  }
+}

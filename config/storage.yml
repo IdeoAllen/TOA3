@@ -1,0 +1,87 @@
+# TOA3 存储布局（逻辑路径 → 物理目录）
+# 根目录键与 config paths 对齐，由 services/storage_paths 解析
+
+roots:
+  bundled: assets          # 随仓库/安装包分发（只读）
+  data: ./data             # 用户与模块运行时数据（可写，gitignore）
+  output: ./output         # 生成结果（可写，gitignore）
+  cache: ./cache           # 临时文件（可写，gitignore）
+
+layout:
+  # assets 下
+  templates_bundled: templates
+  samples: samples
+  # data 下
+  module_data: module
+  shared_data: shared
+  user_templates: user/templates
+  # output 下：{module_id}/{yyyy_mm}/
+  module_output_pattern: "{module_id}/{yyyy_mm}"
+
+# 模块登记：模板与示例（相对 templates_bundled / samples 子路径）
+# 未列出的模块仍可用 module_data_dir / module_output_dir 默认约定
+modules:
+  table_card_generator:
+    templates:
+      - business/table_card.pptx
+    samples:
+      - modules/table_card_generator/demo_class.txt
+  teaching_assistant_resume:
+    templates:
+      - business/resume.pptx
+    samples:
+      - modules/teaching_assistant_resume/demo_resume.txt
+  generic_generator_simple:
+    templates:
+      - generators/demo3.txt
+    samples:
+      - modules/generic_generator_simple/demo_input.txt
+  deduction_note_formatter:
+    samples:
+      - modules/deduction_note_formatter/demo_paste.txt
+  enhanced_directory_inspector:
+    templates:
+      - deliverables/lixiao.pptx
+      - deliverables/poxiao.pptx
+  image_creator: {}
+  image_adjust: {}
+  image_watermark: {}
+  image_format_convert: {}
+  image_to_scan: {}
+  watermark_photo_generator: {}
+  watermark_remover: {}
+  photo_extractor: {}
+  ocr_tool: {}
+  llm_assistant: {}
+  harness_agent: {}
+  quick_notepad: {}
+  web_workspace: {}
+  quadrant_tasks: {}
+  pomodoro: {}
+  screenshot_tool: {}
+  clipboard_history: {}
+  batch_rename: {}
+  directory_generator: {}
+  directory_inspector: {}
+  column_preview: {}
+  excel_row_to_column: {}
+  document_composer: {}
+  schedule_format_converter: {}
+  generic_generator: {}
+  pdf_toolkit: {}
+  excel_cleaner: {}
+  resume_extractor: {}
+  schedule_reminder: {}
+  job_scheduler: {}
+  notifications: {}
+  deliverable:
+    templates:
+      - deliverables/lixiao.pptx
+      - deliverables/poxiao.pptx
+
+# 与 app.yml 遗留键映射（逐步迁到 modules 登记）
+legacy_template_keys:
+  resume_template: business/resume.pptx
+  table_card_template: business/table_card.pptx
+  deliverable_template_lixiao: deliverables/lixiao.pptx
+  deliverable_template_poxiao: deliverables/poxiao.pptx

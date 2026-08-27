@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.spec
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Env / secrets
+.env
+.env.*
+config/license.json
+
+# Qt / Designer
+*.qmlc
+*.jsc
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs / local data
+data/*
+!data/README.md
+output/*
+!output/README.md
+cache/

@@ -1,0 +1,14 @@
+# DeepSeek Harness Sidecar（本地 Agent · 非 integrations HTTP）
+# 用户可写覆盖：data/user/harness.yml（由 services.harness_config 合并）
+
+harness:
+  enabled: true
+  dsh_home: C:/Users/43594/WorkBuddy/2026-08-19-16-36-03/.dsh
+  node_exe: C:/Users/43594/.workbuddy/binaries/node/versions/22.22.2/node.exe
+  dsh_bin: C:/Users/43594/.workbuddy/binaries/node/versions/22.22.2/node_modules/@deepseek-ai/dsh/lib/bin.js
+  web_port: 3081
+  dshm_port: 8787
+  auto_start: true
+  stop_on_app_exit: false
+  clear_env_api_key: true
+  dshm_script: vendor/dshm/bin/dshm.js

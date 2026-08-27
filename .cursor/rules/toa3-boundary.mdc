@@ -1,0 +1,25 @@
+---
+description: TOA3 仓库边界——主开发线在 TOA3，TOA2 封板不扩功能
+alwaysApply: true
+---
+
+# TOA3 仓库边界
+
+## 状态
+
+| 仓库 | 路径 | 状态 |
+|------|------|------|
+| TOA2 | `../TOA` | **封板留存**（tkinter），仅紧急修复 |
+| TOA3 | 本仓库 | **主开发线**（PySide6） |
+
+## 铁律
+
+1. 新功能、UI 重构、主题、壳、打包 **只在 TOA3** 开发。
+2. 不得把 TOA3 业务逻辑回写到 TOA2 的 tkinter UI（除封板期 critical fix）。
+3. 可从 TOA2 **移植逻辑**（license、路径、业务算法），但必须重写为 Qt/widgets 层。
+4. 版本号：TOA3 以 `app/version.py` 为单一来源；不得与 TOA2 `2.2.x` 混用标签。
+
+## 引用 TOA2 时
+
+- 主题 JSON：用 `scripts/sync_themes_from_toa2.py` 同步，不手改 TOA2。
+- 对照实现：读 TOA2 源码作规格，在 TOA3 按分层落地。

@@ -1,0 +1,29 @@
+---
+description: TOA3 桌面必备服务——托盘热键截图单实例封板隔离
+globs: app/**/*.py,services/**/*.py,common/**/*
+alwaysApply: false
+---
+
+# TOA3 桌面必备服务（生产前 P0）
+
+以下能力与 TOA2  parity，**未移植不得标「可发版」**：
+
+| 服务 | TOA2 参考 | TOA3 目标 |
+|------|-----------|-----------|
+| 托盘 | `common/tray_icon.py` | `app/tray.py` 或 `services/tray_service.py` |
+| 全局热键 | `common/hotkey_manager.py` | Win32 + `QShortcut` 壳内互补 |
+| 截图 | `common/wechat_screenshot.py` | 独立服务，全屏层例外控件库 |
+| 单实例 | Inno `AppMutex` + dev 互斥 | 安装包 + `edition_isolation` |
+| 路径 | `common/runtime_paths.py` | `services/runtime_paths.py` |
+
+## 热键配置
+
+来自 `config/app.yml` `hotkeys.*`；壳内快捷键不能替代 **全局** `toggle_window`、`screenshot`。
+
+## 截图
+
+全屏 overlay 允许原生层；仍读主题 palette。配置：`enable_screenshot`、`screenshot` / `screenshot_region`。
+
+## 封板隔离
+
+开发 `python -m app.main` 与冻结 `TOA3.exe` 不得抢同一全局热键/托盘；参考 TOA2 `edition_isolation.py`。

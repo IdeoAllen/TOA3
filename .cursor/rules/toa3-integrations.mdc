@@ -1,0 +1,14 @@
+---
+description: TOA3 三方对接——integrations 层统一出入口
+globs: services/integrations/**/*.py,config/integrations.yml
+alwaysApply: false
+---
+
+# 三方对接
+
+1. 登记：`config/integrations.yml`（enabled、base_url、timeout）
+2. 实现：`services/integrations/<name>.py` 继承 `IntegrationClient`
+3. 注册：`services/integrations/registry.py`
+4. 业务调用：`from services.integrations import get_client`
+
+禁止在 `modules/**` 直接请求 HTTP。DMS 发版遵守 `dms-release-deploy.mdc`。

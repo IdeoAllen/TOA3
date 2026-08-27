@@ -1,0 +1,643 @@
+brand:
+  app_logo_path: avatars/logo.png
+  app_version: 3.0.0
+  author: 大成哥
+  author_email: chengchengzhao@eautosh.com
+  brand_abbreviation: TOA
+  brand_alias: 运营宝
+  brand_name: 赋能培训运营助手（运营宝）
+  brand_name_en: Training Operations Assistant, TOA
+  slogan: 让培训运营数字化变得简单而高效
+  slogan_subtitle: 高效、稳定、易用的培训运营解决方案
+brand_and_system:
+  app_logo_path: avatars/logo.png
+  app_version: 3.0.0
+  author: 大成哥
+  author_email: chengchengzhao@eautosh.com
+  brand_abbreviation: TOA
+  brand_alias: 运营宝
+  brand_name: 赋能培训运营助手（运营宝）
+  brand_name_en: Training Operations Assistant, TOA
+  slogan: 让培训运营数字化变得简单而高效
+  slogan_subtitle: 高效、稳定、易用的培训运营解决方案
+color:
+  header_bg_color: ''
+  status_bar_bg: ''
+  status_bar_fg: ''
+  text_color: ''
+data_paths:
+  data_dir: ./data
+  deliverable_template_lixiao: ./templates/利刃交付材料模版.pptx
+  deliverable_template_poxiao: ./templates/破晓交付材料模版.pptx
+  docs_dir: ./docs
+  email_config: '{{base_dir}}/config/email/email_config.txt'
+  images_dir: ./images
+  knowledge_base: '{{base_dir}}/data/knowledge_base.json'
+  license_file: ./config/license.json
+  log_dir: ./common/logs
+  output_dir: ./output
+  resume_template: ./templates/简历模版.pptx
+  table_card_template: ./templates/台卡模板.pptx
+  template_dir: ./templates
+  user_config_file: ./config/app.yml
+  winform_dir: .
+email:
+  password: ''
+  port: 587
+  recipient_email: ''
+  sender_email: ''
+  smtp_server: ''
+export_config:
+  export_timeout: '60'
+  max_export_history: '50'
+  temp_file_expiry: '24'
+font:
+  font_family: ''
+  font_size: ''
+  header_font_size: ''
+home_page:
+  keep_config_file: true
+  show_gallery: false
+  show_heart: false
+  show_team_image: false
+  use_canvas_home: false
+hotkeys:
+  close_to_background: true
+  enable_global_toggle: true
+  enable_screenshot: true
+  exit_app: Ctrl+Q
+  restart_app: Ctrl+Shift+R
+  open_about: Alt+Shift+O
+  open_settings: Alt+S
+  open_home: Ctrl+H
+  open_notepad: Alt+N
+  open_pomodoro: Alt+P
+  open_ocr: Alt+O
+  open_clipboard: Alt+Shift+C
+  open_harness_agent: Alt+Shift+H
+  # 页内（仅首页）：办公 / 图片分组跳转
+  home_jump_office: K
+  home_jump_image: I
+  screenshot: Alt+A
+  # 配置键名历史遗留：实际为「全屏截图」，不是区域
+  screenshot_region: Alt+Shift+A
+  summon_module_id: deduction_note_formatter
+  toggle_fullscreen: F11
+  # Double+Ctrl 无法被 RegisterHotKey / QKeySequence 解析，保留作占位；生效请改成 Alt+… / Ctrl+…
+  toggle_window: none
+  module_shortcuts: {}
+license:
+  check_cache_minutes: 10
+  # 目标：TOA 云服务（授权/试用/订单），与 DMS 无强绑定
+  service_url: https://toa-service.yczh.tech/api/toa-license
+  # 过渡：未部署 TOA 云服务前 fallback；迁移完成后删除
+  dms_base_url: https://dms.yczh.tech
+  offline_grace_days: 2
+update:
+  enabled: true
+  timeout_seconds: 3
+  manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
+  download_page: https://www.yczh.tech/downloads/
+log_config:
+  enable_console_log: true
+  log_format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  log_level: DEBUG
+  log_rotation: daily
+  max_log_files: '7'
+logo: {}
+menu:
+  default_expanded:
+  - home
+  - settings
+  menu_items:
+  - class_name: HomePage
+    group: home
+    icon: home
+    id: home
+    module_path: modules.home.home_page
+    name: 首页
+    order: 1
+    feature_id: home
+    requires_license: false
+    show: true
+  - class_name: WebWorkspacePage
+    desc: 内嵌浏览器 · 可配置腾讯文档/钉钉/飞书等站点并一键切换
+    group: office
+    icon: web_workspace
+    id: web_workspace
+    module_path: modules.web_workspace.web_workspace_page
+    name: 网页工作台
+    order: 4
+    feature_id: web_workspace
+    requires_license: false
+    show: true
+  - class_name: QuickNotepadPage
+    desc: 办公片段、会议纪要草稿，本地保存随时编辑
+    group: office
+    icon: quick_notepad
+    id: quick_notepad
+    module_path: modules.quick_notepad.quick_notepad_page
+    name: 快速记事
+    order: 5
+    feature_id: quick_notepad
+    requires_license: false
+    show: true
+  - class_name: QuadrantTasksPage
+    desc: Eisenhower 四象限看板，拖拽换象限与本地持久
+    group: office
+    icon: quadrant_tasks
+    id: quadrant_tasks
+    module_path: modules.quadrant_tasks.quadrant_tasks_page
+    name: 四象限任务
+    order: 6
+    feature_id: quadrant_tasks
+    requires_license: false
+    show: true
+  - class_name: PomodoroPage
+    desc: 专注工作 · 短休息循环，状态栏同步剩余时间
+    group: office
+    icon: pomodoro
+    id: pomodoro
+    module_path: modules.pomodoro.pomodoro_page
+    name: 番茄钟
+    order: 7
+    feature_id: pomodoro
+    requires_license: false
+    show: true
+  - class_name: ScreenshotToolPage
+    desc: 全屏框选切图 · S 重选 · 微信风格标注 · 保存并复制
+    group: office
+    icon: camera
+    id: screenshot_tool
+    module_path: modules.screenshot_tool.screenshot_tool_page
+    name: 截图工具
+    order: 8
+    feature_id: screenshot_tool
+    requires_license: false
+    show: true
+  - class_name: OcrToolPage
+    desc: 框选屏幕区域直接转文字并复制（Alt+O）
+    group: office
+    icon: ocr_tool
+    id: ocr_tool
+    module_path: modules.ocr_tool.ocr_tool_page
+    name: 图片转文字
+    order: 9
+    feature_id: ocr_tool
+    requires_license: false
+    # 入口已挂截图工具栏 OCR/翻译；独立页保留但不占首页卡片
+    show: true
+  - class_name: ClipboardHistoryPage
+    desc: 捕获与回写剪贴板文本历史
+    group: office
+    icon: clipboard_history
+    id: clipboard_history
+    module_path: modules.clipboard_history.clipboard_history_page
+    name: 剪贴板历史
+    order: 10
+    feature_id: clipboard_history
+    requires_license: false
+    show: true
+  - class_name: HarnessAgentPage
+    desc: DeepSeek Harness · 与 Codex 并肩的编码智能体指挥台
+    group: ai
+    icon: harness_agent
+    id: harness_agent
+    module_path: modules.harness_agent.harness_agent_page
+    name: 编码智能体
+    order: 1
+    feature_id: harness_agent
+    requires_license: false
+    show: true
+  - class_name: LlmAssistantPage
+    desc: 提示词生成与剪贴板润色（OpenAI 兼容）
+    group: ai
+    icon: llm_assistant
+    id: llm_assistant
+    module_path: modules.llm_assistant.llm_assistant_page
+    name: 大模型助手
+    order: 2
+    feature_id: llm_assistant
+    requires_license: false
+    show: true
+  - class_name: ImageCreatorPage
+    desc: 创建空白/纯色/噪声底图
+    group: image
+    icon: image_creator
+    id: image_creator
+    module_path: modules.image_creator.image_creator_page
+    name: 创建图片
+    order: 8
+    feature_id: image_creator
+    requires_license: false
+    show: true
+  - class_name: ImageAdjustPage
+    desc: 旋转翻转缩放与明暗对比度调整
+    group: image
+    icon: image_adjust
+    id: image_adjust
+    module_path: modules.image_adjust.image_adjust_page
+    name: 调整图片
+    order: 9
+    feature_id: image_adjust
+    requires_license: false
+    show: true
+  - class_name: BatchRenamePage
+    desc: 按规则批量重命名文件（菜单隐藏，场景弱）
+    group: directory
+    icon: batch_rename
+    id: batch_rename
+    module_path: modules.batch_rename.batch_rename_page
+    name: 批量重命名
+    order: 22
+    feature_id: batch_rename
+    requires_license: true
+    show: true
+  - class_name: MigrationPlaceholderPage
+    desc: PDF 合并、拆分、按页提取（待开发）
+    group: file
+    icon: pdf_toolkit
+    id: pdf_toolkit
+    module_path: modules.stub.migration_placeholder_page
+    name: PDF 工具
+    order: 23
+    feature_id: pdf_toolkit
+    requires_license: true
+    show: true
+  - class_name: MigrationPlaceholderPage
+    desc: Excel 空行/重复行清洗与格式规范化（待开发）
+    group: file
+    icon: excel_cleaner
+    id: excel_cleaner
+    module_path: modules.stub.migration_placeholder_page
+    name: Excel 清洗
+    order: 24
+    feature_id: excel_cleaner
+    requires_license: true
+    show: true
+  - class_name: WatermarkPhotoPage
+    desc: 班级目录按日期规则批量加水印（业务专用，默认可写回原图）
+    group: image
+    icon: watermark_photo
+    id: watermark_photo_generator
+    module_path: modules.watermark_photo_generator.watermark_photo_generator_page
+    name: 生成水印照片
+    order: 10
+    feature_id: watermark_photo_generator
+    requires_license: true
+    show: true
+  - class_name: ImageWatermarkPage
+    desc: 日常通用文字/Logo 水印（非班级规则；默认隐藏，避免与「生成水印照片」混淆）
+    group: image
+    icon: image_watermark
+    id: image_watermark
+    module_path: modules.image_watermark.image_watermark_page
+    name: 添加水印
+    order: 14
+    feature_id: image_watermark
+    requires_license: false
+    show: false
+  - class_name: ImageToScanPage
+    desc: 多图一键转黑白 PDF 扫描件
+    group: image
+    icon: image_to_scan
+    id: image_to_scan
+    module_path: modules.image_to_scan.image_to_scan_page
+    name: 图片转扫描件
+    order: 12
+    feature_id: image_to_scan
+    requires_license: true
+    show: true
+  - class_name: ImageFormatConvertPage
+    desc: 图片格式互转 PNG/JPG/WEBP/PDF
+    group: image
+    icon: image_format_convert
+    id: image_format_convert
+    module_path: modules.image_format_convert.image_format_convert_page
+    name: 图转文件
+    order: 15
+    feature_id: image_format_convert
+    requires_license: true
+    show: true
+  - class_name: WatermarkRemoverPage
+    desc: 擦除豆包/角标等；优先 AI 强引擎，不可用则本地修复
+    group: image
+    icon: watermark_remover
+    id: watermark_remover
+    module_path: modules.watermark_remover.watermark_remover_page
+    name: 去除图片水印
+    order: 11
+    feature_id: watermark_remover
+    requires_license: false
+    show: true
+  - class_name: PhotoExtractorPage
+    desc: 子目录多选，导出复制/Word/PPT/PDF/长图
+    group: image
+    icon: photo_extractor
+    id: photo_extractor
+    module_path: modules.photo_extractor.photo_extractor_page
+    name: 照片提取器
+    order: 13
+    feature_id: photo_extractor
+    requires_license: true
+    show: true
+  - class_name: DirectoryInspectorPage
+    desc: 检查文件夹结构：路径清单、空目录、命名规范（不做 Word 贴图/交付统计）
+    group: directory
+    icon: directory_inspector
+    id: directory_inspector
+    module_path: modules.directory_inspector.directory_inspector_page
+    name: 目录结构检查
+    order: 20
+    feature_id: directory_inspector
+    requires_license: true
+    show: true
+  - class_name: ColumnPreviewPage
+    desc: MACOS风格桌面：分栏/图标/列表、彩色文件夹标签、预览与就地新建
+    group: home
+    icon: column_preview
+    id: column_preview
+    module_path: modules.column_preview.column_preview_page
+    name: MACOS风格桌面
+    order: 2
+    feature_id: column_preview
+    requires_license: false
+    show: true
+  - class_name: DirectoryGeneratorPage
+    desc: 粘贴名单或选模板，预览后批量创建文件夹（已存在跳过）
+    group: directory
+    icon: directory_generator
+    id: directory_generator
+    module_path: modules.directory_generator.directory_generator_page
+    name: 批量文件夹生成
+    order: 21
+    feature_id: directory_generator
+    requires_license: false
+    show: true
+  - class_name: ExcelRowToColumnPage
+    desc: 行列转换，轻松重排 Excel 数据
+    group: file
+    icon: excel_row_to_column
+    id: excel_row_to_column
+    module_path: modules.excel_row_to_column.excel_row_to_column_page
+    name: 行转列工具
+    order: 30
+    feature_id: excel_row_to_column
+    requires_license: true
+    show: true
+  - class_name: GenericGeneratorSimplePage
+    desc: 模板驱动的通用文档生成
+    group: file
+    icon: generic_generator_simple
+    id: generic_generator_simple
+    module_path: modules.generic_generator_simple.generic_generator_simple_page
+    name: 通用生成工具
+    order: 31
+    feature_id: generic_generator_simple
+    requires_license: true
+    show: true
+  - class_name: MigrationPlaceholderPage
+    desc: Excel 映射驱动批量生成（TOA2 完整版，待迁移）
+    group: file
+    icon: generic_generator
+    id: generic_generator
+    module_path: modules.stub.migration_placeholder_page
+    name: 通用生成（Excel）
+    order: 32
+    feature_id: generic_generator
+    requires_license: true
+    show: true
+  - class_name: DocumentComposerPage
+    desc: 按模板快速合成文档
+    group: file
+    icon: document_composer
+    id: document_composer
+    module_path: modules.document_composer.document_composer_page
+    name: 文档合成器
+    order: 32
+    feature_id: document_composer
+    requires_license: true
+    show: true
+  - class_name: TableCardGeneratorPage
+    desc: 高效制作专业桌卡，支持批量生成和自定义样式
+    group: business
+    icon: table_card_generator
+    id: table_card_generator
+    module_path: modules.table_card_generator.table_card_generator_page
+    name: 桌卡生成工具
+    order: 46
+    feature_id: table_card_generator
+    requires_license: true
+    show: true
+  - class_name: TeachingAssistantResumeGeneratorPage
+    desc: 规范生成助教简历与资料，提升录入效率
+    group: business
+    icon: teaching_assistant_resume
+    id: teaching_assistant_resume
+    module_path: modules.teaching_assistant_resume.teaching_assistant_resume_generator_page
+    name: 助教简历生成
+    order: 45
+    feature_id: teaching_assistant_resume
+    requires_license: true
+    show: true
+  - class_name: ResumeExtractorPage
+    desc: 自动提取简历关键信息，支持多种文档格式
+    group: business
+    icon: resume_extractor
+    id: resume_extractor
+    module_path: modules.resume_extractor.resume_extractor_page
+    name: 简历信息提取
+    order: 42
+    feature_id: resume_extractor
+    requires_license: true
+    show: true
+  - class_name: ScheduleReminderPage
+    desc: 智能管理教学安排，及时提醒重要日程事件
+    group: business
+    icon: schedule_reminder
+    id: schedule_reminder
+    module_path: modules.schedule_reminder.schedule_reminder_page
+    name: 班级日程提醒
+    order: 41
+    feature_id: schedule_reminder
+    requires_license: true
+    show: true
+  - class_name: ScheduleFormatConverterPage
+    desc: 排程格式转换，简化导入与共享
+    group: business
+    icon: schedule_format_converter
+    id: schedule_format_converter
+    module_path: modules.schedule_format_converter.schedule_format_converter_page
+    name: 排程格式转换
+    order: 43
+    feature_id: schedule_format_converter
+    requires_license: true
+    show: true
+  - class_name: EnhancedDirectoryInspectorPage
+    desc: 按班级规范生成交付材料目录与清单
+    group: business
+    icon: enhanced_directory_inspector
+    id: enhanced_directory_inspector
+    module_path: modules.enhanced_directory_inspector.enhanced_directory_inspector_page
+    name: 交付材料生成
+    order: 44
+    feature_id: enhanced_directory_inspector
+    requires_license: true
+    show: true
+  - class_name: DeductionNoteFormatterPage
+    desc: Excel 粘贴整理；Ctrl+Shift+V 一键粘贴整理并复制
+    group: business
+    icon: deduction_note_formatter
+    id: deduction_note_formatter
+    module_path: modules.deduction_note_formatter.deduction_note_page
+    name: 扣分备注整理
+    order: 40
+    feature_id: deduction_note_formatter
+    requires_license: true
+    show: true
+  - class_name: ControlLibraryPage
+    desc: 全应用可视控件库：对照主题下各控件前景/背景/字号/状态；业务页只从本库选用
+    group: system
+    icon: theme_preview
+    id: theme_preview
+    module_path: modules.gallery.control_library_page
+    name: 控件库（主题预览）
+    order: 90
+    feature_id: theme_preview
+    requires_license: false
+    show: true
+  - class_name: SystemSettingsPage
+    desc: 系统配置与外观设置
+    group: system
+    icon: system_settings
+    id: system_settings
+    module_path: modules.system_settings.system_settings_page
+    name: 系统设置
+    order: 91
+    feature_id: system_settings
+    requires_license: false
+    show: true
+  - class_name: JobSchedulerPage
+    desc: 定时任务：间隔执行、立即试跑、jobs.json 落盘
+    group: system
+    icon: job_scheduler
+    id: job_scheduler
+    module_path: modules.job_scheduler.job_scheduler_page
+    name: 任务
+    order: 92
+    feature_id: job_scheduler
+    requires_license: false
+    show: true
+  - class_name: NotificationsPage
+    desc: 通知通道说明、试发与本会话最近通知
+    group: system
+    icon: notifications
+    id: notifications
+    module_path: modules.notifications.notifications_page
+    name: 通知
+    order: 93
+    feature_id: notifications
+    requires_license: false
+    show: true
+  show_advanced_options: true
+ocr:
+  tesseract_path: C:\Program Files\Tesseract-OCR\tesseract.exe
+path:
+  data_dir: ./data
+  deliverable_template_lixiao: ./templates/利刃交付材料模版.pptx
+  deliverable_template_poxiao: ./templates/破晓交付材料模版.pptx
+  docs_dir: ./docs
+  email_config: ./config/email/email_config.txt
+  images_dir: ./images
+  knowledge_base: ./data/knowledge_base.json
+  license_file: ./config/license.json
+  log_dir: ./common/logs
+  output_dir: ./output
+  resume_template: ./templates/简历模版.pptx
+  table_card_template: ./templates/台卡模板.pptx
+  template_dir: ./templates
+  user_config_file: ./config/app.yml
+  winform_dir: .
+paths:
+  cache_dir: '{{base_dir}}/cache'
+  data_dir: ./data
+  deliverable_template_lixiao: ./templates/利刃交付材料模版.pptx
+  deliverable_template_poxiao: ./templates/破晓交付材料模版.pptx
+  docs_dir: ./docs
+  email_config: ./config/email/email_config.txt
+  images_dir: ./images
+  knowledge_base: ./data/knowledge_base.json
+  knowledge_base_path: '{{base_dir}}/data/knowledge_base.json'
+  license_file: ./config/license.json
+  log_dir: ./common/logs
+  output_dir: ./output
+  resume_template: ./templates/简历模版.pptx
+  table_card_template: ./templates/台卡模板.pptx
+  temp_dir: '{{temp_dir}}'
+  template_dir: ./templates
+  user_config_file: ./config/app.yml
+  winform_dir: .
+performance_config:
+  cache_size: '100'
+  max_concurrent_tasks: '4'
+  timeout: '30'
+splash: {}
+system_info: &id001
+  app_logo_path: avatars/logo.png
+  app_name: 赋能培训运营助手（运营宝）
+  app_name_en: Training Operations Assistant, TOA
+  app_version: 3.0.0
+  author: 大成哥
+  author_contact: chengchengzhao@eautosh.com
+  main_slogan: 让培训运营数字化变得简单而高效
+  sub_slogan: 高效、稳定、易用的培训运营解决方案
+system_info_config: *id001
+template:
+  data_dir: ./data
+  deliverable_template_lixiao: ./templates/利刃交付材料模版.pptx
+  deliverable_template_poxiao: ./templates/破晓交付材料模版.pptx
+  docs_dir: ./docs
+  email_config: ./config/email/email_config.txt
+  images_dir: ./images
+  knowledge_base: ./data/knowledge_base.json
+  license_file: ./config/license.json
+  log_dir: ./common/logs
+  output_dir: ./output
+  resume_template: ./templates/简历模版.pptx
+  scheduling_template: 排程模版.xlsx
+  table_card_template: ./templates/台卡模板.pptx
+  template_dir: ./templates
+  user_config_file: ./config/app.yml
+  winform_dir: .
+theme_config_path: '{{base_dir}}/config/theme_config.json'
+ui:
+  theme: dms_blue
+ui_component_config:
+  button_width: '12'
+  input_width: '30'
+  padding: '5'
+window:
+  available_standard_themes:
+  - aqua
+  - clam
+  - alt
+  - default
+  - classic
+  available_themes:
+  - apple
+  - journal
+  - minty
+  - cosmo
+  - pulse
+  compatible_with_tkbootstrap: true
+  default_fullscreen: true
+  default_size:
+  - 1200
+  - 800
+  default_start_tab: home
+  locked_theme_mode: false
+  min_size:
+  - 800
+  - 600
+  theme: dms_blue
+  window_title: 赋能培训运营助手（运营宝）

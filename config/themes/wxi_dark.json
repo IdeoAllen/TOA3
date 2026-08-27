@@ -1,0 +1,2270 @@
+{
+  "$schema": "TOA Custom Theme Schema v2.0",
+  "name": "wxi_dark",
+  "display_name": "WXI 紫暗",
+  "description": "DevExpress WXI设计系统深色主题完整复刻。深色背景+高对比度文字+紫蓝渐变点缀，企业后台暗色首选。",
+  "author": "DevExpress (柏昂移植版)",
+  "version": "3.0",
+  "mode": "dark",
+  "palette": {
+    "primary": "#7B61FF",
+    "primary_hover": "#9479FF",
+    "primary_pressed": "#6347E0",
+    "primary_disabled_bg": "#2D2D36",
+    "primary_disabled_fg": "#6B6B7B",
+    "primary_focus_ring": "#7B61FF",
+    "accent": "#F59E0B",
+    "accent_hover": "#FBBF24",
+    "accent_pressed": "#D97706",
+    "background": "#1A1A24",
+    "surface": "#22222E",
+    "surface_raised": "#2A2A38",
+    "surface_overlay": "#252532",
+    "surface_inset": "#16161E",
+    "surface_sidebar": "#1E1E28",
+    "text_primary": "#E8E8ED",
+    "text_secondary": "#9898AA",
+    "text_disabled": "#6C6C7D",
+    "text_on_primary": "#FFFFFF",
+    "text_on_accent": "#1A1A24",
+    "text_link": "#9479FF",
+    "text_link_hover": "#B8A4FF",
+    "border_default": "#2E2E3E",
+    "border_strong": "#4A4A5E",
+    "border_focus": "#7B61FF",
+    "border_disabled": "#2A2A36",
+    "border_input": "#4A4A5E",
+    "border_input_hover": "#6B6B80",
+    "row_even": "#1A1A24",
+    "row_odd": "#1E1E2A",
+    "row_hover": "#2A2A3A",
+    "row_selected": "#2E2250",
+    "row_selected_text": "#E8E8ED",
+    "row_active": "#363648",
+    "header_bg": "#22222E",
+    "header_fg": "#E8E8ED",
+    "header_hover": "#2A2A38",
+    "header_border": "#2E2E3E",
+    "header_gradient_start": "#22222E",
+    "header_gradient_end": "#2A2A38",
+    "nav_bg": "#22222E",
+    "nav_fg": "#9898AA",
+    "nav_hover_bg": "#2A2A3A",
+    "nav_active_bg": "#2E2250",
+    "nav_active_fg": "#E8E8ED",
+    "nav_indicator": "#7B61FF",
+    "statusbar_bg": "#16161E",
+    "statusbar_fg": "#9898AA",
+    "scrollbar_track": "#1A1A24",
+    "scrollbar_thumb": "#3A3A4E",
+    "scrollbar_thumb_hover": "#4A4A60",
+    "success": "#34D399",
+    "success_bg": "#0D3324",
+    "warning": "#FBBF24",
+    "warning_bg": "#3D2E0A",
+    "danger": "#F87171",
+    "danger_bg": "#3D1515",
+    "danger_hover": "#FCA5A5",
+    "info": "#60A5FA",
+    "info_bg": "#152A44",
+    "tab_active_bg": "#2A2A38",
+    "tab_active_fg": "#E8E8ED",
+    "tab_inactive_bg": "#22222E",
+    "tab_inactive_fg": "#9898AA",
+    "tab_hover_bg": "#2E2E3E",
+    "tab_indicator": "#7B61FF",
+    "input_bg": "#22222E",
+    "input_fg": "#E8E8ED",
+    "input_border": "#4A4A5E",
+    "input_border_hover": "#6B6B80",
+    "input_border_focus": "#7B61FF",
+    "input_placeholder": "#6C6C7D",
+    "input_disabled_bg": "#1E1E28",
+    "shadow_small": "0 1px 3px rgba(0,0,0,0.3)",
+    "shadow_medium": "0 4px 12px rgba(0,0,0,0.4)",
+    "shadow_large": "0 8px 24px rgba(0,0,0,0.5)",
+    "card_bg": "#22222E",
+    "card_border": "#2E2E3E",
+    "card_shadow": "0 2px 8px rgba(0,0,0,0.3)",
+    "separator": "#2E2E3E",
+    "separator_strong": "#4A4A5E",
+    "badge_bg": "#F87171",
+    "badge_fg": "#1A1A24",
+    "link_fg": "#9479FF",
+    "link_hover_fg": "#B8A4FF",
+    "toggle_on_bg": "#7B61FF",
+    "toggle_on_fg": "#FFFFFF",
+    "toggle_off_bg": "#4A4A5E",
+    "toggle_off_fg": "#FFFFFF",
+    "progress_bg": "#2A2A38",
+    "progress_fill": "#7B61FF",
+    "tooltip_bg": "#3A3A4E",
+    "tooltip_fg": "#E8E8ED"
+  },
+  "controls": {
+    "TButton": {
+      "normal": {
+        "background": "#7B61FF",
+        "foreground": "#FFFFFF",
+        "bordercolor": "#7B61FF",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "#9479FF",
+        "bordercolor": "#9479FF"
+      },
+      "pressed": {
+        "background": "#6347E0",
+        "bordercolor": "#6347E0"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Soft.TButton": {
+      "normal": {
+        "background": "#2E2250",
+        "foreground": "#B8A4FF",
+        "bordercolor": "#2E2250",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "#3A2E60",
+        "bordercolor": "#3A2E60"
+      },
+      "pressed": {
+        "background": "#463A70",
+        "bordercolor": "#463A70"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Outline.TButton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{surface_raised}",
+        "bordercolor": "{primary_hover}",
+        "foreground": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{surface_overlay}",
+        "bordercolor": "{primary_pressed}",
+        "foreground": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Accent.TButton": {
+      "normal": {
+        "background": "{accent}",
+        "foreground": "{text_on_accent}",
+        "bordercolor": "{accent}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{accent_hover}",
+        "bordercolor": "{accent_hover}"
+      },
+      "pressed": {
+        "background": "{accent_pressed}",
+        "bordercolor": "{accent_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Secondary.TButton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_strong}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{text_secondary}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{text_primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Ghost.TButton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{background}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{surface_raised}",
+        "bordercolor": "{surface_raised}"
+      },
+      "pressed": {
+        "background": "{surface_overlay}",
+        "bordercolor": "{surface_overlay}"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{background}"
+      }
+    },
+    "Danger.TButton": {
+      "normal": {
+        "background": "{danger}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{danger}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{danger_hover}",
+        "bordercolor": "{danger_hover}"
+      },
+      "pressed": {
+        "background": "#EF4444",
+        "bordercolor": "#EF4444"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Main.TFrame": {
+      "normal": {
+        "background": "{surface_inset}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Surface.TFrame": {
+      "normal": {
+        "background": "{surface_raised}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Inset.TFrame": {
+      "normal": {
+        "background": "{surface_inset}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Surface.TLabel": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Title.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "font": "header",
+        "borderwidth": 0,
+        "relief": "flat"
+      }
+    },
+    "Subtitle.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "font": "subtitle",
+        "borderwidth": 0,
+        "relief": "flat"
+      }
+    },
+    "Caption.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "font": "caption",
+        "borderwidth": 0,
+        "relief": "flat"
+      }
+    },
+    "Primary.TLabel": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{header_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Card.TFrame": {
+      "normal": {
+        "background": "{card_bg}",
+        "bordercolor": "{card_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Card.TLabel": {
+      "normal": {
+        "background": "{card_bg}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TEntry": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}"
+      }
+    },
+    "TCombobox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "fieldbackground": "{input_disabled_bg}",
+        "arrowcolor": "{text_disabled}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "fieldbackground": "{surface_overlay}"
+      }
+    },
+    "TCheckbutton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "indicatorcolor": "{border_strong}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "indicatorcolor": "{primary}",
+        "background": "{background}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}",
+        "indicatorcolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 1
+      }
+    },
+    "Toggle.TCheckbutton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "indicatorcolor": "{toggle_off_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "indicatorcolor": "{toggle_on_bg}",
+        "background": "{background}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}",
+        "indicatorcolor": "{border_disabled}"
+      }
+    },
+    "TRadiobutton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "indicatorcolor": "{border_strong}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "indicatorcolor": "{primary}",
+        "background": "{background}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}",
+        "indicatorcolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 1
+      }
+    },
+    "TNotebook": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "tabmargins": [
+          2,
+          2,
+          2,
+          0
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Shell.TNotebook": {
+      "normal": {
+        "background": "{surface_inset}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "tabmargins": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TNotebook.Tab": {
+      "normal": {
+        "background": "{tab_inactive_bg}",
+        "foreground": "{tab_inactive_fg}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "padding": [
+          12,
+          6
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{tab_hover_bg}",
+        "bordercolor": "{border_strong}"
+      },
+      "selected": {
+        "background": "{tab_active_bg}",
+        "foreground": "{tab_active_fg}",
+        "bordercolor": "{border_default}",
+        "borderwidth": "1 1 0 1"
+      }
+    },
+    "Underline.TNotebook.Tab": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "bordercolor": "{background}",
+        "borderwidth": "0 0 2 0",
+        "relief": "flat",
+        "padding": [
+          12,
+          6
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{background}",
+        "foreground": "{text_primary}"
+      },
+      "selected": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{tab_indicator}",
+        "borderwidth": "0 0 2 0"
+      }
+    },
+    "Treeview": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{background}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "selected": {
+        "background": "{row_selected}",
+        "foreground": "{row_selected_text}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Treeview.Heading": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{border_strong}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      }
+    },
+    "TScrollbar": {
+      "normal": {
+        "background": "{scrollbar_track}",
+        "bordercolor": "{scrollbar_track}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "troughcolor": "{scrollbar_track}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{scrollbar_thumb_hover}"
+      },
+      "pressed": {
+        "background": "{text_secondary}"
+      },
+      "disabled": {
+        "background": "{scrollbar_track}",
+        "arrowcolor": "{text_disabled}"
+      }
+    },
+    "TProgressbar": {
+      "normal": {
+        "background": "{progress_fill}",
+        "bordercolor": "{progress_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "troughcolor": "{progress_bg}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "disabled": {
+        "background": "{border_disabled}",
+        "troughcolor": "{surface_overlay}"
+      }
+    },
+    "TScale": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "troughcolor": "{progress_bg}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}"
+      }
+    },
+    "TSpinbox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      }
+    },
+    "TLabelframe": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "groove",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TSeparator": {
+      "normal": {
+        "background": "{separator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Accent.TSeparator": {
+      "normal": {
+        "background": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "TMenubutton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{border_strong}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "arrowcolor": "{text_disabled}"
+      }
+    },
+    "StatusBar.TFrame": {
+      "normal": {
+        "background": "{statusbar_bg}",
+        "bordercolor": "{header_border}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "StatusBar.TLabel": {
+      "normal": {
+        "background": "{statusbar_bg}",
+        "foreground": "{statusbar_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "StatusBarEdition.TLabel": {
+      "normal": {
+        "background": "{statusbar_bg}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Header.TFrame": {
+      "normal": {
+        "background": "{header_bg}",
+        "bordercolor": "{header_border}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Header.TLabel": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{header_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Nav.TButton": {
+      "normal": {
+        "background": "{nav_bg}",
+        "foreground": "{nav_fg}",
+        "bordercolor": "{nav_bg}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{nav_hover_bg}",
+        "bordercolor": "{nav_hover_bg}"
+      },
+      "pressed": {
+        "background": "{nav_active_bg}",
+        "foreground": "{nav_active_fg}"
+      },
+      "selected": {
+        "background": "{nav_active_bg}",
+        "foreground": "{nav_active_fg}",
+        "bordercolor": "{nav_indicator}",
+        "borderwidth": "0 0 0 3"
+      },
+      "disabled": {
+        "background": "{nav_bg}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Nav.Underline.TButton": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "bordercolor": "{background}",
+        "borderwidth": "0 0 2 0",
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "foreground": "{text_primary}"
+      },
+      "selected": {
+        "background": "{background}",
+        "foreground": "{primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": "0 0 2 0"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Success.TLabel": {
+      "normal": {
+        "background": "{success_bg}",
+        "foreground": "{success}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Warning.TLabel": {
+      "normal": {
+        "background": "{warning_bg}",
+        "foreground": "{warning}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Danger.TLabel": {
+      "normal": {
+        "background": "{danger_bg}",
+        "foreground": "{danger}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Info.TLabel": {
+      "normal": {
+        "background": "{info_bg}",
+        "foreground": "{info}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Success.TFrame": {
+      "normal": {
+        "background": "{success_bg}",
+        "bordercolor": "{success}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Warning.TFrame": {
+      "normal": {
+        "background": "{warning_bg}",
+        "bordercolor": "{warning}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Danger.TFrame": {
+      "normal": {
+        "background": "{danger_bg}",
+        "bordercolor": "{danger}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Info.TFrame": {
+      "normal": {
+        "background": "{info_bg}",
+        "bordercolor": "{info}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Badge.TLabel": {
+      "normal": {
+        "background": "{badge_bg}",
+        "foreground": "{badge_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Link.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{link_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "foreground": "{link_hover_fg}"
+      }
+    },
+    "TPanedwindow": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Sash.TPanedwindow": {
+      "normal": {
+        "background": "{separator_strong}",
+        "bordercolor": "{separator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "App.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Home.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Path.TEntry": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "fieldbackground": "{input_bg}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "fieldbackground": "{surface_overlay}"
+      }
+    },
+    "Notebook.TNotebook": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "tabmargins": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "List Bullet": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Surface.TFrame": {
+      "normal": {
+        "background": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Home.Surface.TFrame": {
+      "normal": {
+        "background": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Title.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Section.TLabel": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Body.TLabel": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Hint.TLabel": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListHeader.TFrame": {
+      "normal": {
+        "background": "{header_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListHeader.TLabel": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{text_secondary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRow.TFrame": {
+      "normal": {
+        "background": "{row_even}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRowAlt.TFrame": {
+      "normal": {
+        "background": "{row_odd}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListDivider.TFrame": {
+      "normal": {
+        "background": "{separator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRow.TLabel": {
+      "normal": {
+        "background": "{row_even}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRowAlt.TLabel": {
+      "normal": {
+        "background": "{row_odd}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRow.TCheckbutton": {
+      "normal": {
+        "background": "{row_even}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.ListRowAlt.TCheckbutton": {
+      "normal": {
+        "background": "{row_odd}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TLabelframe": {
+      "normal": {
+        "background": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TLabelframe.Label": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TEntry": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "fieldbackground": "{input_bg}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      },
+      "readonly": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "fieldbackground": "{surface_overlay}"
+      }
+    },
+    "Page.TCombobox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      }
+    },
+    "Page.TSpinbox": {
+      "normal": {
+        "background": "{input_bg}",
+        "foreground": "{input_fg}",
+        "bordercolor": "{input_border}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "insertcolor": "{input_fg}",
+        "fieldbackground": "{input_bg}",
+        "arrowcolor": "{text_secondary}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          10,
+          7
+        ]
+      },
+      "hover": {
+        "bordercolor": "{input_border_hover}"
+      },
+      "focus": {
+        "bordercolor": "{input_border_focus}",
+        "borderwidth": 2
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}",
+        "fieldbackground": "{input_disabled_bg}"
+      }
+    },
+    "Page.TCheckbutton": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.TRadiobutton": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "disabled": {
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.Treeview": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "fieldbackground": "{surface}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "selected": {
+        "background": "{row_selected}",
+        "foreground": "{row_selected_text}"
+      },
+      "disabled": {
+        "background": "{input_disabled_bg}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.Treeview.Heading": {
+      "normal": {
+        "background": "{header_bg}",
+        "foreground": "{header_fg}",
+        "bordercolor": "{header_border}",
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{header_hover}"
+      }
+    },
+    "Page.Horizontal.TProgressbar": {
+      "normal": {
+        "background": "{progress_fill}",
+        "troughcolor": "{progress_bg}",
+        "bordercolor": "{border_default}",
+        "lightcolor": "{progress_fill}",
+        "darkcolor": "{progress_fill}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.Vertical.TProgressbar": {
+      "normal": {
+        "background": "{progress_fill}",
+        "troughcolor": "{progress_bg}",
+        "bordercolor": "{border_default}",
+        "lightcolor": "{progress_fill}",
+        "darkcolor": "{progress_fill}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TScrollbar": {
+      "normal": {
+        "background": "{scrollbar_thumb}",
+        "troughcolor": "{scrollbar_track}",
+        "arrowcolor": "{text_secondary}",
+        "bordercolor": "{border_default}",
+        "lightcolor": "{scrollbar_thumb}",
+        "darkcolor": "{scrollbar_thumb}",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{scrollbar_thumb_hover}"
+      },
+      "pressed": {
+        "background": "{primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "arrowcolor": "{text_disabled}"
+      }
+    },
+    "Page.TSeparator": {
+      "normal": {
+        "background": "{separator}",
+        "borderwidth": 0,
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TNotebook": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "tabmargins": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Page.TNotebook.Tab": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_secondary}",
+        "bordercolor": "{border_default}",
+        "padding": [
+          12,
+          6
+        ],
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "selected": {
+        "background": "{surface}",
+        "foreground": "{primary}"
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "foreground": "{text_primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.TPanedwindow": {
+      "normal": {
+        "background": "{background}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Primary.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}",
+        "bordercolor": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}",
+        "bordercolor": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Page.Primary.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          14,
+          7
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}",
+        "bordercolor": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}",
+        "bordercolor": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      },
+      "focus": {
+        "bordercolor": "{primary_focus_ring}",
+        "borderwidth": 2
+      }
+    },
+    "Page.Secondary.TButton": {
+      "normal": {
+        "background": "{surface}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_strong}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          14,
+          7
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}",
+        "bordercolor": "{text_secondary}"
+      },
+      "pressed": {
+        "background": "{row_active}",
+        "bordercolor": "{text_primary}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Page.Danger.TButton": {
+      "normal": {
+        "background": "{danger}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{danger}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          14,
+          7
+        ]
+      },
+      "hover": {
+        "background": "{danger_hover}",
+        "bordercolor": "{danger_hover}"
+      },
+      "pressed": {
+        "background": "{danger}",
+        "bordercolor": "{danger}"
+      },
+      "disabled": {
+        "background": "{primary_disabled_bg}",
+        "foreground": "{primary_disabled_fg}",
+        "bordercolor": "{border_disabled}"
+      }
+    },
+    "Page.Row.TButton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          14,
+          7
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      },
+      "disabled": {
+        "background": "{surface_overlay}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.Nav.TButton": {
+      "normal": {
+        "background": "{nav_hover_bg}",
+        "foreground": "{primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          14,
+          7
+        ]
+      },
+      "hover": {
+        "background": "{nav_active_bg}",
+        "foreground": "{primary}"
+      },
+      "selected": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}"
+      },
+      "disabled": {
+        "background": "{background}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Page.NavActive.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ],
+        "padding": [
+          14,
+          7
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}"
+      },
+      "disabled": {
+        "background": "{border_default}",
+        "foreground": "{text_disabled}"
+      }
+    },
+    "Settings.TFrame": {
+      "normal": {
+        "background": "{background}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Settings.TButton": {
+      "normal": {
+        "background": "{surface_raised}",
+        "foreground": "{text_primary}",
+        "bordercolor": "{border_default}",
+        "borderwidth": 1,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{row_hover}"
+      },
+      "pressed": {
+        "background": "{row_active}"
+      }
+    },
+    "Settings.TLabel": {
+      "normal": {
+        "background": "{background}",
+        "foreground": "{text_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Shell.Chrome.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      },
+      "pressed": {
+        "background": "{primary_pressed}"
+      }
+    },
+    "Shell.ChromeGhost.TButton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      }
+    },
+    "Shell.Chrome.TLabel": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Shell.ChromeHint.TLabel": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{nav_fg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    },
+    "Shell.Menu.TMenubutton": {
+      "normal": {
+        "background": "{primary}",
+        "foreground": "{text_on_primary}",
+        "bordercolor": "{primary}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{primary_hover}"
+      }
+    },
+    "Shell.NavIdle.TButton": {
+      "normal": {
+        "background": "{nav_bg}",
+        "foreground": "{nav_fg}",
+        "bordercolor": "{nav_bg}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      },
+      "hover": {
+        "background": "{nav_hover_bg}"
+      }
+    },
+    "Shell.NavActive.TButton": {
+      "normal": {
+        "background": "{nav_active_bg}",
+        "foreground": "{nav_active_fg}",
+        "bordercolor": "{nav_indicator}",
+        "borderwidth": 0,
+        "relief": "flat",
+        "font": [
+          "Segoe UI",
+          10,
+          "normal"
+        ]
+      }
+    }
+  },
+  "metrics": {
+    "border_radius": 4,
+    "border_radius_large": 8,
+    "border_width": 1,
+    "button_padding": [
+      14,
+      7
+    ],
+    "input_padding": [
+      10,
+      7
+    ],
+    "tab_padding": [
+      14,
+      8
+    ],
+    "card_padding": 16,
+    "spacing_xs": 4,
+    "spacing_sm": 8,
+    "spacing_md": 16,
+    "spacing_lg": 24,
+    "spacing_xl": 32
+  },
+  "fonts": {
+    "font_body": [
+      "Segoe UI",
+      10,
+      "normal"
+    ],
+    "body_bold": [
+      "Segoe UI",
+      10,
+      "bold"
+    ],
+    "title": [
+      "Segoe UI",
+      18,
+      "bold"
+    ],
+    "subtitle": [
+      "Segoe UI",
+      13,
+      "normal"
+    ],
+    "header": [
+      "Segoe UI",
+      15,
+      "bold"
+    ],
+    "section": [
+      "Segoe UI",
+      12,
+      "bold"
+    ],
+    "small": [
+      "Segoe UI",
+      9,
+      "normal"
+    ],
+    "caption": [
+      "Segoe UI",
+      8,
+      "normal"
+    ],
+    "mono": [
+      "Cascadia Code",
+      10,
+      "normal"
+    ],
+    "code": [
+      "Cascadia Code",
+      10,
+      "normal"
+    ]
+  }
+}

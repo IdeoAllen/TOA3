@@ -1,0 +1,34 @@
+---
+description: TOA3 测试验收——verify_mvp 与发版前门禁
+globs: scripts/**/*.py,tests/**/*
+alwaysApply: false
+---
+
+# TOA3 测试与验收
+
+## 必跑（每次壳/主题/配置改动）
+
+```powershell
+python scripts/verify_all.py
+```
+
+分项：`verify_mvp.py`（配置/菜单/主题）、`verify_gallery.py`（QSS/控件库）。
+
+## 发版前追加（移植完成后）
+
+- License e2e：对照 TOA2 `scripts/e2e_toa_dms_license.py`
+- License 安全 smoke：`scripts/smoke_license_security.py` 等价
+- 全菜单 smoke：对照 `scripts/smoke_all_menus.py`
+- QSS 同步：`python scripts/gen_qss_from_theme.py` 后 diff 或 `--check`
+
+## 新增模块
+
+- 至少：import 页面类 + `create_page(id)` 不抛错
+- 有 UI 交互：模块级手动用例或最小 pytest
+
+## 禁止
+
+- 仅靠手动点一遍就发版（无脚本门禁）
+- 跳过 license 测试用 `skip_login` 打生产包
+
+文档：`docs/architecture/08-测试与验收.md`

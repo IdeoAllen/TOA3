@@ -1,0 +1,54 @@
+dms:
+  enabled: true
+  base_url: https://dms.yczh.tech
+  timeout_seconds: 30
+  license_paths:
+    activate: /api/toa-license/activate
+    check: /api/toa-license/check
+    sync: /api/toa-license/sync
+    reconcile: /api/toa-license/reconcile
+  release_note: 发版与后端 deploy 遵守工作区 dms-release-deploy 规则
+email:
+  enabled: false
+  smtp_server: ''
+  port: 587
+  use_tls: true
+  config_file: ./config/email/email_config.txt
+ocr:
+  enabled: true
+  provider: tesseract
+  tesseract_path: C:\Program Files\Tesseract-OCR\tesseract.exe
+  lang: chi_sim+eng
+  # 可选：poppler_path 指向含 pdftoppm 的 bin 目录，供图片型 PDF OCR
+  # poppler_path: C:\Program Files\poppler\Library\bin
+  note: 图片/扫描件 OCR；简历提取默认 chi_sim+eng；业务经 OcrClient 调用
+llm:
+  enabled: true
+  provider: openai_compatible
+  api_base: https://api.moonshot.cn/v1
+  # 国内站当前文档示例：kimi-k2.6（moonshot-v1-* 对新账号常 404）
+  model: kimi-k2.6
+  note: 摘要、改写、截图翻译；密钥存本机 secrets。模型名须与控制台一致。
+  temperature: 0.3
+  # 模型 404 时按序回退（不写密钥）
+  model_fallbacks:
+    - kimi-k2.5
+    - moonshot-v1-8k
+    - kimi-k3
+watermark_ai:
+  enabled: false
+  provider: local
+  note: AI 去水印/修复；与 modules/watermark_remover 本地算法互补
+tencent_docs:
+  enabled: false
+  provider: tencent
+  base_url: ''
+  timeout_seconds: 30
+  note: 腾讯文档 OAuth/API 占位；业务经 get_client("tencent_docs") 调用，密钥用环境变量
+dingtalk:
+  enabled: false
+  webhook_url: ''
+  note: 预留，统一经 integrations 层对接
+wechat:
+  enabled: false
+  note: 截图/剪贴板能力本地实现，不经远程 API

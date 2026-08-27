@@ -1,0 +1,152 @@
+# 功能授权包（SKU）— 面向功能授权出售
+# 授权码 / 名单 features 可写 menu_id，也可写 pack_id（自动展开为菜单）
+# "all" = 全部功能
+
+packs:
+  starter:
+    name: 入门版
+    desc: 办公小工具 + 首页设置
+    sellable: true
+    features:
+      - home
+      - quick_notepad
+      - quadrant_tasks
+      - pomodoro
+      - screenshot_tool
+      - clipboard_history
+      - ocr_tool
+      - watermark_remover
+      - watermark_photo_generator
+      - directory_generator
+      - theme_preview
+      - system_settings
+      - job_scheduler
+      - notifications
+      - llm_assistant
+      - harness_agent
+
+  image_suite:
+    name: 图片专业包
+    desc: 创建/调整/水印/截图/图转文件
+    sellable: true
+    features:
+      - image_creator
+      - image_adjust
+      - watermark_photo_generator
+      - watermark_remover
+      - image_to_scan
+      - image_format_convert
+      - photo_extractor
+      - screenshot_tool
+      - ocr_tool
+
+  directory_suite:
+    name: 目录文件包
+    desc: 目录生成/检查/重命名/交付材料
+    sellable: true
+    features:
+      - directory_generator
+      - directory_inspector
+      - enhanced_directory_inspector
+      - batch_rename
+
+  convert_suite:
+    name: 转换工具包
+    desc: 行转列/文档合成/排程转换/通用生成
+    sellable: true
+    features:
+      - excel_row_to_column
+      - document_composer
+      - schedule_format_converter
+      - generic_generator_simple
+      - generic_generator
+
+  file_suite:
+    name: 文件工具包
+    desc: PDF 合并拆分、Excel 清洗
+    sellable: true
+    features:
+      - pdf_toolkit
+      - excel_cleaner
+      - document_composer
+
+  business_suite:
+    name: 培训业务包
+    desc: 桌卡/简历/扣分备注/日程
+    sellable: true
+    features:
+      - table_card_generator
+      - teaching_assistant_resume
+      - resume_extractor
+      - schedule_reminder
+      - schedule_format_converter
+      - deduction_note_formatter
+      - enhanced_directory_inspector
+
+  ai_suite:
+    name: AI 能力包
+    desc: 大模型助手（需配置 integrations.llm）
+    sellable: true
+    features:
+      - llm_assistant
+      - harness_agent
+
+  professional:
+    name: 专业版
+    desc: 入门 + 图片 + 目录 + 转换 + AI
+    sellable: true
+    includes:
+      - starter
+      - image_suite
+      - directory_suite
+      - convert_suite
+      - ai_suite
+
+  enterprise:
+    name: 企业版
+    desc: 专业版 + 培训业务
+    sellable: true
+    includes:
+      - professional
+      - business_suite
+      - file_suite
+
+  experience_beta:
+    name: 体验版
+    desc: manifest=done 核心 + 壳层；调研发版用（见 config/editions/experience.yml）
+    sellable: false
+    features:
+      - home
+      - theme_preview
+      - system_settings
+      - notifications
+      - job_scheduler
+      - deduction_note_formatter
+      - watermark_photo_generator
+      - photo_extractor
+      - directory_inspector
+      - enhanced_directory_inspector
+      - excel_row_to_column
+      - document_composer
+      - schedule_format_converter
+      - table_card_generator
+      - teaching_assistant_resume
+      - resume_extractor
+
+  # 单机免费层（不联网可用；清单见 docs/architecture/16-TOA授权与单机联网模式规划.md）
+  local_free:
+    name: 单机基础版
+    desc: 装完即用；离线本地小工具，不含培训业务与专业包
+    sellable: false
+    features:
+      - home
+      - system_settings
+      - notifications
+      - job_scheduler
+      - quick_notepad
+      - pomodoro
+      - screenshot_tool
+      - clipboard_history
+      - quadrant_tasks
+      - llm_assistant
+      - harness_agent

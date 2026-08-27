@@ -1,0 +1,9 @@
+# 本地回退清单（远程 manifest 不可达时使用）
+product: TOA3
+version: "3.0.0"
+channel: stable
+release_notes: |
+  TOA3 体验版：培训运营核心工具 + 壳层底座。
+  完整说明见 Portal 下载页。
+download_page: https://www.yczh.tech/downloads/
+download_url: ""

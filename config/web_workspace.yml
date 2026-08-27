@@ -1,0 +1,14 @@
+# 网页工作台 · 默认站点（首次使用会复制到 data/module/web_workspace/sites.json）
+default_sites:
+  - id: avatr_sheet_2026
+    name: 2026年阿维塔销交项目-大表
+    url: https://docs.qq.com/sheet/DZkNPUG9mbWRsRmVm?tab=pfklbk
+  - id: tencent_docs
+    name: 腾讯文档
+    url: https://docs.qq.com/desktop/
+  - id: dingtalk_docs
+    name: 钉钉文档
+    url: https://alidocs.dingtalk.com/i/desktop/
+  - id: feishu_docs
+    name: 飞书云文档
+    url: https://www.feishu.cn/product/docs
