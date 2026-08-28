@@ -35,6 +35,10 @@ llm:
     - kimi-k2.5
     - moonshot-v1-8k
     - kimi-k3
+image_gen:
+  enabled: true
+  provider: catalog
+  note: 文生图；模型在 model_catalog · 图像生成；本地推荐 SD WebUI/Forge + API
 watermark_ai:
   enabled: false
   provider: local

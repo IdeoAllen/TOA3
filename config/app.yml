@@ -88,6 +88,7 @@ hotkeys:
   module_shortcuts: {}
 license:
   check_cache_minutes: 10
+  activate_timeout_seconds: 15
   # 目标：TOA 云服务（授权/试用/订单），与 DMS 无强绑定
   service_url: https://toa-service.yczh.tech/api/toa-license
   # 过渡：未部署 TOA 云服务前 fallback；迁移完成后删除
@@ -185,8 +186,8 @@ menu:
     order: 9
     feature_id: ocr_tool
     requires_license: false
-    # 入口已挂截图工具栏 OCR/翻译；独立页保留但不占首页卡片
-    show: true
+    # 入口已挂截图工具栏 OCR/翻译；独立页保留但不占侧栏
+    show: false
   - class_name: ClipboardHistoryPage
     desc: 捕获与回写剪贴板文本历史
     group: office
@@ -220,6 +221,17 @@ menu:
     feature_id: llm_assistant
     requires_license: false
     show: true
+  - class_name: MediaStudioPage
+    desc: 文生图（本地 WebUI / 云端 OpenAI 兼容）
+    group: ai
+    icon: image_creator
+    id: media_studio
+    module_path: modules.media_studio.media_studio_page
+    name: 媒体工坊
+    order: 3
+    feature_id: media_studio
+    requires_license: false
+    show: true
   - class_name: ImageCreatorPage
     desc: 创建空白/纯色/噪声底图
     group: image
@@ -230,7 +242,7 @@ menu:
     order: 8
     feature_id: image_creator
     requires_license: false
-    show: true
+    show: false
   - class_name: ImageAdjustPage
     desc: 旋转翻转缩放与明暗对比度调整
     group: image
@@ -241,7 +253,7 @@ menu:
     order: 9
     feature_id: image_adjust
     requires_license: false
-    show: true
+    show: false
   - class_name: BatchRenamePage
     desc: 按规则批量重命名文件（菜单隐藏，场景弱）
     group: directory
@@ -252,7 +264,7 @@ menu:
     order: 22
     feature_id: batch_rename
     requires_license: true
-    show: true
+    show: false
   - class_name: MigrationPlaceholderPage
     desc: PDF 合并、拆分、按页提取（待开发）
     group: file
@@ -263,7 +275,7 @@ menu:
     order: 23
     feature_id: pdf_toolkit
     requires_license: true
-    show: true
+    show: false
   - class_name: MigrationPlaceholderPage
     desc: Excel 空行/重复行清洗与格式规范化（待开发）
     group: file
@@ -274,15 +286,15 @@ menu:
     order: 24
     feature_id: excel_cleaner
     requires_license: true
-    show: true
+    show: false
   - class_name: WatermarkPhotoPage
     desc: 班级目录按日期规则批量加水印（业务专用，默认可写回原图）
-    group: image
+    group: business
     icon: watermark_photo
     id: watermark_photo_generator
     module_path: modules.watermark_photo_generator.watermark_photo_generator_page
     name: 生成水印照片
-    order: 10
+    order: 37
     feature_id: watermark_photo_generator
     requires_license: true
     show: true
@@ -370,18 +382,18 @@ menu:
     id: directory_generator
     module_path: modules.directory_generator.directory_generator_page
     name: 批量文件夹生成
-    order: 21
+    order: 19
     feature_id: directory_generator
     requires_license: false
     show: true
   - class_name: ExcelRowToColumnPage
     desc: 行列转换，轻松重排 Excel 数据
-    group: file
+    group: business
     icon: excel_row_to_column
     id: excel_row_to_column
     module_path: modules.excel_row_to_column.excel_row_to_column_page
     name: 行转列工具
-    order: 30
+    order: 36
     feature_id: excel_row_to_column
     requires_license: true
     show: true
@@ -406,7 +418,7 @@ menu:
     order: 32
     feature_id: generic_generator
     requires_license: true
-    show: true
+    show: false
   - class_name: DocumentComposerPage
     desc: 按模板快速合成文档
     group: file
@@ -511,12 +523,14 @@ menu:
     group: system
     icon: system_settings
     id: system_settings
-    module_path: modules.system_settings.system_settings_page
+    module_path: modules.system_settings.settings_page
     name: 系统设置
     order: 91
     feature_id: system_settings
     requires_license: false
     show: true
+    # 顶栏齿轮进入；不占系统子模块侧栏
+    sidebar: false
   - class_name: JobSchedulerPage
     desc: 定时任务：间隔执行、立即试跑、jobs.json 落盘
     group: system

@@ -86,7 +86,7 @@ def main() -> int:
     if not grouped_menu_items():
         errors.append("grouped_menu_items empty")
 
-    for _gid, _gl, items in grouped_menu_items():
+    for _gid, _gl, items in grouped_menu_items(licensed_only=False, migrated_only=True):
         for item in items:
             mid = str(item.get("id") or "")
             if not mid:
@@ -119,14 +119,10 @@ def main() -> int:
     print("MVP VERIFY OK")
     print(f"  themes: {len(themes)}")
     print(f"  menu visible: {menu_count}")
-    return 0
+    import os
+
+    os._exit(0)
 
 
 if __name__ == "__main__":
-    import os
-
-    code = main()
-    # Windows 上 QApplication 析构偶发 0xC0000409，冒烟脚本成功则硬退出
-    if code == 0:
-        os._exit(0)
-    raise SystemExit(code)
+    raise SystemExit(main())

@@ -1,0 +1,27 @@
+# 发版默认（无个人路径）。本机开发/测试请写 data/user/harness.yml 覆盖。
+
+harness:
+  enabled: false
+  dsh_home: ""
+  node_exe: ""
+  dsh_bin: ""
+  web_port: 3081
+  dshm_port: 8787
+  auto_start: false
+  stop_on_app_exit: false
+  clear_env_api_key: true
+  dshm_script: vendor/dshm/bin/dshm.js
+  default_workspace: ""
+  surface_mode: embed
+  web_zoom: 1.0
+  web_readability_boost: false
+  theme_harmonize: false
+  feed_auto_inject: false
+  cost_currency: 元
+  cost_input_per_million: 2
+  cost_output_per_million: 8
+  quick_prompts:
+    - label: 读架构
+      text: 请阅读当前工作区目录结构，按 modules/services/app 分层总结职责与入口。
+    - label: 最小修复
+      text: 根据下列现象做根因分析，给出最小 diff 修复方案（先说明再改）：

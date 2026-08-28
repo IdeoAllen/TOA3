@@ -2,7 +2,9 @@
 """系统设置 · 授权与云服务联动。"""
 from __future__ import annotations
 
-from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QVBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from core.base_page import BasePage
 from core.status_service import StatusLevel
@@ -11,91 +13,221 @@ from services.license_client import license_service_summary
 from services.license_manager import global_license_manager
 from services.menu_registry import all_menu_items
 from services.notify_bus import emit_license_changed
-from widgets import FormSection, HintLabel, PrimaryButton, ReadOnlyPlainTextEdit, SecondaryButton, SemanticLabel
-from widgets.list_edit import FormEditDialog, ListPanel, confirm_delete
+from widgets import (
+    DataTable,
+    DangerButton,
+    HintLabel,
+    LineEdit,
+    PrimaryButton,
+    SecondaryButton,
+    SemanticLabel,
+    TabWidget,
+)
+from widgets.list_edit import FormEditDialog, confirm_delete
+
+_USER_COLS = ("姓名", "手机", "角色", "有效期", "状态", "功能权限")
+_MENU_COLS = ("模块", "显示名", "需完整版")
+_PACK_COLS = ("包 ID", "名称", "功能数", "说明")
+
+_CLOUD_HINT = (
+    "【本机 ↔ TOA 云服务】\n"
+    "· 本页「授权用户」= 本机发码/续期操作台；名单存在本机 license 数据里。\n"
+    "· 「同步到云服务」= 把名单推到 TOA 云服务（下方地址），供激活校验、到期判定、"
+    "试用/续订与运营台审计；不是 DMS 业务库。\n"
+    "· 「联网校验」= 从云服务拉最新授权状态写回本机 license.json，侧栏权限随即刷新。\n"
+    "· 单机基础版可不连云，仅用本机激活码；完整版/多用户发卡建议配置云服务。\n"
+    "· 机器 ID 用于绑机发码；复制后可在运营台或发卡流程中登记。"
+)
 
 
-class LicenseSection(FormSection):
-    """授权状态 + 授权用户名单（List+Edit）。"""
+class LicenseSection(QWidget):
+    """授权状态 + 用户名单（主表）+ 运营参考 / 云服务说明（子页签）。"""
 
     def __init__(self, parent: BasePage) -> None:
-        super().__init__("授权与云服务")
+        super().__init__(parent)
         self._page = parent
         self._lm = global_license_manager
+        self._users: list[dict] = []
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(6)
 
         self._status = SemanticLabel("", kind="info")
+        root.addWidget(self._status)
+
+        self._tabs = TabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._tabs.addTab(self._build_users_tab(), "授权用户")
+        self._tabs.addTab(self._build_reference_tab(), "运营参考")
+        self._tabs.addTab(self._build_cloud_tab(), "云服务连接")
+        root.addWidget(self._tabs, 1)
+
         self._refresh_status()
-        self.add_widget(self._status)
-        hint_lines = [
-            f"云服务：{license_service_summary()} · 机器 ID：{self._lm.get_machine_id()}",
-        ]
-        if self._lm.is_standalone_mode() and not self._lm.is_licensed():
-            hint_lines.append(
-                "当前为单机基础版（离线可用）。升级完整版：切到「订阅购买」页下单，或使用「授权码登录」。"
-            )
-        elif not self._lm.is_licensed():
-            hint_lines.append("未激活完整版：切到「订阅购买」页订阅功能包，或在登录窗使用授权码。")
-        else:
-            hint_lines.append("授权用户维护后请点「同步到云服务」；到期后收费功能自动关闭，可在此页续订。")
-        self.add_widget(HintLabel("\n".join(hint_lines)))
-
-        self._list_panel = ListPanel(
-            hint="双击或点「编辑」修改授权用户；固定管理员不可删除。",
-            add_label="新增用户",
-            edit_label="编辑",
-            delete_label="删除",
-            refresh_label="刷新名单",
-        )
-        self._list_panel.list_widget.itemDoubleClicked.connect(self._on_edit)
-        self._list_panel.bind_add(self._on_add)
-        self._list_panel.bind_edit(self._on_edit)
-        self._list_panel.bind_delete(self._on_delete)
-        self._list_panel.bind_refresh(self._reload_list)
-        self.add_widget(self._list_panel)
-
-        row = QHBoxLayout()
-        btn_sync = PrimaryButton("同步到云服务")
-        btn_sync.clicked.connect(self._on_sync_dms)
-        row.addWidget(btn_sync)
-        btn_check = SecondaryButton("联网校验")
-        btn_check.clicked.connect(self._on_check)
-        row.addWidget(btn_check)
-        row.addStretch(1)
-        self.add_layout(row)
-
-        self.add_widget(HintLabel("功能清单（菜单 feature / 是否需授权）"))
-        self._features = ReadOnlyPlainTextEdit()
-        self._features.setMinimumHeight(100)
-        self.add_widget(self._features)
-        self._reload_features()
-
-        self.add_widget(HintLabel("可售功能包（SKU）— 发卡时可写 pack_id"))
-        self._packs = ReadOnlyPlainTextEdit()
-        self._packs.setMinimumHeight(90)
-        self.add_widget(self._packs)
-        try:
-            from services.feature_packs import pack_summary_lines
-
-            self._packs.setPlainText("\n".join(pack_summary_lines()) or "（无功能包配置）")
-        except Exception as e:
-            self._packs.setPlainText(f"加载失败：{e}")
-
         self._reload_list()
 
-    def _reload_features(self) -> None:
-        lines = []
+    def _build_users_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(6)
+
+        lay.addWidget(
+            HintLabel(
+                "维护本机授权名单；改完后点「同步到云服务」写入云端，或点「联网校验」从云端拉回。"
+            )
+        )
+
+        tool = QHBoxLayout()
+        tool.setSpacing(8)
+        btn_add = PrimaryButton("新增用户")
+        btn_add.clicked.connect(self._on_add)
+        tool.addWidget(btn_add)
+        btn_edit = SecondaryButton("编辑")
+        btn_edit.clicked.connect(self._on_edit)
+        tool.addWidget(btn_edit)
+        btn_del = DangerButton("删除")
+        btn_del.clicked.connect(self._on_delete)
+        tool.addWidget(btn_del)
+        tool.addStretch(1)
+        btn_refresh = SecondaryButton("刷新名单")
+        btn_refresh.clicked.connect(self._reload_list)
+        tool.addWidget(btn_refresh)
+        btn_sync = PrimaryButton("同步到云服务")
+        btn_sync.clicked.connect(self._on_sync_dms)
+        tool.addWidget(btn_sync)
+        btn_check = SecondaryButton("联网校验")
+        btn_check.clicked.connect(self._on_check)
+        tool.addWidget(btn_check)
+        lay.addLayout(tool)
+
+        self._user_table = DataTable()
+        self._user_table.set_headers(list(_USER_COLS))
+        self._user_table.setMinimumHeight(320)
+        self._user_table.itemDoubleClicked.connect(self._on_edit)
+        lay.addWidget(self._user_table, 1)
+        return w
+
+    def _build_reference_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(
+            HintLabel("发卡、订阅对照用：各模块是否要求完整版，以及可售功能包 SKU。")
+        )
+
+        inner = TabWidget()
+        inner.setDocumentMode(True)
+        inner.addTab(self._build_menu_tab(), "菜单授权对照")
+        inner.addTab(self._build_pack_tab(), "功能包 SKU")
+        lay.addWidget(inner, 1)
+        return w
+
+    def _build_cloud_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(8)
+        lay.addWidget(HintLabel(_CLOUD_HINT))
+
+        env = QFormLayout()
+        env.setSpacing(6)
+        self._service_url = LineEdit()
+        self._service_url.setReadOnly(True)
+        self._service_url.setText(license_service_summary())
+        env.addRow("云服务 API", self._service_url)
+
+        mid_row = QHBoxLayout()
+        self._machine_id = LineEdit()
+        self._machine_id.setReadOnly(True)
+        self._machine_id.setText(self._lm.get_machine_id())
+        mid_row.addWidget(self._machine_id, 1)
+        btn_copy = SecondaryButton("复制机器 ID")
+        btn_copy.clicked.connect(self._copy_machine_id)
+        mid_row.addWidget(btn_copy)
+        env.addRow("机器 ID", mid_row)
+        lay.addLayout(env)
+        lay.addStretch(1)
+        return w
+
+    def _build_menu_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(4)
+        self._menu_table = DataTable()
+        self._menu_table.set_headers(list(_MENU_COLS))
+        lay.addWidget(self._menu_table, 1)
+        self._reload_menu_table()
+        return w
+
+    def _build_pack_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(4)
+        self._pack_table = DataTable()
+        self._pack_table.set_headers(list(_PACK_COLS))
+        lay.addWidget(self._pack_table, 1)
+        self._reload_pack_table()
+        return w
+
+    def _copy_machine_id(self) -> None:
+        QGuiApplication.clipboard().setText(self._machine_id.text().strip())
+        self._page.report_status("机器 ID 已复制", level=StatusLevel.SUCCESS)
+
+    def _reload_menu_table(self) -> None:
+        rows: list[tuple[str, ...]] = []
         for it in all_menu_items():
-            mid = it.get("id")
-            name = it.get("name")
+            if not it.get("show", True):
+                continue
+            mid = str(it.get("id") or "")
+            name = str(it.get("name") or mid)
             req = it.get("requires_license", True)
-            feat = it.get("feature_id") or it.get("requires_feature") or mid
-            lines.append(f"{mid}\t{name}\tfeature={feat}\trequires_license={req}")
-        self._features.setPlainText("\n".join(lines))
+            rows.append((mid, name, "是" if req else "否"))
+        self._menu_table.set_rows(rows)
+
+    def _reload_pack_table(self) -> None:
+        rows: list[tuple[str, ...]] = []
+        try:
+            from services.feature_packs import expand_features, list_packs
+
+            for p in list_packs(sellable_only=True):
+                feats = expand_features([p["id"]])
+                n = "全部" if feats == ["all"] else str(len(feats))
+                rows.append(
+                    (
+                        str(p.get("id") or ""),
+                        str(p.get("name") or ""),
+                        n,
+                        str(p.get("desc") or ""),
+                    )
+                )
+        except Exception as exc:
+            rows.append(("—", "加载失败", "", str(exc)))
+        self._pack_table.set_rows(rows)
+
+    def _user_role_label(self, user: dict) -> str:
+        role = str(user.get("role") or "").strip().lower()
+        if role == "admin":
+            if self._lm.is_protected_admin(user):
+                return "管理员（固定）"
+            return "管理员"
+        return "用户"
+
+    def _user_status_label(self, user: dict) -> str:
+        if bool(user.get("revoked")):
+            return "已吊销"
+        if user.get("code_id"):
+            return "已发卡"
+        return "待发卡"
 
     def _emit_nav(self) -> None:
         emit_license_changed()
         self._refresh_status()
-
 
     def _refresh_status(self) -> None:
         text = self._lm.get_validity_text()
@@ -104,22 +236,49 @@ class LicenseSection(FormSection):
         self._status.setProperty("class", f"semantic-{kind}")
         self._status.style().unpolish(self._status)
         self._status.style().polish(self._status)
-        self._status.setText(f"授权状态：{text}")
+        cloud = "云服务已确认" if licensed and not self._lm.is_standalone_mode() else ""
+        parts = [f"授权状态：{text}"]
+        if cloud:
+            parts.append(cloud)
+        self._status.setText(" · ".join(parts))
 
     def _reload_list(self) -> None:
-        users = self._lm.search_authorized_users("")
-        lines = []
-        for u in users:
-            lines.append(self._lm.format_authorized_user(u))
-        self._list_panel.set_items(lines)
+        self._users = self._lm.search_authorized_users("")
+        table_rows: list[tuple[str, ...]] = []
+        for user in self._users:
+            feats = self._lm.format_features_summary(
+                user.get("features") or user.get("menus")
+            )
+            table_rows.append(
+                (
+                    str(user.get("name") or "未命名"),
+                    str(user.get("phone") or ""),
+                    self._user_role_label(user),
+                    str(user.get("expire_date") or "—"),
+                    self._user_status_label(user),
+                    feats,
+                )
+            )
+        self._user_table.set_rows(table_rows)
+        for r, user in enumerate(self._users):
+            for c in range(self._user_table.columnCount()):
+                item = self._user_table.item(r, c)
+                if item is not None:
+                    item.setData(Qt.ItemDataRole.UserRole, user)
+        if self._users:
+            self._user_table.selectRow(0)
         self._refresh_status()
-        self._page.report_status(f"授权用户 {len(lines)} 人")
+        self._page.report_status(f"授权用户 {len(self._users)} 人")
 
     def _user_at_row(self) -> dict | None:
-        row = self._list_panel.current_row()
-        users = self._lm.search_authorized_users("")
-        if 0 <= row < len(users):
-            return users[row]
+        r = self._user_table.currentRow()
+        if 0 <= r < len(self._users):
+            return self._users[r]
+        item = self._user_table.item(r, 0) if r >= 0 else None
+        if item is not None:
+            meta = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(meta, dict):
+                return meta
         return None
 
     def _on_add(self) -> None:
@@ -224,4 +383,7 @@ class LicenseSection(FormSection):
         licensed = self._lm.is_licensed()
         self._refresh_status()
         self._emit_nav()
-        show_info(self._page, self._lm.get_validity_text() if licensed else "当前未授权或已失效")
+        show_info(
+            self._page,
+            self._lm.get_validity_text() if licensed else "当前未授权或已失效",
+        )

@@ -87,11 +87,11 @@ def _parse_date(value: Optional[str]) -> Optional[datetime.date]:
 
 
 def list_licensable_menus() -> List[Dict[str, str]]:
-    """可授权菜单清单：与「菜单配置 / 功能导航」同源（含首页），按 order。"""
+    """可授权菜单清单（与菜单配置同源，不走当前会话可见性过滤）。"""
     try:
-        from services.menu_registry import get_menu_catalog
+        from services.menu_registry import all_menu_items
 
-        items = get_menu_catalog()
+        items = all_menu_items()
     except Exception:
         items = []
     out: List[Dict[str, str]] = []
@@ -106,7 +106,6 @@ def list_licensable_menus() -> List[Dict[str, str]]:
 
 def normalize_menu_features(menus=None) -> List[str]:
     """规范化菜单授权：支持 pack_id 展开；None/空/全选 → ['all']。"""
-    all_ids = [m["id"] for m in list_licensable_menus()]
     if menus is None:
         return ["all"]
     if isinstance(menus, str):
@@ -123,6 +122,7 @@ def normalize_menu_features(menus=None) -> List[str]:
         return ["all"]
     if "all" in cleaned or "*" in cleaned:
         return ["all"]
+    all_ids = [m["id"] for m in list_licensable_menus()]
     # 展开功能包 SKU → 菜单 id
     try:
         from services.feature_packs import expand_features
@@ -306,6 +306,12 @@ class LicenseManager:
     def invalidate_license_cache(self) -> None:
         """强制下次 is_licensed / 联网校验不走 memo。"""
         self._licensed_memo = None
+        try:
+            from services.access_control import invalidate_can_open_cache
+
+            invalidate_can_open_cache()
+        except Exception:
+            pass
         try:
             from services.dms_license_client import invalidate_check_cache
 
@@ -812,11 +818,13 @@ class LicenseManager:
                 register_on_dms,
             )
 
-            net_ok, net_msg, net_payload = activate_on_dms(license_key, mid)
-            if (not net_ok) and is_local_dms() and "未在 DMS 登记" in (net_msg or ""):
+            from app.version import APP_VERSION
+
+            net_ok, net_msg, net_payload = activate_on_dms(license_key, mid, APP_VERSION)
+            if (not net_ok) and is_local_dms() and "未在" in (net_msg or "") and "登记" in (net_msg or ""):
                 ok_reg, reg_msg, _ = register_on_dms(license_key)
                 if ok_reg:
-                    net_ok, net_msg, net_payload = activate_on_dms(license_key, mid)
+                    net_ok, net_msg, net_payload = activate_on_dms(license_key, mid, APP_VERSION)
                 else:
                     return False, f"联网激活失败：{net_msg}（本地补登记失败：{reg_msg}）", None
             if not net_ok:
@@ -942,7 +950,7 @@ class LicenseManager:
     def _activation_still_valid(self) -> Tuple[bool, str]:
         now = time.time()
         memo = getattr(self, "_licensed_memo", None)
-        if isinstance(memo, tuple) and len(memo) == 3 and (now - float(memo[0])) < 0.8:
+        if isinstance(memo, tuple) and len(memo) == 3 and (now - float(memo[0])) < 2.0:
             return bool(memo[1]), str(memo[2] or "")
         ok, msg = self._activation_still_valid_uncached()
         self._licensed_memo = (now, ok, msg)
@@ -1001,7 +1009,7 @@ class LicenseManager:
 
             code_id = str(self.license_info.get("activated_code_id") or "")
             if not code_id:
-                return False, "缺少联网授权标识，请使用 DMS 授权码重新激活"
+                return False, "缺少联网授权标识，请使用 TOA 运营台签发的授权码重新激活"
             mid = self.get_machine_id()
             peeked = peek_check_cache(code_id, mid)
             net_ok, _net_msg, payload = check_on_dms(code_id, mid, blocking=False)
@@ -1023,8 +1031,8 @@ class LicenseManager:
                         "expired": "授权已到期。请在「系统设置 → 订阅购买」续费。",
                         "revoked": "授权已停用，无法登录",
                         "bound_elsewhere": "授权已绑定其它电脑，请联系管理员在运营宝换机解绑",
-                        "unknown": "授权码已更换或未在 DMS 登记，请使用新授权码重新激活",
-                        "missing": "授权码已更换或未在 DMS 登记，请使用新授权码重新激活",
+                        "unknown": "授权码已更换或未在 TOA 云服务登记，请从运营台获取新码",
+                        "missing": "授权码已更换或未在 TOA 云服务登记，请从运营台获取新码",
                     }
                     return False, messages.get(status) or str(
                         payload.get("message") or "授权已失效，请联系管理员"
@@ -1133,12 +1141,26 @@ class LicenseManager:
             pass
         return False
 
+    def has_full_menu_access(self) -> bool:
+        """全功能包 / 管理员：侧栏展示全部菜单（含 show:false 与 manifest 未开放项）。"""
+        if self.is_admin_user():
+            return True
+        if not self.license_info:
+            self.load_license()
+        feats = normalize_menu_features(self.license_info.get("features") or [])
+        if "all" in feats:
+            return True
+        plan = str(self.license_info.get("plan_id") or "").strip().lower()
+        if plan in ("enterprise", "all"):
+            return True
+        return False
+
     def is_standalone_mode(self) -> bool:
         if not self.license_info:
             self.load_license()
         from services.runtime_mode import is_standalone_record
 
-        if self.is_licensed():
+        if bool(self.license_info.get("is_licensed")):
             return False
         return is_standalone_record(self.license_info)
 
@@ -1178,7 +1200,7 @@ class LicenseManager:
         return "已授权" if ok else msg
 
     def has_feature_access(self, feature_name) -> bool:
-        if _dev_grant_all_enabled() or self.is_admin_user():
+        if _dev_grant_all_enabled() or self.is_admin_user() or self.has_full_menu_access():
             return True
         if not self.is_licensed():
             return False
@@ -1203,7 +1225,7 @@ class LicenseManager:
 
     def get_authorized_menu_ids(self) -> List[str]:
         """当前激活用户可用的菜单 id；含 all 时返回 ['all']。"""
-        if _dev_grant_all_enabled() or self.is_admin_user():
+        if _dev_grant_all_enabled() or self.is_admin_user() or self.has_full_menu_access():
             return ["all"]
         if not self.is_licensed():
             return []

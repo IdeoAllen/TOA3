@@ -133,6 +133,15 @@ def resume_info(session_id: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def list_workspaces() -> list[dict[str, Any]]:
+    data = _run_dshm(["workspaces"])
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict) and isinstance(data.get("workspaces"), list):
+        return [x for x in data["workspaces"] if isinstance(x, dict)]
+    return []
+
+
 def overview_from_status() -> dict[str, Any]:
     """合并 status 与 ls 为 UI 概览。"""
     snap = status_snapshot()

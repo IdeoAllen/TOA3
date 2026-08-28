@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.app_state import AppState
-from app.version import APP_NAME, APP_VERSION
+from app.version import APP_NAME, APP_VERSION, build_profile_label
 from services.config_service import load_config, project_root, resolve_path
 from services.user_system_info import load_user_overrides
 
@@ -30,6 +30,7 @@ def get_system_info() -> dict:
     return {
         "app_name": APP_NAME,
         "app_version": APP_VERSION,
+        "build_profile": build_profile_label(),
         "brand_name": str(brand.get("brand_name") or st.brand_name()),
         "brand_alias": str(brand.get("brand_alias") or "运营宝"),
         "brand_abbreviation": str(brand.get("brand_abbreviation") or "TOA"),

@@ -114,6 +114,9 @@ if errorlevel 1 (
         f"""#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 $AppPattern = "TOA3|运营宝|Training Operations Assistant 3"
+Write-Host "Stopping TOA3 if running..."
+Get-Process -Name {app_short} -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 500
 Write-Host "Looking for installed TOA3..."
 $apps = Get-ItemProperty @(
   "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",
@@ -135,7 +138,7 @@ foreach ($a in $apps) {{
   elseif ($u -match 'unins\\d+\\.exe') {{
     $exe = ($u -replace '"','').Trim()
     if ($exe -match '^(.*unins\\d+\\.exe)') {{ $exe = $Matches[1] }}
-    Start-Process -FilePath $exe -ArgumentList "/SILENT","/NORESTART","/SUPPRESSMSGBOXES" -Wait
+    Start-Process -FilePath $exe -ArgumentList "/SILENT","/NORESTART","/SUPPRESSMSGBOXES","/FORCECLOSEAPPLICATIONS" -Wait
   }} else {{ cmd /c $u | Out-Null }}
 }}
 Write-Host "Uninstall finished."

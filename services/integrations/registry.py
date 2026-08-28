@@ -5,6 +5,7 @@ from __future__ import annotations
 from services.integrations.config import integration_enabled, load_integrations_config
 from services.integrations.dms_license import DmsLicenseClient
 from services.integrations.dingtalk_client import DingtalkClient
+from services.integrations.image_gen_client import ImageGenClient
 from services.integrations.llm_client import LlmClient
 from services.integrations.ocr_client import OcrClient
 from services.integrations.tencent_docs_client import TencentDocsClient
@@ -14,6 +15,7 @@ _REGISTRY = {
     "dms": DmsLicenseClient,
     "ocr": OcrClient,
     "llm": LlmClient,
+    "image_gen": ImageGenClient,
     "watermark_ai": WatermarkAiClient,
     "tencent_docs": TencentDocsClient,
     "dingtalk": DingtalkClient,

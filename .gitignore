@@ -26,8 +26,14 @@ Thumbs.db
 .DS_Store
 
 # Logs / local data
+common/logs/*.log
+common/logs/*_diag.txt
+.specstory/
+artifacts/
 data/*
 !data/README.md
+data/user/integrations_secrets.json
+data/user/integrations_secrets.json.tmp
 output/*
 !output/README.md
 cache/

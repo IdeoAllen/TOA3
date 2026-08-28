@@ -26,12 +26,18 @@ def _configure_webengine_env() -> None:
     """内嵌 Chromium 在 125%/150% 缩放下易发虚：提前设字体渲染标志。"""
     import os
 
+    from services.qt_webengine_bootstrap import configure_frozen_qt_webengine
+
+    configure_frozen_qt_webengine()
+
     key = "QTWEBENGINE_CHROMIUM_FLAGS"
     # 灰度抗锯齿 + 完整 hinting，减轻分数倍缩放下的发糊
     extras = (
         "--disable-lcd-text",
         "--font-render-hinting=full",
         "--enable-font-antialiasing",
+        # Windows 嵌入 WebEngine 时父窗重绘易闪白；禁用原生遮挡计算
+        "--disable-features=CalculateNativeWinOcclusion",
     )
     cur = (os.environ.get(key) or "").strip()
     parts = [p for p in cur.split() if p]

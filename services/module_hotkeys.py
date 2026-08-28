@@ -26,6 +26,20 @@ _DEFAULT_SHORTCUTS: dict[str, str] = {
     "home": "Ctrl+H",
 }
 
+# 设置页默认展示（常用唤起）；其余用 Ctrl+K / 侧栏，按需「添加模块」
+_HOTKEY_EDITOR_CURATED: tuple[str, ...] = (
+    "quick_notepad",
+    "pomodoro",
+    "clipboard_history",
+    "harness_agent",
+    "quadrant_tasks",
+    "deduction_note_formatter",
+    "directory_generator",
+    "watermark_remover",
+    "screenshot_tool",
+    "ocr_tool",
+)
+
 
 def _normalize_seq(seq: str) -> str:
     s = str(seq or "").strip()
@@ -73,6 +87,8 @@ def list_shortcut_modules_grouped() -> list[tuple[str, str, list[tuple[str, str,
     for gid, glab, items in grouped_menu_items(licensed_only=False, migrated_only=True):
         rows: list[tuple[str, str, str]] = []
         for item in sorted(items, key=lambda x: (int(x.get("order") or 0), str(x.get("name") or ""))):
+            if not item.get("show", True):
+                continue
             mid = str(item.get("id") or "").strip()
             if not mid or mid in ("__about__",):
                 continue
@@ -84,6 +100,8 @@ def list_shortcut_modules_grouped() -> list[tuple[str, str, list[tuple[str, str,
     orphan: list[tuple[str, str, str]] = []
     listed = {mid for _g, _l, rows in out for mid, _n, _s in rows}
     for item in get_all_menu_items():
+        if not item.get("show", True):
+            continue
         mid = str(item.get("id") or "").strip()
         if not mid or mid in listed or not is_migrated(mid):
             continue
@@ -100,6 +118,52 @@ def list_shortcut_modules() -> list[tuple[str, str, str]]:
     for _gid, _glab, rows in list_shortcut_modules_grouped():
         flat.extend(rows)
     return flat
+
+
+def _menu_name_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for item in get_all_menu_items():
+        if not item.get("show", True):
+            continue
+        mid = str(item.get("id") or "").strip()
+        if mid:
+            out[mid] = str(item.get("name") or mid)
+    return out
+
+
+def list_hotkey_editor_modules() -> list[tuple[str, str, str]]:
+    """设置页：常用模块 + 用户已配置但不在常用表中的项（不铺全菜单）。"""
+    configured = get_configured_module_shortcuts()
+    names = _menu_name_map()
+    seen: set[str] = set()
+    out: list[tuple[str, str, str]] = []
+    for mid in _HOTKEY_EDITOR_CURATED:
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        out.append((mid, names.get(mid, mid), get_module_shortcut(mid)))
+    for mid in sorted(configured.keys()):
+        if mid in seen:
+            continue
+        seen.add(mid)
+        out.append((mid, names.get(mid, mid), configured[mid]))
+    return out
+
+
+def list_hotkey_picker_modules() -> list[tuple[str, str]]:
+    """添加模块下拉：侧栏可见且已迁移的项。"""
+    from services.menu_registry import visible_menu_items
+
+    rows: list[tuple[str, str]] = []
+    for item in visible_menu_items():
+        mid = str(item.get("id") or "").strip()
+        if not mid or mid in ("__about__",):
+            continue
+        if not is_migrated(mid):
+            continue
+        rows.append((mid, str(item.get("name") or mid)))
+    rows.sort(key=lambda x: x[1])
+    return rows
 
 
 # 不进 RegisterHotKey：截图有独立 hotkeys.screenshot*；首页/沉浸仅应用前台

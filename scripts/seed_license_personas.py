@@ -18,12 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# 主理人 · 企业全功能包（enterprise = 专业版 + 培训业务 + 文件包）
+# 主理人 · 企业全功能包（features=all 侧栏全开放）
 OWNER = {
     "name": "赵成",
     "phone": "15164390813",
     "role": "user",
     "pack": "enterprise",
+    "feature_token": "all",
 }
 # 关佳伟 · 单机基础版（local_free）
 STANDALONE_USER = {
@@ -49,6 +50,8 @@ def _issue_code_offline(lm, *, name: str, phone: str, role: str, pack: str) -> t
     )
 
     menus_in_code = ["all"] if role == "admin" else [pack]
+    if pack == "all" or str(pack).strip() == "all":
+        menus_in_code = ["all"]
     exp_d = datetime.datetime.strptime(EXPIRE, "%Y-%m-%d").date()
     payload = {
         "v": _SCHEMA_VER,
@@ -124,7 +127,11 @@ def seed_local_license() -> dict[str, str]:
     lm.load_license()
 
     owner_code, owner_cid = _issue_code_offline(
-        lm, name=OWNER["name"], phone=OWNER["phone"], role=OWNER["role"], pack=OWNER["pack"]
+        lm,
+        name=OWNER["name"],
+        phone=OWNER["phone"],
+        role=OWNER["role"],
+        pack=str(OWNER.get("feature_token") or OWNER["pack"]),
     )
     guan_code, guan_cid = _issue_code_offline(
         lm,
@@ -155,7 +162,11 @@ def seed_local_license() -> dict[str, str]:
         activated=False,
     )
 
-    owner_features = expand_features([OWNER["pack"]])
+    owner_features = expand_features([OWNER.get("feature_token") or OWNER["pack"]])
+    if "all" in owner_features or OWNER.get("feature_token") == "all":
+        owner_features = ["all"]
+    owner_rec["features"] = list(owner_features)
+    owner_rec["menus"] = [OWNER["pack"], "all"]
     now_s = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     mid = lm.get_machine_id()
 

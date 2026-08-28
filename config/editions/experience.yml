@@ -35,6 +35,7 @@ experimental_menu_ids:
   - clipboard_history
   - llm_assistant
   - harness_agent
+  - media_studio
   - watermark_remover
   - image_watermark
   - image_creator

@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-"""系统设置：分类页签（外观 / 授权 / 热键 / 能力接入 / 运行诊断）。
+"""系统设置：按管理员 / 终端用户展示不同页签。
 
-页签内容懒加载：首次打开只建「外观与品牌」，切换到其它页签再构建，
-避免授权名单 / 菜单编辑 / 能力总览 / 日志读取拖慢进入速度。
-
-定时任务与通知已拆到系统侧栏独立模块：job_scheduler / notifications。
+页签懒加载：首屏仅「外观与主题」，其余首次点开再构建。
+定时任务与通知见系统侧栏 job_scheduler / notifications。
 """
 from __future__ import annotations
 
@@ -26,6 +24,23 @@ from services.log_view_service import log_file_path, read_log_tail
 from services.system_info import get_system_info, log_directory
 from services.theme_catalog import selectable_themes, theme_description
 from services.user_system_info import save_user_overrides
+from services.settings_access import (
+    TAB_ABOUT_APP,
+    TAB_APPEARANCE,
+    TAB_BRAND,
+    TAB_DIAGNOSTICS,
+    TAB_HOTKEYS,
+    TAB_INTEGRATIONS,
+    TAB_LICENSE,
+    TAB_MENU,
+    TAB_MODELS_AI,
+    TAB_SUBSCRIPTION,
+    capability_settings_tab_key,
+    is_settings_admin,
+    license_settings_tab_key,
+    settings_header_subtitle,
+    subscription_tab_visible,
+)
 from core.ui_spec import page_content_margins
 from widgets import (
     ComboBox,
@@ -89,32 +104,40 @@ class SettingsPage(BasePage):
         self._theme_combo: ComboBox | None = None
         self._theme_desc: HintLabel | None = None
         self._lazy_hosts: list[_LazyTabHost] = []
+        self._tab_keys: dict[str, int] = {}
 
         outer = QVBoxLayout(self)
         m = page_content_margins()
         outer.setContentsMargins(m[0], m[1], m[2], m[3])
-        outer.setSpacing(10)
+        outer.setSpacing(6)
 
-        header = PageHeader(
-            "系统设置",
-            "按分类管理：外观 · 授权 · 菜单 · 快捷键 · 能力接入 · 运行诊断。"
-            "定时任务与通知见系统侧栏「任务」「通知」。",
-        )
+        header = PageHeader("系统设置", settings_header_subtitle())
         outer.addWidget(header)
 
         self._tabs = TabWidget()
+        self._tabs.setDocumentMode(True)
         outer.addWidget(self._tabs, 1)
 
-        # 首屏只建外观；其余懒加载
-        appearance = _wrap_scroll(self._build_system_info_box(), self._build_theme_box())
-        self._tabs.addTab(appearance, "外观与品牌")
+        admin = is_settings_admin()
+        appearance = _wrap_scroll(self._build_theme_box())
+        self._add_tab(TAB_APPEARANCE, "外观与主题", appearance)
 
-        self._add_lazy_tab("授权", self._factory_license)
-        self._add_lazy_tab("订阅购买", self._factory_subscription)
-        self._add_lazy_tab("菜单", self._factory_menu)
-        self._add_lazy_tab("快捷键", self._factory_hotkeys)
-        self._add_lazy_tab("能力接入", self._factory_integrations)
-        self._add_lazy_tab("运行诊断", self._factory_diagnostics)
+        if admin:
+            self._add_lazy_tab(TAB_BRAND, "品牌定制", self._factory_brand)
+            self._add_lazy_tab(TAB_LICENSE, "授权管理", self._factory_license)
+        if subscription_tab_visible():
+            title = "激活与订阅"
+            self._add_lazy_tab(TAB_SUBSCRIPTION, title, self._factory_subscription)
+        if admin:
+            self._add_lazy_tab(TAB_MENU, "菜单", self._factory_menu)
+        self._add_lazy_tab(TAB_HOTKEYS, "快捷键", self._factory_hotkeys)
+        if admin:
+            self._add_lazy_tab(TAB_INTEGRATIONS, "能力接入", self._factory_integrations_admin)
+        else:
+            self._add_lazy_tab(TAB_MODELS_AI, "模型与 AI", self._factory_integrations_user)
+        if admin:
+            self._add_lazy_tab(TAB_DIAGNOSTICS, "运行诊断", self._factory_diagnostics)
+        self._add_lazy_tab(TAB_ABOUT_APP, "关于与应用", self._factory_about_app)
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
@@ -127,20 +150,47 @@ class SettingsPage(BasePage):
             else:
                 self._update_description()
 
-    def _add_lazy_tab(self, title: str, factory: Callable[[], QWidget]) -> None:
+    def _add_tab(self, key: str, title: str, widget: QWidget) -> None:
+        idx = self._tabs.addTab(widget, title)
+        self._tab_keys[key] = idx
+
+    def _add_lazy_tab(self, key: str, title: str, factory: Callable[[], QWidget]) -> None:
         host = _LazyTabHost(factory, self)
         self._lazy_hosts.append(host)
-        self._tabs.addTab(host, title)
+        idx = self._tabs.addTab(host, title)
+        self._tab_keys[key] = idx
+
+    def open_tab(self, key: str) -> bool:
+        idx = self._tab_keys.get(key)
+        if idx is None:
+            return False
+        self._tabs.setCurrentIndex(idx)
+        w = self._tabs.widget(idx)
+        if isinstance(w, _LazyTabHost):
+            w.ensure_built()
+        return True
 
     def _on_tab_changed(self, index: int) -> None:
         w = self._tabs.widget(index)
         if isinstance(w, _LazyTabHost):
             w.ensure_built()
 
+    def _factory_brand(self) -> QWidget:
+        return _wrap_scroll(self._build_system_info_box())
+
     def _factory_license(self) -> QWidget:
         from modules.system_settings.license_section import LicenseSection
 
-        return _wrap_scroll(LicenseSection(self))
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        section = LicenseSection(self)
+        section.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        lay.addWidget(section, 1)
+        return host
 
     def _factory_subscription(self) -> QWidget:
         from modules.system_settings.subscription_section import SubscriptionSection
@@ -164,11 +214,43 @@ class SettingsPage(BasePage):
 
         return _wrap_scroll(HotkeysSection(self))
 
-    def _factory_integrations(self) -> QWidget:
+    def _factory_integrations_admin(self) -> QWidget:
         from modules.system_settings.integrations_section import IntegrationsSection
 
-        self._integrations = IntegrationsSection(self)
-        return self._integrations
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._integrations = IntegrationsSection(self, admin=True)
+        self._integrations.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        lay.addWidget(self._integrations, 1)
+        return host
+
+    def _factory_integrations_user(self) -> QWidget:
+        from modules.system_settings.integrations_section import IntegrationsSection
+
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._integrations = IntegrationsSection(self, admin=False)
+        self._integrations.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        lay.addWidget(self._integrations, 1)
+        return host
+
+    def _factory_about_app(self) -> QWidget:
+        from modules.system_settings.about_app_section import AboutAppSection
+
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(AboutAppSection(self), 1)
+        return host
 
     def _factory_diagnostics(self) -> QWidget:
         # 不用外层 ScrollPage：日志框本身可滚，并吃满页签剩余高度
@@ -309,8 +391,8 @@ class SettingsPage(BasePage):
         box = FormSection("主题与外观")
         box.add_widget(
             HintLabel(
-                "也可在顶栏右上角切换：用户图标右侧、齿轮「设置」左侧，"
-                "带「主题」二字与调色板图标的按钮，点一下即可选主题。"
+                "切换后立即生效；主题配色来自 config/themes，"
+                "改 JSON 后运行 scripts/gen_qss_from_theme.py。"
             )
         )
         self._theme_desc = HintLabel("")
@@ -414,25 +496,45 @@ class SettingsPage(BasePage):
         if report:
             self.report_status("已刷新日志预览")
 
-    def open_capability_tab(self) -> None:
-        """外部跳转到「能力接入」。"""
-        for i in range(self._tabs.count()):
-            if self._tabs.tabText(i) == "能力接入":
-                self._tabs.setCurrentIndex(i)
-                w = self._tabs.widget(i)
-                if isinstance(w, _LazyTabHost):
-                    w.ensure_built()
-                break
+    def open_model_hub_tab(self) -> None:
+        """外部跳转到模型库。"""
+        self.open_capability_tab()
+        if self._integrations is None:
+            key = capability_settings_tab_key()
+            if key == TAB_INTEGRATIONS:
+                self._factory_integrations_admin()
+            else:
+                self._factory_integrations_user()
+        if self._integrations is not None:
+            self._integrations.select_sub_tab("模型管理")
+
+    def open_capability_tab(self, *, image: bool = False) -> None:
+        """外部跳转到能力/模型配置。"""
+        self.open_tab(capability_settings_tab_key())
+        if image:
+            if self._integrations is None:
+                key = capability_settings_tab_key()
+                if key == TAB_INTEGRATIONS:
+                    self._factory_integrations_admin()
+                else:
+                    self._factory_integrations_user()
+            if self._integrations is not None:
+                self._integrations.select_sub_tab("图像生成")
 
     def open_license_tab(self) -> None:
-        """外部跳转到「授权」。"""
-        for i in range(self._tabs.count()):
-            if self._tabs.tabText(i) == "授权":
-                self._tabs.setCurrentIndex(i)
-                w = self._tabs.widget(i)
-                if isinstance(w, _LazyTabHost):
-                    w.ensure_built()
-                break
+        """外部跳转到授权（管理员）或订阅（终端用户）。"""
+        self.open_tab(license_settings_tab_key())
+
+    def open_subscription_tab(self) -> None:
+        from services.settings_access import subscription_tab_visible
+
+        if subscription_tab_visible():
+            self.open_tab(TAB_SUBSCRIPTION)
+        else:
+            self.open_about_tab()
+
+    def open_about_tab(self) -> None:
+        self.open_tab(TAB_ABOUT_APP)
 
     def on_enter(self) -> None:
         # 仅同步主题选择，不读日志、不联网探测

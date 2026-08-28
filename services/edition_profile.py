@@ -94,7 +94,10 @@ def filter_menu_by_edition(items: list[dict]) -> list[dict]:
     try:
         from services.license_manager import global_license_manager
 
-        if global_license_manager.is_admin_user():
+        if global_license_manager.has_full_menu_access():
+            return items
+        # 已联网完整授权：不受单机安装包侧栏白名单限制
+        if global_license_manager.is_licensed():
             return items
     except Exception:
         pass

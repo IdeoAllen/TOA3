@@ -1,0 +1,45 @@
+# 能力 → 多模型配置（密钥存本机用户私密配置 profiles，勿写入安装包）
+# 用户覆盖：data/user/model_catalog.yml（active + 自定义 profile）
+capabilities:
+  text_llm:
+    label: 文本大模型
+    default_profile: moonshot_kimi
+    profiles:
+      moonshot_kimi:
+        label: Moonshot · Kimi K2.6
+        provider: openai_compatible
+        api_base: https://api.moonshot.cn/v1
+        model: kimi-k2.6
+        temperature: 0.3
+        model_fallbacks: []
+      deepseek:
+        label: DeepSeek · Chat
+        provider: openai_compatible
+        api_base: https://api.deepseek.com/v1
+        model: deepseek-chat
+        temperature: 0.3
+        model_fallbacks: []
+      ollama_local:
+        label: 本地 Ollama（OpenAI 协议）
+        provider: openai_compatible
+        api_base: http://127.0.0.1:11434/v1
+        model: llama3.2
+        temperature: 0.3
+        model_fallbacks: []
+  image_gen:
+    label: 图像生成
+    default_profile: openai_images
+    profiles:
+      local_sd_webui:
+        label: 本地 SD WebUI / Forge
+        provider: sd_webui
+        api_base: http://127.0.0.1:7860
+        model: ""
+        steps: 20
+        note: 需先启动 WebUI/Forge 并开启 API（--api）
+      openai_images:
+        label: OpenAI 兼容生图
+        provider: openai_images
+        api_base: https://api.openai.com/v1
+        model: dall-e-3
+        size: 1024x1024

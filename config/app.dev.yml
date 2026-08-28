@@ -1,19 +1,22 @@
 auth:
-  skip_login: true
-  default_user: 赵成
-  default_role: user
-  allow_empty_password: true
+  skip_login: false
+  force_login_dialog: true
+  prefill_username: 管理员
+  prefill_license_key: TOA2-eyJiaW5kIjowLCJleHAiOiIyMDM2LTA4LTExIiwiaWF0IjoxNzg2Njg5Mzc1LCJtZW51cyI6WyJhbGwiXSwibmFtZSI6IueuoeeQhuWRmCIsIm5vbmNlIjoiY2ZlODBlZDA3NTI4Yjg2ZiIsInBob25lIjoiMTIzNDU2Nzg5MDEiLCJyb2xlIjoiYWRtaW4iLCJ2IjoyfQ.E-bELhivS2H8fVKlIUKWQA
+  allow_standalone_login: true
+  allow_empty_password: false
 license:
   check_cache_minutes: 10
-  service_url: http://127.0.0.1:8090/api/toa-license
+  activate_timeout_seconds: 15
+  service_url: https://toa-service.yczh.tech/api/toa-license
   dms_base_url: https://dms.yczh.tech
   offline_grace_days: 2
   dev_grant_all: false
 update:
   enabled: true
   timeout_seconds: 3
-  manifest_url: http://127.0.0.1:8090/api/toa/releases/manifest?product=TOA3&channel=stable
-  download_page: http://127.0.0.1:8090/admin/
+  manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
+  download_page: https://www.yczh.tech/downloads/
 log_config:
   log_level: INFO
 hotkeys:
@@ -36,6 +39,5 @@ hotkeys:
   toggle_fullscreen: F11
   toggle_window: none
 window:
-  theme: dms_green
+  theme: dms_blue
   default_fullscreen: true
-  default_start_tab: home

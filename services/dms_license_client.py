@@ -107,6 +107,11 @@ def invalidate_check_cache() -> None:
         _check_cache["error"] = ""
 
 
+def license_service_label(url: str | None = None) -> str:
+    """用户可见的授权服务名称。"""
+    return _service_label(url)
+
+
 def _service_label(url: str | None = None) -> str:
     u = (url or license_api_base()).lower()
     if is_local_license_service(u):
@@ -137,7 +142,16 @@ def _format_connect_error(exc: BaseException, url: str) -> str:
     return f"无法连接{label}（{url}）：{text}"
 
 
-def _post_json(action: str, body: dict, timeout: float = 10.0) -> Tuple[bool, Dict[str, Any], str]:
+def activate_timeout_seconds() -> float:
+    try:
+        return max(5.0, float((_cfg().get("activate_timeout_seconds") or 15)))
+    except Exception:
+        return 15.0
+
+
+def _post_json(action: str, body: dict, timeout: float | None = None) -> Tuple[bool, Dict[str, Any], str]:
+    if timeout is None:
+        timeout = activate_timeout_seconds()
     base = license_api_base()
     url = f"{base}/{str(action or '').strip().lstrip('/')}"
     data = json.dumps(body or {}, ensure_ascii=False).encode("utf-8")

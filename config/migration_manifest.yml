@@ -153,7 +153,7 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: 框选 OCR；中文引擎与安装引导未做强
+    note: 框选 OCR；侧栏已隐藏，入口在截图工具栏
     gaps:
       - 中文引擎评估与安装引导
 
@@ -172,14 +172,24 @@ modules:
     priority: P1
     office_freq: high
     toa2_ref: —
-    note: DeepSeek Harness Sidecar + 三栏指挥台；Top3 approved；主理人 2026-08-27 验收通过
+    note: Harness Host+Guest v2；全宽 Web + 办公链投喂 + 导出；无重复侧栏
+
+  media_studio:
+    status: mvp
+    priority: P1
+    office_freq: medium
+    toa2_ref: —
+    note: 文生图；model_catalog 多配置；本地 SD WebUI / 云端 OpenAI 兼容
+    gaps:
+      - 图生图 / 参考图
+      - 视频音频能力
 
   image_creator:
     status: mvp
     priority: P2
     office_freq: low
     toa2_ref: —
-    note: Hold/低频；仅有空白图生成，非「完成」
+    note: Hold/低频；侧栏已隐藏（主理人裁定）
     gaps:
       - 非个人高频，不做强除非明确需求
       - 能力仍薄（仅纯色/噪点底图）
@@ -189,7 +199,7 @@ modules:
     priority: P2
     office_freq: medium
     toa2_ref: —
-    note: 旋转/翻转可用，未做强
+    note: 旋转/翻转可用；侧栏已隐藏
     gaps:
       - 批量与 EXIF 无损方向
 
@@ -232,7 +242,7 @@ modules:
     priority: P1
     office_freq: low
     toa2_ref: modules/watermark_photo_generator/
-    note: 班级水印规则写回已对齐
+    note: 班级水印规则写回已对齐；菜单归业务板块
 
   photo_extractor:
     status: done
@@ -281,6 +291,7 @@ modules:
     status: done
     priority: P2
     toa2_ref: modules/excel_row_to_column/
+    note: 菜单归业务板块
     gaps: []
 
   document_composer:
@@ -301,6 +312,7 @@ modules:
     status: stub
     priority: P1
     toa2_ref: modules/generic_generator/
+    note: 侧栏已隐藏（待迁移占位）
     gaps:
       - Excel 映射驱动批量生成
       - GUI 任务配置
@@ -342,6 +354,7 @@ modules:
     status: stub
     priority: P2
     toa2_ref: —
+    note: 侧栏已隐藏（待开发占位）
     gaps:
       - PDF 合并
       - PDF 拆分
@@ -351,6 +364,7 @@ modules:
     status: stub
     priority: P2
     toa2_ref: —
+    note: 侧栏已隐藏（待开发占位）
     gaps:
       - 空行/重复行清洗
       - 列格式规范化

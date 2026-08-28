@@ -38,7 +38,15 @@ def get_bundle_root() -> Path:
 
 
 def get_runtime_environment() -> str:
-    return "release" if is_frozen() else "development"
+    explicit = os.environ.get("TOA_ENV", "").strip().lower()
+    if explicit:
+        return explicit
+    if is_frozen():
+        root = get_app_root()
+        if (root / "config" / "BUILD_PROFILE.dev").is_file():
+            return "development"
+        return "release"
+    return "development"
 
 
 def get_user_data_root() -> Path:

@@ -54,6 +54,7 @@ modules:
   ocr_tool: {}
   llm_assistant: {}
   harness_agent: {}
+  media_studio: {}
   quick_notepad: {}
   web_workspace: {}
   quadrant_tasks: {}

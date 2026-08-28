@@ -26,6 +26,23 @@ def peek_feed() -> dict[str, str]:
     return dict(_INCOMING)
 
 
+def format_feed_message(feed: dict[str, str]) -> str:
+    text = str(feed.get("text") or "").strip()
+    if not text:
+        return ""
+    title = str(feed.get("title") or "").strip()
+    source = str(feed.get("source") or "").strip()
+    head_parts = []
+    if source:
+        head_parts.append(f"来源：{source}")
+    if title:
+        head_parts.append(title)
+    head = " · ".join(head_parts)
+    if head:
+        return f"【{head}】\n\n{text}\n\n---\n请基于以上内容继续处理。"
+    return text
+
+
 def copy_to_clipboard(text: str) -> bool:
     t = (text or "").strip()
     if not t:

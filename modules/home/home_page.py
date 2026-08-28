@@ -31,11 +31,11 @@ def _hk_for(module_id: str) -> str:
 
 
 def _build_vision_block() -> QWidget:
-    """产品定位条：与关于弹窗同源四行（使命 / 愿景 / 目标 / 定位）。"""
-    from services.product_vision import vision_display_rows
+    """产品定位条：使命 / 愿景 / 目标（关于弹窗另含套件 / 定位）。"""
+    from services.product_vision import vision_home_rows
 
-    sec = FormSection("使命 · 愿景 · 目标 · 定位")
-    for label, body in vision_display_rows():
+    sec = FormSection("使命 · 愿景 · 目标")
+    for label, body in vision_home_rows():
         row = QWidget()
         lay = QHBoxLayout(row)
         lay.setContentsMargins(0, 0, 0, 0)

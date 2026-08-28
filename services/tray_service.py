@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from services.icon_registry import app_window_icon
@@ -17,6 +17,7 @@ logger = logging.getLogger("TOA3.tray")
 class TrayService:
     def __init__(self) -> None:
         self._tray: QSystemTrayIcon | None = None
+        self._menu: QMenu | None = None
         self._on_show: Callable[[], None] | None = None
 
     def start(
@@ -29,6 +30,7 @@ class TrayService:
         on_screenshot: Callable[[], None] | None = None,
         on_screenshot_full: Callable[[], None] | None = None,
         on_ocr: Callable[[], None] | None = None,
+        on_harness: Callable[[], None] | None = None,
         on_restart: Callable[[], None] | None = None,
         on_exit: Callable[[], None] | None = None,
         tip: str = "运营宝 TOA3",
@@ -70,6 +72,10 @@ class TrayService:
             act = QAction("截图转文字")
             act.triggered.connect(on_ocr)
             menu.addAction(act)
+        if on_harness:
+            act = QAction("编码智能体")
+            act.triggered.connect(on_harness)
+            menu.addAction(act)
         menu.addSeparator()
         if on_restart:
             act_restart = QAction("重启")
@@ -82,10 +88,11 @@ class TrayService:
             act_exit.triggered.connect(QApplication.instance().quit)
         menu.addAction(act_exit)
         tray.setContextMenu(menu)
-        tray.setToolTip(tip)
+        tray.setToolTip(f"{tip} · 双击打开 · 右键退出")
         tray.activated.connect(self._on_activated)
         tray.show()
         self._tray = tray
+        self._menu = menu
 
         def _balloon(title: str = "", body: str = "", level: str = "info", **_kw) -> None:
             if self._tray is None:
@@ -95,7 +102,16 @@ class TrayService:
         register_tray_handler(_balloon)
         return True
 
+    def _popup_menu(self) -> None:
+        if self._menu is None:
+            return
+        # Win11 溢出托盘区有时不弹出 setContextMenu，需手动 popup
+        self._menu.popup(QCursor.pos())
+
     def _on_activated(self, reason) -> None:
+        if reason == QSystemTrayIcon.ActivationReason.Context:
+            self._popup_menu()
+            return
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick and self._on_show:
             self._on_show()
 
@@ -107,6 +123,7 @@ class TrayService:
         if self._tray:
             self._tray.hide()
             self._tray = None
+        self._menu = None
 
 
 _TRAY: TrayService | None = None

@@ -4,6 +4,7 @@ auth:
   allow_standalone_login: true
 license:
   service_url: https://toa-service.yczh.tech/api/toa-license
+  activate_timeout_seconds: 15
   dms_base_url: https://dms.yczh.tech
   offline_grace_days: 2
   dev_grant_all: false
@@ -16,5 +17,5 @@ update:
   manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
   download_page: https://www.yczh.tech/downloads/
 window:
-  theme: dms_copper
+  theme: vs2019_blue
   default_fullscreen: false

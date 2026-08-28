@@ -40,3 +40,7 @@ class SemanticLabel(QLabel):
         if compact:
             self.setProperty("compact", "true")
         self.setWordWrap(not compact)
+        st = self.style()
+        if st is not None:
+            st.unpolish(self)
+            st.polish(self)

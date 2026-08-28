@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""认证：开发跳过 / DMS 授权码登录。"""
+"""认证：开发跳过 / TOA 运营台授权码登录。"""
 from __future__ import annotations
 
 import logging

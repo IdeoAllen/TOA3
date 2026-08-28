@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from core.ui_spec import center_on_screen
 from services.harness_actions import palette_actions, run_palette_action
-from services.menu_registry import all_menu_items, is_migrated
+from services.menu_registry import visible_menu_items, is_migrated
 from services.access_control import can_open
 from widgets import HintLabel, LineEdit, ListWidget, PrimaryButton
 
@@ -39,7 +39,7 @@ class CommandPalette(QDialog):
         lay.addWidget(btn)
 
         self._items: list[tuple[str, str]] = []
-        for it in all_menu_items():
+        for it in visible_menu_items():
             mid = str(it.get("id") or "")
             if not mid or not is_migrated(mid):
                 continue

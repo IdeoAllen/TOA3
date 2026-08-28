@@ -31,8 +31,10 @@ from services.icon_registry import brand_logo_pixmap, clear_cache, get_header_ic
 from services.menu_registry import (
     DOMAIN_TAB_LABELS,
     GROUP_ORDER,
+    group_label,
     SYSTEM_ACTIONS,
     grouped_menu_items,
+    show_in_sidebar,
 )
 from services.access_control import can_open
 from services.notify_bus import get_bus
@@ -89,16 +91,31 @@ class _ThemeToolButton(QToolButton):
 
 
 class _ShellNavKeyFilter(QObject):
-    """←/→ 切子模块、↑/↓ 切侧栏；列表/浏览器内不抢方向键。"""
+    """←/→ 切子模块、↑/↓ 切侧栏；F11 沉浸全屏；列表/浏览器内不抢方向键。"""
 
     def __init__(self, shell: "MainShell") -> None:
         super().__init__(shell)
         self._shell = shell
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
-        if event.type() != QEvent.Type.KeyPress:
+        et = event.type()
+        if et == QEvent.Type.ShortcutOverride:
+            if event.key() == Qt.Key.Key_F11 and self._shell_key_target():
+                event.accept()
+                return False
+        if et != QEvent.Type.KeyPress:
             return False
         key = event.key()
+        if key == Qt.Key.Key_F11 and self._shell_key_target():
+            self._shell.toggle_immersive()
+            return True
+        if (
+            key == Qt.Key.Key_Escape
+            and self._shell.is_immersive()
+            and self._shell_key_target()
+        ):
+            self._shell.set_immersive(False)
+            return True
         if key not in (
             Qt.Key.Key_Left,
             Qt.Key.Key_Right,
@@ -111,6 +128,25 @@ class _ShellNavKeyFilter(QObject):
         if self._shell.handle_shell_arrow_key(key):
             return True
         return False
+
+    def _shell_key_target(self) -> bool:
+        """主壳或其子页面前台，且非模态弹窗（避免抢走对话框快捷键）。"""
+        from PySide6.QtWidgets import QApplication
+
+        if QApplication.activeModalWidget() is not None:
+            return False
+        shell = self._shell
+        if not shell.isVisible():
+            return False
+        active = QApplication.activeWindow()
+        if active is not None and active != shell and not shell.isAncestorOf(active):
+            return False
+        focus = QApplication.focusWidget()
+        if focus is not None and focus != shell and not shell.isAncestorOf(focus):
+            return False
+        return shell.isActiveWindow() or active == shell or (
+            active is not None and shell.isAncestorOf(active)
+        )
 
 
 class MainShell(QMainWindow):
@@ -242,6 +278,7 @@ class MainShell(QMainWindow):
             on_screenshot=lambda: run_screenshot_hotkey(self, full=False),
             on_screenshot_full=lambda: run_screenshot_hotkey(self, full=True),
             on_ocr=self._run_ocr_hotkey,
+            on_harness=lambda: self._summon_module("harness_agent"),
             on_restart=self._restart_app,
             on_exit=self._quit_app,
         )
@@ -382,36 +419,32 @@ class MainShell(QMainWindow):
         hlay.addWidget(brand)
         hlay.addStretch(1)
 
-        user_name = self._st.display_name or self._st.username or "用户"
-        self._user_btn = self._header_icon_button(
-            "user", f"账号信息 · {user_name}", self._show_user_profile
-        )
-        hlay.addWidget(self._user_btn)
+        hk_boot = get_hotkeys_config()
+        fs_key = str(hk_boot.get("toggle_fullscreen") or "F11").strip()
+
         hlay.addWidget(self._build_theme_button())
+        self._fullscreen_btn = self._header_icon_button(
+            "fullscreen",
+            f"沉浸全屏 ({fs_key}) · Esc 退出",
+            self._toggle_fullscreen,
+        )
+        hlay.addWidget(self._fullscreen_btn)
+
         hlay.addWidget(
             self._header_icon_button(
-                "notifications",
-                "通知中心",
-                lambda: self.navigate("notifications"),
+                "home",
+                "命令面板 (Ctrl+K)",
+                self._open_command_palette,
             )
         )
         hlay.addWidget(
-            self._header_icon_button("settings", "系统设置", lambda: self.navigate("system_settings"))
-        )
-        hlay.addWidget(self._header_icon_button("about", "关于 / 愿景", self._show_about))
-        hlay.addWidget(
             self._header_icon_button(
-                "fullscreen",
-                "沉浸桌面：隐藏顶栏/工具栏/状态栏 (F11)",
-                self._toggle_chrome_focus,
+                "settings",
+                "关于与应用 · 系统设置 (Alt+Shift+O)",
+                self._show_about,
             )
         )
-        hlay.addWidget(
-            self._header_icon_button("restart", "重启应用 (Ctrl+Shift+R)", self._restart_app)
-        )
-        hlay.addWidget(
-            self._header_icon_button("exit", "完全退出 (Ctrl+Q)", self._quit_app, danger=True)
-        )
+        hlay.addWidget(self._build_user_menu_button())
 
         # 沉浸模式不占用顶栏退出条（Esc/F11 退出）
         self._focus_exit_bar = None
@@ -505,6 +538,25 @@ class MainShell(QMainWindow):
         from app.user_profile_dialog import UserProfileDialog
 
         UserProfileDialog(self).exec()
+
+    def _build_user_menu_button(self) -> QToolButton:
+        """账号入口：授权摘要（关于/重启/退出在系统设置）。"""
+        user_name = self._st.display_name or self._st.username or "用户"
+        btn = QToolButton()
+        btn.setObjectName("ShellHeaderBtn")
+        btn.setToolTip(f"账号与授权 · {user_name}")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setAutoRaise(True)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        fg = self._header_icon_color()
+        btn.setIcon(get_header_icon("user", color=fg, size=_HEADER_ICON, parent=self))
+        btn.setIconSize(QSize(_HEADER_ICON, _HEADER_ICON))
+        btn.setFixedSize(_HEADER_BTN, _HEADER_BTN)
+        btn.clicked.connect(self._show_user_profile)
+
+        self._header_icon_buttons.append((btn, "user"))
+        self._user_btn = btn
+        return btn
 
     def _header_icon_button(
         self, icon_name: str, tooltip: str, handler, *, danger: bool = False
@@ -638,7 +690,7 @@ class MainShell(QMainWindow):
 
         self._domain_buttons.clear()
         for group_id in GROUP_ORDER:
-            label = DOMAIN_TAB_LABELS.get(group_id, group_id)
+            label = group_label(group_id)
             btn = QToolButton()
             btn.setObjectName("ShellDomainBtn")
             btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -658,29 +710,24 @@ class MainShell(QMainWindow):
         self._rebuild_domain_tabs()
         self._update_domain_tab_checks()
 
-    def _admin_sees_all_nav(self) -> bool:
-        try:
-            from services.license_manager import global_license_manager
-
-            return bool(global_license_manager.is_admin_user())
-        except Exception:
-            return False
-
     def _rebuild_domain_tabs(self) -> None:
         """仅展示有可见模块的域 Tab。"""
-        admin_all = self._admin_sees_all_nav()
         visible_groups: set[str] = set()
         for gid, _glab, items in grouped_menu_items(licensed_only=False):
             for item in items:
                 mid = str(item.get("id") or "")
-                if not mid:
+                if not mid or not item.get("show", True):
                     continue
-                if mid in SYSTEM_ACTIONS and not item.get("show", True) and not admin_all:
-                    continue
-                if admin_all or item.get("show", True) or mid in SYSTEM_ACTIONS:
-                    visible_groups.add(gid)
+                visible_groups.add(gid)
         for gid, btn in self._domain_buttons.items():
             btn.setVisible(gid in visible_groups)
+        self._refresh_domain_tab_labels()
+
+    def _refresh_domain_tab_labels(self) -> None:
+        for gid, btn in self._domain_buttons.items():
+            label = group_label(gid)
+            btn.setText(label)
+            btn.setToolTip(f"{label}（子模块 · 子系统）")
 
     def _update_domain_tab_checks(self) -> None:
         for gid, btn in self._domain_buttons.items():
@@ -699,6 +746,15 @@ class MainShell(QMainWindow):
         cur_gid = self._module_groups.get(self._current_id)
         if cur_gid == gid:
             return
+        # 先刷新侧栏，下一帧再打开首项，避免切 Tab 时界面卡住
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(0, lambda g=gid: self._navigate_first_in_domain(g))
+
+    def _navigate_first_in_domain(self, gid: str) -> None:
+        """打开当前子模块下侧栏首个可见且可打开的二级页。"""
+        if self._current_domain != gid:
+            return
         for mid in self._nav_group_members.get(gid, []):
             item = self._nav_items.get(mid) or self._menu_meta.get(mid) or {}
             if not self._nav_item_want_show(mid, item):
@@ -707,7 +763,6 @@ class MainShell(QMainWindow):
             if ok:
                 self.navigate(mid)
                 return
-        # 有侧栏项但均未授权：提示后留在当前页
         members = self._nav_group_members.get(gid, [])
         if members and gid != "home":
             first = members[0]
@@ -738,10 +793,11 @@ class MainShell(QMainWindow):
                 continue
             item = self._nav_items.get(mid) or {}
             in_domain = self._module_groups.get(mid) == gid
-            if mid in SYSTEM_ACTIONS and gid == "system":
-                in_domain = True
             want_show = self._nav_item_want_show(mid, item)
-            btn.setVisible(bool(in_domain and want_show))
+            visible = bool(in_domain and want_show)
+            btn.setVisible(visible)
+            if not visible:
+                continue
             ok, reason = can_open(mid)
             btn.setEnabled(ok)
             tip = str(item.get("desc") or item.get("name") or mid)
@@ -766,10 +822,11 @@ class MainShell(QMainWindow):
             str(hk.get("restart_app") or "Ctrl+Shift+R"): self._restart_app,
             str(hk.get("open_settings") or "Alt+S"): lambda: self.navigate("system_settings"),
             str(hk.get("open_about") or "Alt+Shift+O"): self._show_about,
-            fs_key: self._toggle_fullscreen,
             str(hk.get("open_home") or "Ctrl+H"): lambda: self.navigate("home"),
             "Ctrl+K": self._open_command_palette,
         }
+        if fs_key and fs_key.lower() != "none" and fs_key.upper() != "F11":
+            mapping[fs_key] = self._toggle_fullscreen
         from services.module_hotkeys import get_module_shortcut
 
         for mid in (
@@ -809,7 +866,7 @@ class MainShell(QMainWindow):
         if summon_id and tw and tw.lower() != "none":
             mapping[tw] = lambda: self._summon_module(summon_id)
 
-        app_ctx_keys = {fs_key.upper(), "F11"}
+        app_ctx_keys = {fs_key.upper(), "F11", "CTRL+K"}
         for seq, fn in mapping.items():
             if not seq or seq.lower() == "none":
                 continue
@@ -832,6 +889,7 @@ class MainShell(QMainWindow):
     def reload_window_hotkeys(self) -> None:
         """设置页保存后重载应用级快捷键。"""
         self._register_hotkeys()
+        self._update_fullscreen_button_tip()
 
     def set_page_shortcuts(self, bindings: dict[str, callable] | None) -> None:
         """当前模块页内快捷键（ApplicationShortcut，离开页时清除）。"""
@@ -917,7 +975,7 @@ class MainShell(QMainWindow):
             idx = 0
         new_gid = domains[(idx + int(step)) % len(domains)]
         self.select_domain(new_gid, navigate_first=True)
-        label = DOMAIN_TAB_LABELS.get(new_gid, new_gid)
+        label = group_label(new_gid)
         self.show_status(f"子模块：{label}", level=StatusLevel.INFO)
 
     def cycle_nav_module(self, step: int) -> None:
@@ -989,11 +1047,23 @@ class MainShell(QMainWindow):
         self.set_immersive(not self._chrome_focus)
 
     def changeEvent(self, event) -> None:  # noqa: N802
-        if event.type() == QEvent.Type.WindowStateChange and not self.isFullScreen():
+        if event.type() == QEvent.Type.WindowStateChange:
+            super().changeEvent(event)
             if self._chrome_focus:
-                self._restore_chrome_layout()
-                self._chrome_focus = False
+                from PySide6.QtCore import QTimer
+
+                QTimer.singleShot(0, self._sync_immersive_window_state)
+            return
         super().changeEvent(event)
+
+    def _sync_immersive_window_state(self) -> None:
+        """Windows 下 showFullScreen 过渡瞬间 isFullScreen 仍为 false，须延后判断。"""
+        if not self._chrome_focus:
+            return
+        if self.isFullScreen():
+            return
+        self._restore_chrome_layout()
+        self._chrome_focus = False
 
     def _restore_chrome_layout(self) -> None:
         if self._header is not None:
@@ -1042,6 +1112,21 @@ class MainShell(QMainWindow):
         page = self._pages.get(self._current_id)
         if page is not None and hasattr(page, "on_immersive_changed"):
             page.on_immersive_changed(on)
+        self._update_fullscreen_button_tip()
+        self.show_status(
+            "沉浸全屏 · Esc / F11 退出" if on else "已退出沉浸全屏",
+            level=StatusLevel.INFO,
+        )
+
+    def _update_fullscreen_button_tip(self) -> None:
+        btn = getattr(self, "_fullscreen_btn", None)
+        if btn is None:
+            return
+        fs_key = str(get_hotkeys_config().get("toggle_fullscreen") or "F11").strip()
+        if self._chrome_focus:
+            btn.setToolTip(f"退出沉浸全屏 ({fs_key} / Esc)")
+        else:
+            btn.setToolTip(f"沉浸全屏 ({fs_key}) · Esc 退出")
 
     def _toggle_chrome_focus(self) -> None:
         self.toggle_immersive()
@@ -1069,12 +1154,12 @@ class MainShell(QMainWindow):
                 mid = str(item.get("id") or "")
                 if not mid or mid in seen:
                     continue
-                if mid in SYSTEM_ACTIONS and not item.get("show", True):
-                    self._menu_meta[mid] = item
-                    seen.add(mid)
-                    continue
-                seen.add(mid)
                 self._menu_meta[mid] = item
+                seen.add(mid)
+                if not show_in_sidebar(item):
+                    continue
+                if mid in SYSTEM_ACTIONS and not item.get("show", True):
+                    continue
                 self._module_groups[mid] = gid
                 member_ids.append(mid)
 
@@ -1102,7 +1187,7 @@ class MainShell(QMainWindow):
             item = get_menu_item_by_id(mid) or {"id": mid, "name": mid, "show": False}
             self._menu_meta[mid] = item
             self._module_groups[mid] = "system"
-            if item.get("show"):
+            if item.get("show") and show_in_sidebar(item):
                 self._add_nav_button(mid, str(item.get("name") or mid), item)
 
         self._menu_meta["__about__"] = {"id": "__about__", "icon": "about", "name": "关于"}
@@ -1130,8 +1215,8 @@ class MainShell(QMainWindow):
             header.setText(("▾ " if expanded else "▸ ") + glab)
 
     def _nav_item_want_show(self, mid: str, item: dict) -> bool:
-        if self._admin_sees_all_nav():
-            return True
+        if not show_in_sidebar(item):
+            return False
         if mid in SYSTEM_ACTIONS and not item.get("show"):
             return False
         return bool(item.get("show", True))
@@ -1292,6 +1377,11 @@ class MainShell(QMainWindow):
         self.show_status(f"当前：{title}", level=StatusLevel.INFO)
 
     def _show_about(self) -> None:
+        self.navigate("system_settings")
+        page = self._pages.get("system_settings")
+        if page is not None and hasattr(page, "open_about_tab"):
+            page.open_about_tab()
+            return
         from app.about_dialog import AboutDialog
 
         AboutDialog(self).exec()
@@ -1335,7 +1425,7 @@ class MainShell(QMainWindow):
                 self._header_logo_label.setPixmap(pix)
         if self._user_btn is not None:
             name = self._st.display_name or self._st.username or "用户"
-            self._user_btn.setToolTip(f"账号信息 · {name}")
+            self._user_btn.setToolTip(f"账号与系统 · {name}")
             self._user_btn.setIcon(
                 get_header_icon("user", color=header_fg, size=_HEADER_ICON, parent=self)
             )

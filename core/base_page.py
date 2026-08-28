@@ -85,7 +85,21 @@ class BasePage(QWidget):
         ctx = self.page_id or self.__class__.__name__
         report_error(self, exc, title=title, context=ctx)
 
-    def run_safe(self, fn, *, title: str | None = None, success_status: str | None = None) -> bool:
+    def run_safe(
+        self,
+        fn,
+        *,
+        title: str | None = None,
+        success_status: str | None = None,
+        on_success=None,
+    ) -> bool:
         ctx = self.page_id or self.__class__.__name__
-        result = _run_safe(fn, self, title=title, context=ctx, success_status=success_status)
+        result = _run_safe(
+            fn,
+            self,
+            title=title,
+            context=ctx,
+            success_status=success_status,
+            on_success=on_success,
+        )
         return result is not None

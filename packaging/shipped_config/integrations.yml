@@ -1,0 +1,51 @@
+dms:
+  enabled: true
+  base_url: https://dms.yczh.tech
+  timeout_seconds: 30
+  license_paths:
+    activate: /api/toa-license/activate
+    check: /api/toa-license/check
+    sync: /api/toa-license/sync
+    reconcile: /api/toa-license/reconcile
+  release_note: 发版与后端 deploy 遵守工作区 dms-release-deploy 规则
+email:
+  enabled: false
+  smtp_server: ''
+  port: 587
+  use_tls: true
+  config_file: ./config/email/email_config.txt
+ocr:
+  enabled: true
+  provider: tesseract
+  tesseract_path: ''
+  lang: chi_sim+eng
+  note: 图片/扫描件 OCR；安装后请在系统设置填写 tesseract_path
+llm:
+  enabled: false
+  provider: openai_compatible
+  api_base: ''
+  model: ''
+  note: 摘要、改写；密钥与多模型配置见 model_catalog · 系统设置 → 模型与 AI
+  temperature: 0.3
+  model_fallbacks: []
+image_gen:
+  enabled: false
+  provider: catalog
+  note: 文生图；模型在 model_catalog · 图像生成
+watermark_ai:
+  enabled: false
+  provider: local
+  note: AI 去水印/修复；与 modules/watermark_remover 本地算法互补
+tencent_docs:
+  enabled: false
+  provider: tencent
+  base_url: ''
+  timeout_seconds: 30
+  note: 腾讯文档 OAuth/API 占位；业务经 get_client("tencent_docs") 调用，密钥用环境变量
+dingtalk:
+  enabled: false
+  webhook_url: ''
+  note: 预留，统一经 integrations 层对接
+wechat:
+  enabled: false
+  note: 截图/剪贴板能力本地实现，不经远程 API

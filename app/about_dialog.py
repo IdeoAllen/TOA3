@@ -53,6 +53,7 @@ class AboutDialog(BaseDialog):
 
         meta = make_info_form()
         meta.addRow("版本", value_label(str(info.get("app_version") or "—")))
+        meta.addRow("发行", value_label(str(info.get("build_profile") or "—")))
         meta.addRow("产品", value_label(str(info.get("app_name") or "—")))
         meta.addRow("作者", value_label(str(info.get("author") or "—") or "—"))
         email = str(info.get("author_email") or "").strip()
@@ -60,7 +61,7 @@ class AboutDialog(BaseDialog):
             meta.addRow("联系", value_label(email, selectable=True))
         add_form_section(root, "版本信息", meta)
 
-        root.addWidget(HintLabel("日志与诊断：系统设置 → 运行与诊断"))
+        root.addWidget(HintLabel("日志与诊断：系统设置 → 运行诊断（管理员）或 关于与应用"))
 
         actions = DialogButtonRow()
         self._btn_check = actions.add_secondary("检查更新", self._on_check_update)

@@ -74,10 +74,19 @@ class UserProfileDialog(BaseDialog):
         add_form_section(root, "本机", host)
 
         if not licensed:
-            root.addWidget(HintLabel("激活路径：系统设置 → 授权，粘贴授权码后联网校验。"))
+            from services.settings_access import is_settings_admin
+
+            if is_settings_admin():
+                root.addWidget(
+                    HintLabel("激活：系统设置 → 关于与应用 · 联网激活，或「授权管理」联网校验。")
+                )
+            else:
+                root.addWidget(
+                    HintLabel("升级：系统设置 → 关于与应用 · 联网激活，或「激活与订阅」页。")
+                )
 
         actions = DialogButtonRow()
-        actions.add_secondary("打开授权设置", self._open_license_settings)
+        actions.add_secondary("打开相关设置", self._open_license_settings)
         actions.add_primary("关闭", self.accept)
         root.addWidget(actions)
 
@@ -93,3 +102,5 @@ class UserProfileDialog(BaseDialog):
         page = getattr(shell, "_pages", {}).get("system_settings")
         if page is not None and hasattr(page, "open_license_tab"):
             page.open_license_tab()
+        elif page is not None and hasattr(page, "open_subscription_tab"):
+            page.open_subscription_tab()

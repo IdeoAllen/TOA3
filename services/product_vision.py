@@ -68,8 +68,8 @@ def integration_line() -> str:
     return str(load_vision().get("integration") or _DEFAULTS["integration"])
 
 
-def vision_display_rows() -> list[tuple[str, str]]:
-    """首页 / 关于共用：(标签, 正文)。使命 · 愿景 · 目标 · 定位，文案同源不合并。"""
+def _vision_core_rows() -> list[tuple[str, str]]:
+    """使命 · 愿景 · 目标（首页与关于共用核心三行）。"""
     v = load_vision()
     rows: list[tuple[str, str]] = []
     tag = str(v.get("tagline") or "").strip()
@@ -78,6 +78,23 @@ def vision_display_rows() -> list[tuple[str, str]]:
     for key, label in (
         ("statement", "愿景"),
         ("goal", "目标"),
+    ):
+        text = str(v.get(key) or "").strip()
+        if text:
+            rows.append((label, text))
+    return rows
+
+
+def vision_home_rows() -> list[tuple[str, str]]:
+    """首页：(标签, 正文)。使命 · 愿景 · 目标。"""
+    return _vision_core_rows()
+
+
+def vision_display_rows() -> list[tuple[str, str]]:
+    """关于等：(标签, 正文)。使命 · 愿景 · 目标 · 定位，文案同源不合并。"""
+    rows = _vision_core_rows()
+    v = load_vision()
+    for key, label in (
         ("suite_positioning", "套件"),
         ("integration", "定位"),
     ):
@@ -88,8 +105,8 @@ def vision_display_rows() -> list[tuple[str, str]]:
 
 
 def vision_home_lines() -> list[tuple[str, str]]:
-    """兼容旧调用 → vision_display_rows。"""
-    return vision_display_rows()
+    """兼容旧调用 → vision_home_rows。"""
+    return vision_home_rows()
 
 
 def vision_about_rows() -> list[tuple[str, str]]:

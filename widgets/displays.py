@@ -102,12 +102,24 @@ class DataTable(QTableWidget):
             t = item.text() if item is not None else ""
             if any(k in t for k in ("序号", "编号", "#")):
                 weights.append(0.55)
+            elif t == "名称" and self.columnCount() >= 7:
+                weights.append(1.65)
             elif any(k in t for k in ("开始", "结束", "时间", "日期", "修改", "创建")):
                 weights.append(1.35)
             elif any(k in t for k in ("名称", "标题", "班级", "文件", "路径", "内容", "说明")):
                 weights.append(2.6)
-            elif any(k in t for k in ("类型", "大小", "状态", "引擎", "判定")):
+            elif any(k in t for k in ("类型", "大小", "状态", "引擎", "判定", "来源", "供应商", "角色")):
+                weights.append(0.75)
+            elif any(k in t for k in ("手机", "有效期", "功能数")):
                 weights.append(0.9)
+            elif "功能权限" in t or "显示名" in t:
+                weights.append(1.85)
+            elif "URL" in t:
+                weights.append(1.45)
+            elif "模型" in t:
+                weights.append(1.05)
+            elif t in ("Key", "默认"):
+                weights.append(0.55)
             else:
                 weights.append(1.15)
         return weights

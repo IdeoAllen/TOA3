@@ -17,13 +17,23 @@ import yaml
 PACKAGING_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = PACKAGING_DIR.parent
 sys.path.insert(0, str(PROJECT_DIR))
+sys.path.insert(0, str(PACKAGING_DIR))
 
 from app.version import APP_NAME, APP_VERSION  # noqa: E402
+from release_config_guard import (  # noqa: E402
+    FORBIDDEN_RELEASE_NAMES,
+    RELEASE_CONFIG_OVERRIDES,
+    assert_release_tree_safe,
+    scan_project_config_before_release,
+    shipped_override_path,
+)
 
 APP_EXE = APP_NAME  # TOA3.exe
 APP_DISPLAY = "TOA3-运营宝"
 RELEASE_DIR_NAME = f"{APP_NAME}-v{APP_VERSION}-win64"
+DEV_DIR_NAME = f"{APP_NAME}-Dev-v{APP_VERSION}-win64"
 SETUP_BASENAME = f"{APP_NAME}-Setup-v{APP_VERSION}"
+DEV_SETUP_BASENAME = f"{APP_NAME}-Dev-Setup-v{APP_VERSION}"
 
 
 def log(msg: str) -> None:
@@ -65,6 +75,24 @@ def collect_menu_hidden_imports() -> list[str]:
         }
     )
     return sorted(imports)
+
+
+def collect_frozen_hidden_imports() -> list[str]:
+    """PyInstaller 易漏的懒加载模块（系统设置 section、Harness 等）。"""
+    sections_dir = PROJECT_DIR / "modules" / "system_settings"
+    out: list[str] = [
+        "modules.system_settings.settings_page",
+        "modules.harness_agent.harness_agent_page",
+        "modules.harness_agent.setup_gate",
+        "modules.harness_agent.feed_strip",
+        "modules.harness_agent.web_host",
+    ]
+    if sections_dir.is_dir():
+        for py in sections_dir.glob("*.py"):
+            if py.name.startswith("_"):
+                continue
+            out.append(f"modules.system_settings.{py.stem}")
+    return out
 
 
 def find_iscc() -> str | None:
@@ -116,23 +144,52 @@ def ensure_brand_assets() -> None:
         subprocess.run([sys.executable, str(script)], cwd=PROJECT_DIR, check=False)
 
 
-def preflight() -> bool:
-    log("运行 MVP 验收 ...")
-    result = subprocess.run([sys.executable, str(PROJECT_DIR / "scripts" / "verify_mvp.py")], cwd=PROJECT_DIR)
-    if result.returncode != 0:
-        log("MVP 验收失败，中止打包")
-        return False
-
-    release_cfg = PROJECT_DIR / "config" / "app.release.yml"
-    if release_cfg.is_file():
-        data = yaml.safe_load(release_cfg.read_text(encoding="utf-8")) or {}
-        if (data.get("auth") or {}).get("skip_login"):
-            log("错误: app.release.yml 仍开启 skip_login")
+def preflight(profile: str = "release", *, skip_verify: bool = False) -> bool:
+    if skip_verify:
+        log("跳过 MVP 验收（--skip-verify）")
+    else:
+        log("运行 MVP 验收 ...")
+        try:
+            result = subprocess.run(
+                [sys.executable, str(PROJECT_DIR / "scripts" / "verify_mvp.py")],
+                cwd=PROJECT_DIR,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            log("MVP 验收超时（>180s），中止打包")
             return False
+        if result.returncode != 0:
+            log("MVP 验收失败，中止打包")
+            return False
+
+    if profile == "release":
+        release_cfg = PROJECT_DIR / "config" / "app.release.yml"
+        if release_cfg.is_file():
+            data = yaml.safe_load(release_cfg.read_text(encoding="utf-8")) or {}
+            if (data.get("auth") or {}).get("skip_login"):
+                log("错误: app.release.yml 仍开启 skip_login")
+                return False
+        pre_errs = scan_project_config_before_release(PROJECT_DIR, PACKAGING_DIR)
+        if pre_errs:
+            for err in pre_errs:
+                log(f"发版门禁: {err}")
+            return False
+        log("发版门禁: shipped_config 模板已就绪（integrations/harness 将用干净默认）")
+    elif profile == "dev":
+        dev_cfg = PROJECT_DIR / "config" / "app.dev.yml"
+        if not dev_cfg.is_file():
+            log("错误: 开发版打包需要 config/app.dev.yml")
+            return False
+        if not (dev_cfg.read_text(encoding="utf-8") or "").strip():
+            log("错误: app.dev.yml 为空")
+            return False
+    else:
+        log(f"错误: 未知 profile={profile}，请用 release 或 dev")
+        return False
     return True
 
 
-def build_inno_setup(release_dir: Path | None = None) -> str | None:
+def build_inno_setup(release_dir: Path | None = None, *, setup_basename: str = SETUP_BASENAME) -> str | None:
     dist_dir = PACKAGING_DIR / "dist"
     release_dir = release_dir or (dist_dir / RELEASE_DIR_NAME)
     if not release_dir.is_dir():
@@ -150,13 +207,16 @@ def build_inno_setup(release_dir: Path | None = None) -> str | None:
         return None
 
     ensure_iss_utf8_bom(iss)
-    log("开始构建 Inno Setup 安装包 ...")
-    result = subprocess.run([iscc, str(iss)], cwd=PACKAGING_DIR)
+    log(f"开始构建 Inno Setup 安装包 ({setup_basename}) ...")
+    result = subprocess.run(
+        [iscc, f"/DSetupBaseName={setup_basename}", str(iss)],
+        cwd=PACKAGING_DIR,
+    )
     if result.returncode != 0:
         log("Inno Setup 构建失败")
         return None
 
-    setup_exe = dist_dir / f"{SETUP_BASENAME}.exe"
+    setup_exe = dist_dir / f"{setup_basename}.exe"
     if not setup_exe.is_file():
         log(f"未找到生成的 setup.exe: {setup_exe}")
         return None
@@ -164,9 +224,23 @@ def build_inno_setup(release_dir: Path | None = None) -> str | None:
     return str(setup_exe)
 
 
-def build(onefile: bool = True, clean: bool = False, msi: bool = False) -> bool:
-    if not preflight():
+def build(
+    onefile: bool = True,
+    clean: bool = False,
+    msi: bool = False,
+    *,
+    profile: str = "release",
+    skip_verify: bool = False,
+) -> bool:
+    profile = (profile or "release").strip().lower()
+    is_dev = profile == "dev"
+    release_dir_name = DEV_DIR_NAME if is_dev else RELEASE_DIR_NAME
+    setup_basename = DEV_SETUP_BASENAME if is_dev else SETUP_BASENAME
+
+    if not preflight(profile, skip_verify=skip_verify):
         return False
+
+    log(f"打包配置 profile={profile} → {release_dir_name}")
 
     ensure_brand_assets()
 
@@ -226,6 +300,10 @@ def build(onefile: bool = True, clean: bool = False, msi: bool = False) -> bool:
         "--exclude-module",
         "torchaudio",
     ]
+    rth = PACKAGING_DIR / "pyi_rth_qtwebengine.py"
+    if rth.is_file():
+        cmd.extend(["--runtime-hook", str(rth)])
+    cmd.extend(["--collect-all", "PySide6"])
     if onefile:
         cmd.append("--onefile")
     if icon_path.is_file():
@@ -237,6 +315,7 @@ def build(onefile: bool = True, clean: bool = False, msi: bool = False) -> bool:
         ("assets", "assets"),
         ("avatars", "avatars"),
         ("ui", "ui"),
+        ("vendor", "vendor"),
     ]
     for src, dest in data_pairs:
         src_path = PROJECT_DIR / src
@@ -263,6 +342,7 @@ def build(onefile: bool = True, clean: bool = False, msi: bool = False) -> bool:
         "pytesseract",
         "fitz",
         *collect_menu_hidden_imports(),
+        *collect_frozen_hidden_imports(),
     ]
     for item in sorted(set(hidden_imports)):
         cmd.extend(["--hidden-import", item])
@@ -273,15 +353,27 @@ def build(onefile: bool = True, clean: bool = False, msi: bool = False) -> bool:
         log("打包失败")
         return False
 
-    release_dir = dist_dir / RELEASE_DIR_NAME
+    release_dir = dist_dir / release_dir_name
     release_dir.mkdir(parents=True, exist_ok=True)
 
     exe_name = f"{APP_EXE}.exe"
     exe_src = dist_dir / exe_name
-    if exe_src.is_file():
+    onedir_src = dist_dir / APP_EXE
+    if onefile and exe_src.is_file():
+        shutil.copy2(exe_src, release_dir / exe_name)
+    elif onedir_src.is_dir():
+        for item in onedir_src.iterdir():
+            dest = release_dir / item.name
+            if item.is_dir():
+                if dest.exists():
+                    shutil.rmtree(dest, ignore_errors=True)
+                shutil.copytree(item, dest)
+            else:
+                shutil.copy2(item, dest)
+    elif exe_src.is_file():
         shutil.copy2(exe_src, release_dir / exe_name)
 
-    for folder in ("config", "resources", "assets", "avatars", "ui"):
+    for folder in ("config", "resources", "assets", "avatars", "ui", "vendor"):
         src = PROJECT_DIR / folder
         dst = release_dir / folder
         if not src.exists():
@@ -296,44 +388,69 @@ def build(onefile: bool = True, clean: bool = False, msi: bool = False) -> bool:
             "Thumbs.db",
             "admin_bootstrap_code.txt",
             "license.json",
-            "app.dev.yml",
         )
         if folder == "config":
             dst.mkdir(parents=True, exist_ok=True)
+            skip_names = set(FORBIDDEN_RELEASE_NAMES)
+            if not is_dev:
+                skip_names.add("app.dev.yml")
             for item in src.iterdir():
-                if item.name in {"license.json", "app.dev.yml", "admin_bootstrap_code.txt"}:
+                if item.name in skip_names:
                     continue
+                if not is_dev and item.name in RELEASE_CONFIG_OVERRIDES:
+                    override = shipped_override_path(PACKAGING_DIR, item.name)
+                    if override is not None:
+                        shutil.copy2(override, dst / item.name)
+                        log(f"发版 config 使用模板: {item.name}")
+                        continue
+                    log(f"警告: 缺少发版模板 shipped_config/{item.name}")
                 if item.is_dir():
                     shutil.copytree(item, dst / item.name, ignore=ignore)
                 elif item.is_file():
                     shutil.copy2(item, dst / item.name)
+            marker = dst / ("BUILD_PROFILE.dev" if is_dev else "BUILD_PROFILE.release")
+            marker.write_text(f"profile={profile}\nversion={APP_VERSION}\n", encoding="utf-8")
         else:
             shutil.copytree(src, dst, ignore=ignore)
 
     write_clean_license(release_dir / "config" / "license.json")
 
+    if not is_dev:
+        try:
+            assert_release_tree_safe(release_dir)
+            log("发版门禁: 发布目录无密钥 / data/user / 个人路径")
+        except RuntimeError as exc:
+            log(str(exc))
+            return False
+
+    profile_label = "开发版（含 app.dev.yml · 自动登录赵成）" if is_dev else "正式版（单机体验 + 授权码）"
     readme = release_dir / "README.txt"
     readme.write_text(
-        f"TOA3 赋能培训运营助手（运营宝）· 单机版\n"
-        f"版本: {APP_VERSION}\n\n"
+        f"TOA3 赋能培训运营助手（运营宝）· {profile_label}\n"
+        f"版本: {APP_VERSION}\n"
+        f"构建: {profile}\n\n"
         f"请通过正式安装包安装：\n"
-        f"  {SETUP_BASENAME}.exe\n\n"
-        "首次启动可选「单机体验」：免授权码、可离线，含记事/截图/剪贴板/四象限任务等基础工具。\n"
-        "完整版：向管理员索取 TOA2 授权码，在登录窗选择「授权码登录」并联网激活。\n"
-        "授权到期或被停用后，无需卸载，重新申请新码激活即可。\n"
+        f"  {setup_basename}.exe\n\n"
+        + (
+            "开发版：默认 skip_login，恢复本机赵成全功能授权；勿对外分发。\n"
+            if is_dev
+            else "首次启动可选「单机体验」：免授权码、可离线，含记事/截图/剪贴板/四象限任务等基础工具。\n"
+            "完整版：向管理员索取 TOA2 授权码，在登录窗选择「授权码登录」并联网激活。\n"
+        )
+        + "授权到期或被停用后，无需卸载，重新申请新码激活即可。\n"
         "默认不需要管理员权限；如需装到 Program Files 可在向导中选择提升。\n"
         "卸载: Windows「应用和功能」或开始菜单 Uninstall TOA3。\n"
         "与 TOA2 可并存（安装目录 %LOCALAPPDATA%\\Programs\\TOA3）。\n",
         encoding="utf-8",
     )
 
-    archive = shutil.make_archive(str(dist_dir / RELEASE_DIR_NAME), "zip", release_dir)
+    archive = shutil.make_archive(str(dist_dir / release_dir_name), "zip", release_dir)
     log(f"发布目录: {release_dir}")
     log(f"ZIP 归档: {archive}")
 
     setup_path = None
     if msi:
-        setup_path = build_inno_setup(release_dir)
+        setup_path = build_inno_setup(release_dir, setup_basename=setup_basename)
         if not setup_path:
             log("错误: 未生成 setup.exe。请安装 Inno Setup 6 后重试（winget install JRSoftware.InnoSetup）")
             return False
@@ -359,10 +476,31 @@ if __name__ == "__main__":
     parser.add_argument("--onedir", action="store_true")
     parser.add_argument("--msi", action="store_true", help="打包完成后生成 Setup.exe")
     parser.add_argument("--setup-only", action="store_true", help="仅基于已有 release 目录生成 Setup.exe")
+    parser.add_argument(
+        "--profile",
+        choices=("release", "dev"),
+        default="release",
+        help="release=正式单机版（默认）；dev=内部开发版（含 app.dev.yml）",
+    )
+    parser.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="跳过 scripts/verify_mvp.py（CI/本地加速；发版前建议至少手动跑一次）",
+    )
     args = parser.parse_args()
 
+    setup_base = DEV_SETUP_BASENAME if args.profile == "dev" else SETUP_BASENAME
+    release_dir_name = DEV_DIR_NAME if args.profile == "dev" else RELEASE_DIR_NAME
+
     if args.setup_only:
-        ok = build_inno_setup() is not None
+        dist_dir = PACKAGING_DIR / "dist"
+        ok = build_inno_setup(dist_dir / release_dir_name, setup_basename=setup_base) is not None
     else:
-        ok = build(onefile=not args.onedir, clean=args.clean, msi=args.msi)
+        ok = build(
+            onefile=not args.onedir,
+            clean=args.clean,
+            msi=args.msi,
+            profile=args.profile,
+            skip_verify=args.skip_verify,
+        )
     raise SystemExit(0 if ok else 1)

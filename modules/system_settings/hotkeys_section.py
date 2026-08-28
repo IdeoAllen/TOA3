@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
-"""系统设置 · 热键（分层：全局 / 应用 / 页内；模块按一级菜单分组）。"""
+"""系统设置 · 热键（分层：全局 / 应用 / 页内；模块仅常用 + 按需添加）。"""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QFormLayout, QHBoxLayout
 
 from core.base_page import BasePage
+from core.user_messages import show_info, show_warning
 from services.config_service import get_hotkeys_config, save_hotkeys_config
 from services.hotkey_service import get_hotkey_service
-from services.menu_registry import DOMAIN_TAB_LABELS
-from services.module_hotkeys import get_configured_module_shortcuts, list_shortcut_modules_grouped
+from services.module_hotkeys import (
+    _GLOBAL_EXCLUDE_MODULES,
+    get_configured_module_shortcuts,
+    get_module_shortcut,
+    list_hotkey_editor_modules,
+    list_hotkey_picker_modules,
+)
 from services.screenshot_service import run_screenshot_hotkey
-from widgets import CheckBox, FormSection, HintLabel, LineEdit, PrimaryButton, ScrollPage, SecondaryButton
+from widgets import CheckBox, ComboBox, FormSection, HintLabel, LineEdit, PrimaryButton, SecondaryButton
 
 
 class HotkeysSection(FormSection):
@@ -19,14 +25,12 @@ class HotkeysSection(FormSection):
         self._page = parent
         hk = get_hotkeys_config()
         self._module_fields: dict[str, LineEdit] = {}
+        self._mod_form: QFormLayout | None = None
 
         self.add_widget(
             HintLabel(
-                "分层约定（详见 docs/standards/快捷键规范.md）：\n"
-                "· 全局：托盘隐藏也可用，须带 Alt/Ctrl（如 Alt+A 截图）\n"
-                "· 应用：主窗口前台（F11 沉浸 · Ctrl+Q 退出 · Ctrl+K 命令面板）\n"
-                "· 页内：←/→ 子模块 · ↑/↓ 功能模块 · K/I 首页跳转\n"
-                "· 模块：按顶栏子模块分组，顺序与侧栏菜单一致"
+                "全局键须带 Alt/Ctrl（托盘隐藏时仍可用）。"
+                "模块只需配常用的；其它用 Ctrl+K 或侧栏打开。"
             )
         )
 
@@ -56,23 +60,29 @@ class HotkeysSection(FormSection):
         app_sec.add_layout(form)
         self.add_widget(app_sec)
 
-        self.add_widget(HintLabel("模块快捷键：按顶栏子模块分组，组内顺序与侧栏一致（留空=不绑定）"))
-        mod_scroll = ScrollPage(padded=False)
-        mod_scroll.setMaximumHeight(460)
+        mod_sec = FormSection("常用模块唤起")
+        self._mod_form = QFormLayout()
         configured = get_configured_module_shortcuts()
-        for gid, glab, rows in list_shortcut_modules_grouped():
-            tab = DOMAIN_TAB_LABELS.get(gid, glab)
-            title = glab if tab == glab else f"{tab} · {glab}"
-            sec = FormSection(title)
-            mod_form = QFormLayout()
-            for mid, name, effective in rows:
-                field = LineEdit(configured.get(mid, ""))
-                field.setPlaceholderText(effective or "留空或 none")
-                self._module_fields[mid] = field
-                mod_form.addRow(name, field)
-            sec.add_layout(mod_form)
-            mod_scroll.add_widget(sec)
-        self.add_widget(mod_scroll)
+        for mid, name, effective in list_hotkey_editor_modules():
+            self._add_module_row(self._mod_form, mid, name, configured.get(mid, ""), effective)
+        mod_sec.add_layout(self._mod_form)
+        self.add_widget(mod_sec)
+
+        add_row = QHBoxLayout()
+        self._module_picker = ComboBox()
+        self._module_picker.setMinimumWidth(220)
+        for mid, name in list_hotkey_picker_modules():
+            if mid not in self._module_fields:
+                self._module_picker.addItem(name, mid)
+        self._new_seq = LineEdit()
+        self._new_seq.setPlaceholderText("如 Alt+Shift+T")
+        btn_add = SecondaryButton("添加模块快捷键")
+        btn_add.clicked.connect(self._add_picked_module)
+        add_row.addWidget(self._module_picker)
+        add_row.addWidget(self._new_seq)
+        add_row.addWidget(btn_add)
+        add_row.addStretch(1)
+        self.add_layout(add_row)
 
         row = QHBoxLayout()
         btn_save = PrimaryButton("保存热键")
@@ -86,6 +96,47 @@ class HotkeysSection(FormSection):
         row.addWidget(btn_full)
         row.addStretch(1)
         self.add_layout(row)
+
+    def _module_row_label(self, mid: str, name: str) -> str:
+        if mid == "screenshot_tool":
+            return f"{name}（与上方区域截图同键，勿改打开页）"
+        if mid in _GLOBAL_EXCLUDE_MODULES:
+            return f"{name}（仅应用前台）"
+        return name
+
+    def _add_module_row(
+        self,
+        form: QFormLayout,
+        mid: str,
+        name: str,
+        configured: str,
+        effective: str,
+    ) -> None:
+        field = LineEdit(configured)
+        hint = effective or "留空或 none"
+        if mid in _GLOBAL_EXCLUDE_MODULES and effective:
+            hint = f"默认 {effective}（仅前台）"
+        field.setPlaceholderText(hint)
+        self._module_fields[mid] = field
+        form.addRow(self._module_row_label(mid, name), field)
+
+    def _add_picked_module(self) -> None:
+        if self._mod_form is None:
+            return
+        mid = str(self._module_picker.currentData() or "").strip()
+        if not mid:
+            show_warning(self._page, "请选择模块。")
+            return
+        if mid in self._module_fields:
+            show_info(self._page, "该模块已在列表中，直接改右侧输入框即可。")
+            return
+        name = self._module_picker.currentText()
+        seq = self._new_seq.text().strip()
+        self._add_module_row(self._mod_form, mid, name, seq, get_module_shortcut(mid))
+        idx = self._module_picker.currentIndex()
+        self._module_picker.removeItem(idx)
+        self._new_seq.clear()
+        self._page.report_status(f"已添加：{name}")
 
     def _save(self) -> None:
         module_shortcuts: dict[str, str] = {}

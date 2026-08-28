@@ -2,16 +2,29 @@
 """访问控制：打开模块前的唯一门禁。"""
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from services.runtime_mode import SHELL_MODULE_IDS, local_free_module_ids
 
+_CAN_OPEN_CACHE: Dict[str, Tuple[bool, str]] = {}
+
+
+def invalidate_can_open_cache() -> None:
+    _CAN_OPEN_CACHE.clear()
+
 
 def _is_standalone_session() -> bool:
+    """单机 local_free：读本地 license 标记，不走联网校验。"""
     try:
         from services.license_manager import global_license_manager
+        from services.runtime_mode import is_standalone_record
 
-        return bool(global_license_manager.is_standalone_mode())
+        lm = global_license_manager
+        if not lm.license_info:
+            lm.load_license()
+        if bool(lm.license_info.get("is_licensed")):
+            return False
+        return is_standalone_record(lm.license_info)
     except Exception:
         return False
 
@@ -25,12 +38,39 @@ def is_admin_session() -> bool:
         return False
 
 
+def has_full_menu_session() -> bool:
+    try:
+        from services.license_manager import global_license_manager
+
+        return bool(global_license_manager.has_full_menu_access())
+    except Exception:
+        return False
+
+
 def can_open(
     module_id: Optional[str] = None,
     *,
     module_name: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """返回 (是否允许, 拒绝原因)。"""
+    mid = (module_id or "").strip()
+    cache_key = mid or (module_name or "").strip()
+    if cache_key:
+        cached = _CAN_OPEN_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+    result = _can_open_uncached(module_id, module_name=module_name)
+    if cache_key:
+        _CAN_OPEN_CACHE[cache_key] = result
+    return result
+
+
+def _can_open_uncached(
+    module_id: Optional[str] = None,
+    *,
+    module_name: Optional[str] = None,
+) -> Tuple[bool, str]:
     mid = (module_id or "").strip()
     from services.menu_registry import all_menu_items
     from services.config_service import get_menu_item_by_id
@@ -46,7 +86,7 @@ def can_open(
     }:
         return True, ""
 
-    if is_admin_session():
+    if is_admin_session() or has_full_menu_session():
         return True, ""
 
     item = None
@@ -61,7 +101,14 @@ def can_open(
         mid = mid or str(item.get("id") or "")
         name = name or str(item.get("name") or "")
 
-    standalone = _is_standalone_session()
+    if _is_standalone_session():
+        if mid in local_free_module_ids():
+            return True, ""
+        return (
+            False,
+            f"「{name or mid}」属于完整版功能。请使用授权码登录，或在系统设置中激活。",
+        )
+
     try:
         from services.license_manager import global_license_manager
 
@@ -69,14 +116,6 @@ def can_open(
     except Exception:
         licensed = False
         global_license_manager = None  # type: ignore
-
-    if standalone and not licensed:
-        if mid in local_free_module_ids():
-            return True, ""
-        return (
-            False,
-            f"「{name or mid}」属于完整版功能。请使用授权码登录，或在系统设置中激活。",
-        )
 
     requires_license = True
     if isinstance(item, dict) and "requires_license" in item:

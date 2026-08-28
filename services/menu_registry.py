@@ -23,7 +23,7 @@ GROUP_LABELS = {
 DOMAIN_TAB_LABELS = {
     "home": "首页",
     "office": "办公",
-    "ai": "AI",
+    "ai": "编码智能体",
     "image": "图片",
     "directory": "目录",
     "file": "文件",
@@ -57,6 +57,7 @@ MIGRATED_MODULES: dict[str, str] = {
     "watermark_remover": "modules.watermark_remover.watermark_remover_page.WatermarkRemoverPage",
     "ocr_tool": "modules.ocr_tool.ocr_tool_page.OcrToolPage",
     "llm_assistant": "modules.llm_assistant.llm_assistant_page.LlmAssistantPage",
+    "media_studio": "modules.media_studio.media_studio_page.MediaStudioPage",
     "harness_agent": "modules.harness_agent.harness_agent_page.HarnessAgentPage",
     "directory_generator": "modules.directory_generator.directory_generator_page.DirectoryGeneratorPage",
     "directory_inspector": "modules.directory_inspector.directory_inspector_page.DirectoryInspectorPage",
@@ -73,26 +74,35 @@ MIGRATED_MODULES: dict[str, str] = {
     "__about__": "modules.about.about_page.AboutPage",
 }
 
-# 系统菜单（不在模块网格重复展示时可从 toolbar 进）
+# 系统菜单（顶栏/热键可达；部分项不进侧栏，见 show_in_sidebar）
 SYSTEM_ACTIONS = ("system_settings", "theme_preview")
 
 
+def show_in_sidebar(item: dict | None) -> bool:
+    """侧栏是否展示该菜单项（默认 True；system_settings 等可设 sidebar: false）。"""
+    if not isinstance(item, dict):
+        return False
+    if item.get("sidebar") is False:
+        return False
+    return bool(item.get("show", True))
+
+
 def group_label(group_id: str | None) -> str:
+    """用户可见的子模块名（顶栏 Tab；可被 menu.yml group_labels 覆盖）。"""
+    try:
+        from services.config_service import get_group_labels
+
+        labels = get_group_labels()
+    except Exception:
+        labels = DOMAIN_TAB_LABELS
     gid = str(group_id or "business").strip().lower()
-    return GROUP_LABELS.get(gid, "其它")
+    return labels.get(gid) or GROUP_LABELS.get(gid, "其它")
 
 
 def visible_menu_items() -> list[dict[str, Any]]:
-    """侧栏/首页可见菜单（按授权过滤）。"""
+    """侧栏/首页可见菜单（尊重 show:false，再按授权过滤）。"""
     from services.access_control import filter_menu_items
 
-    try:
-        from services.license_manager import global_license_manager
-
-        if global_license_manager.is_admin_user():
-            return filter_menu_items(all_menu_items())
-    except Exception:
-        pass
     return filter_menu_items(get_menu_items())
 
 
@@ -105,25 +115,19 @@ def grouped_menu_items(
     *,
     licensed_only: bool = True,
     migrated_only: bool = False,
+    include_hidden: bool = False,
 ) -> list[tuple[str, str, list[dict]]]:
     """返回 [(group_id, group_label, items)] 按 GROUP_ORDER 排序。"""
-    admin_all = False
-    try:
-        from services.license_manager import global_license_manager
-
-        admin_all = global_license_manager.is_admin_user()
-    except Exception:
-        pass
-    items = visible_menu_items() if licensed_only else all_menu_items()
+    if licensed_only:
+        items = visible_menu_items()
+    elif include_hidden:
+        items = list(all_menu_items())
+    else:
+        items = list(get_menu_items())
     if migrated_only:
         items = [i for i in items if is_migrated(str(i.get("id") or ""))]
-    # all_menu_items 含 show:false；管理员默认全部可见
-    if not licensed_only and not admin_all:
-        items = [
-            i
-            for i in items
-            if i.get("show", True) or str(i.get("id") or "") in SYSTEM_ACTIONS
-        ]
+    if not include_hidden:
+        items = [i for i in items if i.get("show", True)]
     buckets: dict[str, list[dict]] = {g: [] for g in GROUP_ORDER}
     other: list[dict] = []
     for item in items:
@@ -135,6 +139,7 @@ def grouped_menu_items(
     out: list[tuple[str, str, list[dict]]] = []
     for g in GROUP_ORDER:
         if buckets[g]:
+            buckets[g].sort(key=lambda x: int(x.get("order") or 0))
             out.append((g, group_label(g), buckets[g]))
     if other:
         out.append(("other", "其它", other))

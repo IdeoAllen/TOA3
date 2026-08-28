@@ -21,8 +21,12 @@ class LicenseWatchdog(QObject):
 
     def start(self) -> None:
         try:
+            from services.edition_profile import edition_id
             from services.license_manager import global_license_manager
 
+            if edition_id() == "standalone" and global_license_manager.is_standalone_mode():
+                logger.debug("license watchdog skipped (standalone local_free)")
+                return
             self._was_licensed = bool(global_license_manager.is_licensed())
         except Exception:
             self._was_licensed = False

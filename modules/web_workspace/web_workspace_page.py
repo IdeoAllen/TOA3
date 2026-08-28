@@ -30,12 +30,9 @@ _ZOOM_STEPS = (0.9, 1.0, 1.1, 1.25, 1.4)
 
 
 def _webengine_available() -> bool:
-    try:
-        from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
+    from services.qt_webengine_bootstrap import webengine_import_ok
 
-        return True
-    except ImportError:
-        return False
+    return webengine_import_ok()
 
 
 class _SitesManageDialog(BaseDialog):
@@ -215,7 +212,9 @@ class WebWorkspacePage(BasePage):
         host_lay = QVBoxLayout(self._host)
         host_lay.setContentsMargins(0, 0, 0, 0)
         self._placeholder = QLabel(
-            "正在加载浏览器组件…" if self._ready else "未安装 Qt WebEngine，无法内嵌网页。"
+            "正在加载浏览器组件…"
+            if self._ready
+            else "当前安装包未包含内嵌浏览器组件，请点右上角「在浏览器打开」。"
         )
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         host_lay.addWidget(self._placeholder, 1)

@@ -17,9 +17,9 @@ page:
 # 弹窗：show 时按内容定高、规格定宽并屏幕居中；禁止用户拉伸
 dialogs:
   login:
-    width: 440
-    min_width: 400
-    min_height: 240
+    width: 520
+    min_width: 480
+    min_height: 320
   small:
     width: 420
     min_width: 380

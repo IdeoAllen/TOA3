@@ -24,6 +24,7 @@ packs:
       - notifications
       - llm_assistant
       - harness_agent
+      - media_studio
 
   image_suite:
     name: 图片专业包
@@ -31,6 +32,7 @@ packs:
     sellable: true
     features:
       - image_creator
+      - media_studio
       - image_adjust
       - watermark_photo_generator
       - watermark_remover
@@ -90,8 +92,7 @@ packs:
     features:
       - llm_assistant
       - harness_agent
-
-  professional:
+      - media_studio
     name: 专业版
     desc: 入门 + 图片 + 目录 + 转换 + AI
     sellable: true
