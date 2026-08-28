@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from app.dialog_chrome import make_info_form, value_label
 from core.base_page import BasePage
@@ -11,7 +11,7 @@ from core.user_messages import show_error, show_info
 from services.icon_registry import brand_logo_pixmap
 from services.product_vision import tagline, vision_home_rows
 from services.system_info import get_system_info, logo_path
-from services.update_check import UpdateCheckResult, check_for_update, open_download_page
+from services.update_check import UpdateCheckResult, open_download_page, start_update_check_thread
 from widgets import FormSection, HintLabel, PrimaryButton, SecondaryButton
 
 
@@ -20,6 +20,7 @@ class AboutAppSection(QWidget):
         super().__init__(parent)
         self._page = parent
         self._update_busy = False
+        self._update_thread = None
         self._activation = None
 
         outer = QVBoxLayout(self)
@@ -129,8 +130,8 @@ class AboutAppSection(QWidget):
         else:
             outer.addWidget(
                 HintLabel(
-                    "未授权：在上方粘贴授权码「联网激活」，或切到「激活与订阅」页。"
-                    "AI Key 见「模型与 AI」。"
+                    "未授权：在上方粘贴授权码并「联网激活」。"
+                    "订阅续费见「激活与订阅」页；AI Key 见「模型与 AI」。"
                 )
             )
 
@@ -163,16 +164,18 @@ class AboutAppSection(QWidget):
         if self._update_busy:
             return
         self._set_check_busy(True)
-        app = QApplication.instance()
-        if app is not None:
-            app.processEvents()
+        self._update_thread = start_update_check_thread(on_finished=self._on_update_thread_done)
+
+    def _on_update_thread_done(self, result: object) -> None:
+        self._set_check_busy(False)
+        self._update_thread = None
+        if not isinstance(result, UpdateCheckResult):
+            show_error(self._page, "检查更新失败：返回无效", title="检查更新")
+            return
         try:
-            result = check_for_update()
             self._on_update_checked(result)
         except Exception as exc:
             show_error(self._page, f"检查更新失败：{exc}", title="检查更新")
-        finally:
-            self._set_check_busy(False)
 
     def _on_update_checked(self, result: UpdateCheckResult) -> None:
         if result.has_update and result.latest_version:

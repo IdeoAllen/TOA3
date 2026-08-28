@@ -167,6 +167,29 @@ class LicenseManager:
         except Exception as e:
             print(f"授权迁移失败: {e}")
 
+    def force_cloud_license_check(self) -> Tuple[bool, str]:
+        """设置页「联网校验」：强制向 TOA 云服务 check 并刷新本机 license.json。"""
+        self.load_license()
+        self._licensed_memo = None
+        code_id = str(self.license_info.get("activated_code_id") or "")
+        mid = self.get_machine_id()
+        if code_id:
+            try:
+                from services.dms_license_client import check_on_dms
+
+                net_ok, net_msg, _payload = check_on_dms(code_id, mid, blocking=True)
+                if not net_ok:
+                    return False, net_msg or "无法连接 TOA 云服务，请检查网络后重试"
+            except Exception as exc:
+                return False, f"联网校验失败：{exc}"
+        self._licensed_memo = None
+        ok, msg = self._activation_still_valid()
+        if ok:
+            return True, self.get_validity_text()
+        if not code_id and self.is_standalone_mode():
+            return True, self.get_validity_text()
+        return False, msg or "校验后授权无效或尚未联网激活"
+
     def reload_from_disk(self) -> bool:
         """从磁盘重新加载授权（激活后/切换账号后调用）。"""
         try:

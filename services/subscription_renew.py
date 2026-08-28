@@ -8,10 +8,39 @@ _DEFAULT_PACK = "starter"
 _ALL_PACK = "professional"
 
 
-def is_renewable_block(reason: str) -> bool:
+def is_activation_block(reason: str) -> bool:
+    """单机/未授权/需激活 — 应引导激活，而非续费。"""
     text = str(reason or "")
-    keys = ("到期", "续费", "订阅", "expired", "未授权", "完整版")
+    keys = (
+        "完整版",
+        "未授权",
+        "授权码",
+        "激活",
+        "单机基础",
+        "单机体验",
+        "local_free",
+    )
     return any(k in text for k in keys)
+
+
+def is_renewable_block(reason: str) -> bool:
+    """已付费授权到期/续订 — 才弹续费窗。"""
+    text = str(reason or "")
+    if is_activation_block(text):
+        return False
+    keys = ("到期", "续费", "订阅", "expired", "已过期")
+    return any(k in text for k in keys)
+
+
+def should_prompt_renew_dialog(*, reason: str | None = None) -> bool:
+    """启动/导航时是否应提供续费（排除单机与从未激活）。"""
+    from services.license_manager import global_license_manager
+
+    lm = global_license_manager
+    if lm.is_standalone_mode() or lm.is_licensed():
+        return False
+    text = str(reason if reason is not None else lm.get_validity_text() or "")
+    return is_renewable_block(text)
 
 
 def _sellable_pack_ids() -> set[str]:

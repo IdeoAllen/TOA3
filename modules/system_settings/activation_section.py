@@ -41,7 +41,7 @@ class ActivationSection(FormSection):
         self.add_widget(
             HintLabel(
                 "单机基础版可离线使用部分办公工具。"
-                "粘贴 TOA 运营台签发的 TOA2- 授权码并联网激活后，将切换为完整网络版。"
+                "粘贴 TOA 运营台签发的授权码并联网激活后，将切换为完整网络版。"
                 "获取授权码：https://toa-service.yczh.tech/admin/"
             )
         )
@@ -54,7 +54,7 @@ class ActivationSection(FormSection):
         form.addRow("显示名", self._display)
 
         self._key = PasswordLineEdit()
-        self._key.setPlaceholderText("TOA2-… 完整授权码")
+        self._key.setPlaceholderText("TOA 授权码")
         form.addRow("授权码", self._key)
         self.add_layout(form)
 
@@ -100,7 +100,7 @@ class ActivationSection(FormSection):
             return
         key = self._key.text().strip().replace(" ", "")
         if not key:
-            show_warning(self._page, "请粘贴 TOA 运营台签发的完整 TOA2 授权码。")
+            show_warning(self._page, "请粘贴 TOA 运营台签发的完整授权码。")
             return
         if self._thread is not None and self._thread.isRunning():
             show_warning(self._page, "正在联网激活，请稍候。")

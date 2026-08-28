@@ -234,19 +234,16 @@ class MainShell(QMainWindow):
     def _maybe_prompt_renew_on_start(self) -> None:
         try:
             from services.license_manager import global_license_manager
-            from services.subscription_renew import is_renewable_block, renew_profile
+            from services.subscription_renew import renew_profile, should_prompt_renew_dialog
             from app.renew_dialog import offer_renew_dialog
 
             lm = global_license_manager
-            if lm.is_licensed():
-                return
-            text = lm.get_validity_text()
-            if not is_renewable_block(text):
+            if not should_prompt_renew_dialog():
                 return
             prof = renew_profile()
-            if lm.is_standalone_mode() and not prof.get("phone"):
+            if not prof.get("phone"):
                 return
-            offer_renew_dialog(self, message=text)
+            offer_renew_dialog(self, message=lm.get_validity_text())
         except Exception:
             pass
 

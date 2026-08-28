@@ -135,8 +135,8 @@ def check_for_update(*, timeout_seconds: float | None = None) -> UpdateCheckResu
 
 def open_download_page(result: UpdateCheckResult | None = None) -> None:
     """在系统浏览器打开下载页。"""
-    from PySide6.QtGui import QDesktopServices
     from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
 
     cfg = _update_config()
     url = ""
@@ -149,3 +149,38 @@ def open_download_page(result: UpdateCheckResult | None = None) -> None:
         url = str(cfg.get("download_page") or "").strip()
     if url:
         QDesktopServices.openUrl(QUrl(url))
+
+
+def start_update_check_thread(*, on_finished):
+    """在后台线程检查更新；on_finished(UpdateCheckResult) 在主线程回调。"""
+    from PySide6.QtCore import QObject, QThread, Signal
+
+    class _Worker(QObject):
+        finished = Signal(object)
+
+        def run(self) -> None:
+            try:
+                self.finished.emit(check_for_update())
+            except Exception as exc:
+                self.finished.emit(
+                    UpdateCheckResult(
+                        current_version=APP_VERSION,
+                        latest_version=None,
+                        has_update=False,
+                        download_url=None,
+                        release_notes=None,
+                        source="error",
+                        error=str(exc),
+                    )
+                )
+
+    thread = QThread()
+    worker = _Worker()
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+    worker.finished.connect(on_finished)
+    worker.finished.connect(thread.quit)
+    worker.finished.connect(worker.deleteLater)
+    thread.finished.connect(thread.deleteLater)
+    thread.start()
+    return thread

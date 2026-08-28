@@ -2,7 +2,7 @@
 """关于：品牌信息 + 愿景要点 + 检查更新。"""
 from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication, QVBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
 
 from app.dialog_chrome import (
     add_dialog_hero,
@@ -16,7 +16,7 @@ from core.user_messages import show_error, show_info
 from services.icon_registry import brand_logo_pixmap
 from services.product_vision import tagline, vision_display_rows
 from services.system_info import get_system_info, logo_path
-from services.update_check import UpdateCheckResult, check_for_update, open_download_page
+from services.update_check import UpdateCheckResult, open_download_page, start_update_check_thread
 from widgets import DialogButtonRow, HintLabel
 
 
@@ -30,6 +30,7 @@ class AboutDialog(BaseDialog):
         self.setWindowTitle("关于")
         self._update_result: UpdateCheckResult | None = None
         self._update_busy = False
+        self._update_thread = None
         info = get_system_info()
 
         root = QVBoxLayout(self)
@@ -77,16 +78,18 @@ class AboutDialog(BaseDialog):
         if self._update_busy:
             return
         self._set_check_busy(True)
-        app = QApplication.instance()
-        if app is not None:
-            app.processEvents()
+        self._update_thread = start_update_check_thread(on_finished=self._on_update_thread_done)
+
+    def _on_update_thread_done(self, result: object) -> None:
+        self._set_check_busy(False)
+        self._update_thread = None
+        if not isinstance(result, UpdateCheckResult):
+            show_error(self, "检查更新失败：返回无效", title="检查更新")
+            return
         try:
-            result = check_for_update()
             self._on_update_checked(result)
         except Exception as exc:
             show_error(self, f"检查更新失败：{exc}", title="检查更新")
-        finally:
-            self._set_check_busy(False)
 
     def _on_update_checked(self, result: UpdateCheckResult) -> None:
         self._update_result = result

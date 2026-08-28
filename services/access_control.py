@@ -106,7 +106,7 @@ def _can_open_uncached(
             return True, ""
         return (
             False,
-            f"「{name or mid}」属于完整版功能。请使用授权码登录，或在系统设置中激活。",
+            f"「{name or mid}」属于完整版功能。请使用授权码登录，或在「关于与应用」联网激活。",
         )
 
     try:

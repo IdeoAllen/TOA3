@@ -55,7 +55,7 @@ class UserProfileDialog(BaseDialog):
         root.addWidget(SemanticLabel(status_text, kind=kind))
 
         lic = make_info_form()
-        lic.addRow("判定", value_label("已授权" if licensed else "未授权 / 已失效"))
+        lic.addRow("授权状态", value_label("已授权" if licensed else "未授权 / 已失效"))
         lic.addRow("授权用户", value_label(str(info.get("user_name") or "—") or "—"))
         lic.addRow("到期日", value_label(str(info.get("expire_date") or "—") or "—"))
         days = lm.get_remaining_days()

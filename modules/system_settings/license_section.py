@@ -379,11 +379,13 @@ class LicenseSection(QWidget):
         self._page.run_safe(_run, success_status="云服务同步完成")
 
     def _on_check(self) -> None:
-        self._lm.reload_from_disk()
-        licensed = self._lm.is_licensed()
-        self._refresh_status()
-        self._emit_nav()
-        show_info(
-            self._page,
-            self._lm.get_validity_text() if licensed else "当前未授权或已失效",
-        )
+        def _run() -> None:
+            ok, msg = self._lm.force_cloud_license_check()
+            self._refresh_status()
+            self._emit_nav()
+            if ok:
+                show_info(self._page, msg or self._lm.get_validity_text())
+            else:
+                show_error(self._page, msg or "联网校验未通过")
+
+        self._page.run_safe(_run, success_status="联网校验完成")

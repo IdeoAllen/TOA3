@@ -48,11 +48,11 @@ class LoginDialog(BaseDialog):
         elif self._allow_standalone:
             hint_text = (
                 "单机体验：免授权码、可离线，开放基础办公工具。"
-                "完整版请粘贴 TOA 运营台签发的 TOA2- 授权码（需联网激活）。"
+                "完整版请粘贴 TOA 运营台签发的授权码（需联网激活）。"
             )
             hint_kind = "info"
         else:
-            hint_text = "请粘贴 TOA 运营台签发的完整 TOA2-… 授权码；显示名可留空。"
+            hint_text = "请粘贴 TOA 运营台签发的完整授权码；显示名可留空。"
             hint_kind = "info"
         layout.addWidget(SemanticLabel(hint_text, kind=hint_kind))
 
@@ -63,7 +63,7 @@ class LoginDialog(BaseDialog):
         self._user = LineEdit()
         self._user.setPlaceholderText("可选：台账姓名（以授权码为准）")
         self._key = PasswordLineEdit()
-        self._key.setPlaceholderText("完整版：TOA2- 授权码")
+        self._key.setPlaceholderText("完整版：TOA 授权码")
         self._prefill_username()
         self._prefill_license_key()
         if not self._skip:
