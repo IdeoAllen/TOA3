@@ -218,6 +218,32 @@ def activate_on_dms(license_key: str, machine_id: str, app_version: str = "") ->
     return True, "ok", payload
 
 
+def trial_start_on_cloud(
+    phone: str,
+    machine_id: str,
+    *,
+    name: str = "",
+    app_version: str = "",
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """开始试用：手机 + machine_id → 云服务签发短期码。"""
+    invalidate_check_cache()
+    ok, payload, err = _post_json(
+        "trial-start",
+        {
+            "phone": str(phone or "").strip(),
+            "machine_id": str(machine_id or "").strip(),
+            "name": str(name or "").strip(),
+            "app_version": app_version or "",
+        },
+    )
+    if not ok:
+        return False, err or "试用申请失败", None
+    key = str(payload.get("license_key") or "").strip()
+    if not key:
+        return False, "试用成功但未返回授权码", payload
+    return True, "ok", payload
+
+
 def register_on_dms(license_key: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """签发后必须登记到云服务，否则不算发出。"""
     ok, payload, err = _post_json(
@@ -411,3 +437,4 @@ sync_roster_on_cloud = sync_roster_on_dms
 reconcile_roster_on_cloud = reconcile_roster_on_dms
 check_on_cloud = check_on_dms
 apply_cloud_identity = apply_dms_identity
+trial_start = trial_start_on_cloud

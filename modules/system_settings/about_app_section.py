@@ -11,7 +11,7 @@ from core.user_messages import show_error, show_info
 from services.icon_registry import brand_logo_pixmap
 from services.product_vision import tagline, vision_home_rows
 from services.system_info import get_system_info, logo_path
-from services.update_check import UpdateCheckResult, open_download_page, start_update_check_thread
+from services.update_check import UpdateCheckResult, get_update_hub, open_download_page
 from widgets import FormSection, HintLabel, PrimaryButton, SecondaryButton
 
 
@@ -20,8 +20,9 @@ class AboutAppSection(QWidget):
         super().__init__(parent)
         self._page = parent
         self._update_busy = False
-        self._update_thread = None
-        self._activation = None
+        hub = get_update_hub()
+        hub.checking_changed.connect(self._on_hub_checking)
+        hub.result_ready.connect(self._on_hub_update_result)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -144,6 +145,23 @@ class AboutAppSection(QWidget):
             return
         show_error(self._page, "无法退出：未找到主窗口。")
 
+    def _on_hub_checking(self, busy: bool) -> None:
+        self._set_check_busy(busy)
+
+    def _on_hub_update_result(self, result: object) -> None:
+        if get_update_hub().last_reason() != "manual":
+            return
+        if not isinstance(result, UpdateCheckResult):
+            show_error(self._page, "检查更新失败：返回无效", title="检查更新")
+            return
+        try:
+            self._on_update_checked(result)
+        except Exception as exc:
+            show_error(self._page, f"检查更新失败：{exc}", title="检查更新")
+
+    def set_update_check_busy(self, busy: bool) -> None:
+        self._set_check_busy(busy)
+
     def _set_check_busy(self, busy: bool) -> None:
         self._update_busy = busy
         self._btn_check.setEnabled(not busy)
@@ -152,19 +170,7 @@ class AboutAppSection(QWidget):
     def _on_check_update(self) -> None:
         if self._update_busy:
             return
-        self._set_check_busy(True)
-        self._update_thread = start_update_check_thread(on_finished=self._on_update_thread_done)
-
-    def _on_update_thread_done(self, result: object) -> None:
-        self._set_check_busy(False)
-        self._update_thread = None
-        if not isinstance(result, UpdateCheckResult):
-            show_error(self._page, "检查更新失败：返回无效", title="检查更新")
-            return
-        try:
-            self._on_update_checked(result)
-        except Exception as exc:
-            show_error(self._page, f"检查更新失败：{exc}", title="检查更新")
+        get_update_hub().check_async(reason="manual")
 
     def _on_update_checked(self, result: UpdateCheckResult) -> None:
         if result.has_update and result.latest_version:

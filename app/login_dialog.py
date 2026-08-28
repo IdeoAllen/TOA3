@@ -14,7 +14,7 @@ from app.app_state import AppState
 from app.version import version_caption
 from core.base_dialog import BaseDialog
 from core.exceptions import AuthError
-from services.auth_service import authenticate, authenticate_standalone
+from services.auth_service import authenticate, authenticate_standalone, authenticate_trial
 from services.config_service import get_auth_config, project_root
 from services.dms_license_client import cloud_origin, license_service_label
 from widgets import DialogButtonRow, HintLabel, LineEdit, PageTitle, PasswordLineEdit, SemanticLabel
@@ -46,8 +46,8 @@ class LoginDialog(BaseDialog):
             hint_kind = "warning"
         elif self._allow_standalone:
             hint_text = (
-                "单机体验：免授权码、可离线，开放基础办公工具。"
-                "完整版请粘贴 TOA 运营台签发的授权码（需联网激活）。"
+                "单机体验：免授权码、可离线。"
+                "完整版可粘贴授权码，或填写手机号开始联网试用。"
             )
             hint_kind = "info"
         else:
@@ -63,11 +63,15 @@ class LoginDialog(BaseDialog):
         self._user.setPlaceholderText("可选：台账姓名（以授权码为准）")
         self._key = PasswordLineEdit()
         self._key.setPlaceholderText("完整版：TOA 授权码")
+        self._phone = LineEdit()
+        self._phone.setPlaceholderText("试用：11 位手机号")
+        self._phone.setMaxLength(11)
         self._prefill_username()
         self._prefill_license_key()
         if not self._skip:
             form.addRow("显示名", self._user)
             form.addRow("授权码", self._key)
+            form.addRow("手机号", self._phone)
         layout.addLayout(form)
 
         self._status = SemanticLabel("", kind="info")
@@ -78,6 +82,7 @@ class LoginDialog(BaseDialog):
         buttons.add_secondary("取消", self.reject)
         if self._allow_standalone and not self._skip:
             self._btn_standalone = buttons.add_secondary("单机体验", self._on_standalone)
+            self._btn_trial = buttons.add_secondary("开始试用", self._on_trial)
         self._btn_login = buttons.add_primary("授权码登录", self._on_accept)
         layout.addWidget(buttons)
 
@@ -143,8 +148,13 @@ class LoginDialog(BaseDialog):
         self._btn_login.setText("登录中…" if busy else "授权码登录")
         if hasattr(self, "_btn_standalone"):
             self._btn_standalone.setEnabled(not busy)
+        if hasattr(self, "_btn_trial"):
+            self._btn_trial.setEnabled(not busy)
+            self._btn_trial.setText("试用申请中…" if busy else "开始试用")
         self._user.setEnabled(not busy)
         self._key.setEnabled(not busy)
+        if hasattr(self, "_phone"):
+            self._phone.setEnabled(not busy)
         if busy:
             self._set_status(status or "正在联网激活，请稍候…", kind="info")
         elif not status:
@@ -176,9 +186,19 @@ class LoginDialog(BaseDialog):
             logger.debug("本机快速登录失败", exc_info=True)
             return False
 
-    def _run_login_task(self, *, username: str, license_key: str, standalone: bool) -> tuple[bool, dict, str]:
+    def _run_login_task(
+        self,
+        *,
+        username: str,
+        license_key: str,
+        standalone: bool,
+        trial: bool = False,
+        phone: str = "",
+    ) -> tuple[bool, dict, str]:
         try:
-            if standalone:
+            if trial:
+                session = authenticate_trial(phone, display_name=username)
+            elif standalone:
                 session = authenticate_standalone()
             else:
                 session = authenticate(username, license_key)
@@ -189,15 +209,26 @@ class LoginDialog(BaseDialog):
             logger.exception("登录线程异常")
             return False, {}, str(e)
 
-    def _start_worker(self, *, username: str, license_key: str, standalone: bool) -> None:
+    def _start_worker(
+        self,
+        *,
+        username: str,
+        license_key: str,
+        standalone: bool,
+        trial: bool = False,
+        phone: str = "",
+    ) -> None:
         if self._login_busy:
             return
-        if not standalone and self._try_accept_local_license(license_key):
+        if not standalone and not trial and self._try_accept_local_license(license_key):
             return
-        self._set_login_busy(
-            True,
-            status="正在校验授权码…" if not standalone else "正在进入单机体验…",
-        )
+        if trial:
+            status = "正在申请试用…"
+        elif standalone:
+            status = "正在进入单机体验…"
+        else:
+            status = "正在校验授权码…"
+        self._set_login_busy(True, status=status)
         self._login_result = None
         self._login_deadline = time.monotonic() + _LOGIN_TIMEOUT_S
 
@@ -206,6 +237,8 @@ class LoginDialog(BaseDialog):
                 username=username,
                 license_key=license_key,
                 standalone=standalone,
+                trial=trial,
+                phone=phone,
             )
             self._login_result = result
             logger.info(
@@ -265,6 +298,19 @@ class LoginDialog(BaseDialog):
 
     def _on_standalone(self) -> None:
         self._start_worker(username="", license_key="", standalone=True)
+
+    def _on_trial(self) -> None:
+        phone = self._phone.text().strip() if hasattr(self, "_phone") else ""
+        if not phone or not (len(phone) == 11 and phone.isdigit()):
+            self._set_status("开始试用请填写 11 位手机号", kind="warning")
+            return
+        self._start_worker(
+            username=self._user.text(),
+            license_key="",
+            standalone=False,
+            trial=True,
+            phone=phone,
+        )
 
     def _on_accept(self) -> None:
         key = self._key.text().strip() if hasattr(self, "_key") else ""

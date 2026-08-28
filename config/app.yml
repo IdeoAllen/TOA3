@@ -63,6 +63,13 @@ home_page:
   use_canvas_home: false
 hotkeys:
   close_to_background: true
+  tray_modules:
+    - quick_notepad
+    - clipboard_history
+    - screenshot_tool
+    - quadrant_tasks
+    - ocr_tool
+    - harness_agent
   enable_global_toggle: true
   enable_screenshot: true
   exit_app: Ctrl+Q
@@ -97,6 +104,7 @@ license:
 update:
   enabled: true
   timeout_seconds: 3
+  check_on_startup: true
   manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
   download_page: https://www.yczh.tech/downloads/
 log_config:

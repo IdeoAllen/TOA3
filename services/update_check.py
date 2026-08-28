@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
+
 from app.version import APP_VERSION
 from services.config_service import get_update_config, project_root
 from services.license_client import default_manifest_url
@@ -151,36 +153,118 @@ def open_download_page(result: UpdateCheckResult | None = None) -> None:
         QDesktopServices.openUrl(QUrl(url))
 
 
-def start_update_check_thread(*, on_finished):
+def start_update_check_thread(*, on_finished, reason: str = "manual"):
     """在后台线程检查更新；on_finished(UpdateCheckResult) 在主线程回调。"""
-    from PySide6.QtCore import QObject, QThread, Signal
+    return get_update_hub().check_async(on_finished=on_finished, reason=reason)
 
-    class _Worker(QObject):
-        finished = Signal(object)
 
-        def run(self) -> None:
-            try:
-                self.finished.emit(check_for_update())
-            except Exception as exc:
-                self.finished.emit(
-                    UpdateCheckResult(
-                        current_version=APP_VERSION,
-                        latest_version=None,
-                        has_update=False,
-                        download_url=None,
-                        release_notes=None,
-                        source="error",
-                        error=str(exc),
-                    )
+class _UpdateWorker(QObject):
+    finished = Signal(object)
+
+    def run(self) -> None:
+        try:
+            self.finished.emit(check_for_update())
+        except Exception as exc:
+            self.finished.emit(
+                UpdateCheckResult(
+                    current_version=APP_VERSION,
+                    latest_version=None,
+                    has_update=False,
+                    download_url=None,
+                    release_notes=None,
+                    source="error",
+                    error=str(exc),
                 )
+            )
 
-    thread = QThread()
-    worker = _Worker()
-    worker.moveToThread(thread)
-    thread.started.connect(worker.run)
-    worker.finished.connect(on_finished)
-    worker.finished.connect(thread.quit)
-    worker.finished.connect(worker.deleteLater)
-    thread.finished.connect(thread.deleteLater)
-    thread.start()
-    return thread
+
+class UpdateCheckHub(QObject):
+    """进程内单例：避免线程被 GC、统一 busy 状态与 12s 看门狗。"""
+
+    result_ready = Signal(object)
+    checking_changed = Signal(bool)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._checking = False
+        self._last: UpdateCheckResult | None = None
+        self._reason = "manual"
+        self._thread = None
+        self._worker = None
+        self._watchdog = QTimer(self)
+        self._watchdog.setSingleShot(True)
+        self._watchdog.timeout.connect(self._on_watchdog)
+
+    def is_checking(self) -> bool:
+        return self._checking
+
+    def last_result(self) -> UpdateCheckResult | None:
+        return self._last
+
+    def last_reason(self) -> str:
+        return self._reason
+
+    def check_async(self, *, on_finished=None, reason: str = "manual") -> None:
+        from PySide6.QtCore import QThread
+
+        if self._checking:
+            return
+        self._reason = str(reason or "manual")
+        self._checking = True
+        self.checking_changed.emit(True)
+        self._watchdog.start(12000)
+
+        self._thread = QThread(self)
+        self._worker = _UpdateWorker()
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+
+        def _done(result: object) -> None:
+            self._watchdog.stop()
+            if not self._checking:
+                return
+            self._checking = False
+            if isinstance(result, UpdateCheckResult):
+                self._last = result
+            self.checking_changed.emit(False)
+            self.result_ready.emit(result)
+            if on_finished:
+                on_finished(result)
+            if self._thread is not None:
+                self._thread.quit()
+
+        self._worker.finished.connect(_done, Qt.ConnectionType.QueuedConnection)
+        self._thread.start()
+
+    def _on_watchdog(self) -> None:
+        if not self._checking:
+            return
+        logger.warning("检查更新超时，强制结束")
+        self._checking = False
+        self.checking_changed.emit(False)
+        result = UpdateCheckResult(
+            current_version=APP_VERSION,
+            latest_version=None,
+            has_update=False,
+            download_url=None,
+            release_notes=None,
+            source="timeout",
+            error="检查更新超时，请稍后重试",
+        )
+        self._last = result
+        self.result_ready.emit(result)
+        if self._thread is not None:
+            self._thread.quit()
+
+
+_HUB: UpdateCheckHub | None = None
+
+
+def get_update_hub() -> UpdateCheckHub:
+    global _HUB
+    if _HUB is None:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        _HUB = UpdateCheckHub(app)
+    return _HUB

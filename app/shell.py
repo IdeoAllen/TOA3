@@ -40,9 +40,11 @@ from services.access_control import can_open
 from services.notify_bus import get_bus
 from services.job_scheduler import get_scheduler
 from services.tray_service import get_tray
+from services.platform_experience import get_platform_experience
 from services.hotkey_service import get_hotkey_service
 from services.screenshot_service import run_screenshot_hotkey
 from core.user_messages import show_warning
+from widgets import MessageKindButton
 
 logger = logging.getLogger(__name__)
 
@@ -265,20 +267,7 @@ class MainShell(QMainWindow):
 
         get_clipboard_watcher()
 
-        tray = get_tray()
-        tray.start(
-            tip=f"{self._st.brand_name()} TOA3",
-            on_show=self._show_from_tray,
-            on_notepad=lambda: self._summon_module("quick_notepad"),
-            on_pomodoro=lambda: self._summon_module("pomodoro"),
-            on_clipboard=self._open_clipboard_quick,
-            on_screenshot=lambda: run_screenshot_hotkey(self, full=False),
-            on_screenshot_full=lambda: run_screenshot_hotkey(self, full=True),
-            on_ocr=self._run_ocr_hotkey,
-            on_harness=lambda: self._summon_module("harness_agent"),
-            on_restart=self._restart_app,
-            on_exit=self._quit_app,
-        )
+        get_platform_experience().attach_shell(self)
 
         hk = get_hotkeys_config()
         bindings = {}
@@ -414,6 +403,15 @@ class MainShell(QMainWindow):
         brand.setObjectName("ShellBrand")
         self._brand_label = brand
         hlay.addWidget(brand)
+
+        self._license_chip = MessageKindButton("授权", kind="info")
+        self._license_chip.setObjectName("ShellLicenseChip")
+        self._license_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._license_chip.setFixedHeight(28)
+        self._license_chip.setMaximumWidth(140)
+        self._license_chip.clicked.connect(self._on_license_chip_clicked)
+        hlay.addWidget(self._license_chip)
+
         hlay.addStretch(1)
 
         hk_boot = get_hotkeys_config()
@@ -1273,9 +1271,16 @@ class MainShell(QMainWindow):
             if self._current_id == "home":
                 self.navigate("home")
 
+    def _on_license_chip_clicked(self) -> None:
+        self.navigate("system_settings")
+        page = self._pages.get("system_settings")
+        if page is not None and hasattr(page, "open_license_or_subscription"):
+            page.open_license_or_subscription()
+
     def _on_license_changed(self) -> None:
-        """授权变更：刷新侧栏与状态栏。"""
+        """授权变更：刷新侧栏、状态栏与顶栏 Chip。"""
         self.rebuild_nav()
+        get_platform_experience().refresh_license_chip()
         try:
             from services.license_manager import global_license_manager
 

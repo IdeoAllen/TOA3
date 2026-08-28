@@ -30,6 +30,8 @@ from services.dms_license_client import (  # noqa: F401
     register_on_dms,
     sync_roster_on_cloud,
     sync_roster_on_dms,
+    trial_start,
+    trial_start_on_cloud,
     within_grace,
 )
 

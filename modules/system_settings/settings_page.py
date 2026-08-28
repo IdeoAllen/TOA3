@@ -532,6 +532,14 @@ class SettingsPage(BasePage):
             if self._integrations is not None:
                 self._integrations.select_sub_tab("图像生成")
 
+    def open_license_or_subscription(self) -> None:
+        from services.settings_access import subscription_tab_visible
+
+        if subscription_tab_visible():
+            self.open_subscription_tab()
+        else:
+            self.open_license_tab()
+
     def open_license_tab(self) -> None:
         """外部跳转到授权（管理员）或订阅（终端用户）。"""
         self.open_tab(license_settings_tab_key())

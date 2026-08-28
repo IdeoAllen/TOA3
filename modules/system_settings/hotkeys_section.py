@@ -40,6 +40,10 @@ class HotkeysSection(FormSection):
         self._enable_screenshot.setChecked(bool(hk.get("enable_screenshot", True)))
         form.addRow("截图", self._enable_screenshot)
 
+        self._close_to_tray = CheckBox("关闭窗口时最小化到系统托盘")
+        self._close_to_tray.setChecked(bool(hk.get("close_to_background", True)))
+        form.addRow("托盘", self._close_to_tray)
+
         self._shot = LineEdit(str(hk.get("screenshot") or "Alt+A"))
         self._shot_region = LineEdit(str(hk.get("screenshot_region") or "Alt+Shift+A"))
         self._fullscreen = LineEdit(str(hk.get("toggle_fullscreen") or "F11"))
@@ -147,6 +151,7 @@ class HotkeysSection(FormSection):
 
         data = {
             "enable_screenshot": self._enable_screenshot.isChecked(),
+            "close_to_background": self._close_to_tray.isChecked(),
             "screenshot": self._shot.text().strip(),
             "screenshot_region": self._shot_region.text().strip(),
             "toggle_fullscreen": self._fullscreen.text().strip(),
@@ -166,6 +171,13 @@ class HotkeysSection(FormSection):
             if mid in module_shortcuts:
                 data[legacy] = module_shortcuts[mid]
         save_hotkeys_config(data)
+
+        try:
+            from services.platform_experience import get_platform_experience
+
+            get_platform_experience().apply_close_to_tray()
+        except Exception:
+            pass
 
         shell = self._page.window()
         if shell is not None:

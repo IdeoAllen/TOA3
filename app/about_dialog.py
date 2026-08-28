@@ -16,7 +16,7 @@ from core.user_messages import show_error, show_info
 from services.icon_registry import brand_logo_pixmap
 from services.product_vision import tagline, vision_display_rows
 from services.system_info import get_system_info, logo_path
-from services.update_check import UpdateCheckResult, open_download_page, start_update_check_thread
+from services.update_check import UpdateCheckResult, get_update_hub, open_download_page
 from widgets import DialogButtonRow, HintLabel
 
 
@@ -30,7 +30,6 @@ class AboutDialog(BaseDialog):
         self.setWindowTitle("关于")
         self._update_result: UpdateCheckResult | None = None
         self._update_busy = False
-        self._update_thread = None
         info = get_system_info()
 
         root = QVBoxLayout(self)
@@ -69,6 +68,26 @@ class AboutDialog(BaseDialog):
         actions.add_primary("关闭", self.accept)
         root.addWidget(actions)
 
+        hub = get_update_hub()
+        hub.checking_changed.connect(self._on_hub_checking)
+        hub.result_ready.connect(self._on_hub_result)
+
+    def _on_hub_checking(self, busy: bool) -> None:
+        self._set_check_busy(busy)
+
+    def _on_hub_result(self, result: object) -> None:
+        if get_update_hub().last_reason() != "manual":
+            return
+        if not self.isVisible():
+            return
+        if not isinstance(result, UpdateCheckResult):
+            show_error(self, "检查更新失败：返回无效", title="检查更新")
+            return
+        try:
+            self._on_update_checked(result)
+        except Exception as exc:
+            show_error(self, f"检查更新失败：{exc}", title="检查更新")
+
     def _set_check_busy(self, busy: bool) -> None:
         self._update_busy = busy
         self._btn_check.setEnabled(not busy)
@@ -77,19 +96,7 @@ class AboutDialog(BaseDialog):
     def _on_check_update(self) -> None:
         if self._update_busy:
             return
-        self._set_check_busy(True)
-        self._update_thread = start_update_check_thread(on_finished=self._on_update_thread_done)
-
-    def _on_update_thread_done(self, result: object) -> None:
-        self._set_check_busy(False)
-        self._update_thread = None
-        if not isinstance(result, UpdateCheckResult):
-            show_error(self, "检查更新失败：返回无效", title="检查更新")
-            return
-        try:
-            self._on_update_checked(result)
-        except Exception as exc:
-            show_error(self, f"检查更新失败：{exc}", title="检查更新")
+        get_update_hub().check_async(reason="manual")
 
     def _on_update_checked(self, result: UpdateCheckResult) -> None:
         self._update_result = result
@@ -111,8 +118,4 @@ class AboutDialog(BaseDialog):
             msg += f"\n（来源：{src}）"
         if result.error and result.source.startswith("local"):
             msg += f"\n\n提示：{result.error}"
-        show_info(
-            self,
-            msg,
-            title="检查更新",
-        )
+        show_info(self, msg, title="检查更新")

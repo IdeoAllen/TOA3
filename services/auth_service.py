@@ -28,6 +28,42 @@ def authenticate_standalone() -> dict[str, Any]:
     }
 
 
+def authenticate_trial(phone: str, *, display_name: str = "") -> dict[str, Any]:
+    """联网试用：手机号 → trial-start → 本机激活。"""
+    from app.version import APP_VERSION
+    from services.license_client import trial_start
+    from services.license_manager import global_license_manager
+
+    phone = str(phone or "").strip()
+    if not phone or not (len(phone) == 11 and phone.isdigit()):
+        raise AuthError("请填写 11 位手机号")
+    mid = global_license_manager.get_machine_id()
+    ok, msg, payload = trial_start(
+        phone,
+        mid,
+        name=str(display_name or "").strip(),
+        app_version=APP_VERSION,
+    )
+    if not ok or not payload:
+        raise AuthError(msg or "试用申请失败")
+    key = str(payload.get("license_key") or "").strip()
+    if not key:
+        raise AuthError("试用成功但未返回授权码")
+    ok2, message, info = global_license_manager.activate_with_code(key)
+    if not ok2:
+        raise AuthError(message or "试用码本机激活失败")
+    name = str((info or {}).get("name") or payload.get("name") or f"试用用户{phone[-4:]}")
+    logger.info("试用登录成功: %s phone=%s", name, phone)
+    return {
+        "username": name,
+        "display_name": name,
+        "role": "user",
+        "runtime_mode": "network",
+        "entitlement": "trial",
+        "features": list((info or {}).get("features") or payload.get("features") or []),
+    }
+
+
 def authenticate(username: str, license_key: str) -> dict[str, Any]:
     """登录校验。开发环境可 skip_login；生产走 global_license_manager + DMS。"""
     auth = get_auth_config()
@@ -39,7 +75,7 @@ def authenticate(username: str, license_key: str) -> dict[str, Any]:
     name = str(username or "").strip()
     key = str(license_key or "").strip().replace(" ", "")
     if not key and not auth.get("allow_empty_password"):
-        raise AuthError("请粘贴 TOA 运营台签发的完整 TOA2 授权码")
+        raise AuthError("请粘贴 TOA 运营台签发的完整 TOA 授权码")
     if not key:
         if not name:
             raise AuthError("请输入用户名")
