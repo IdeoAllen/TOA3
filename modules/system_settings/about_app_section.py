@@ -88,17 +88,6 @@ class AboutAppSection(QWidget):
         meta.add_widget(wrap_meta)
         outer.addWidget(meta)
 
-        try:
-            from services.license_manager import global_license_manager
-
-            if not global_license_manager.is_licensed():
-                from modules.system_settings.activation_section import ActivationSection
-
-                self._activation = ActivationSection(parent)
-                outer.addWidget(self._activation)
-        except Exception:
-            self._activation = None
-
         actions = FormSection("应用")
         actions.add_widget(
             HintLabel(
@@ -130,8 +119,8 @@ class AboutAppSection(QWidget):
         else:
             outer.addWidget(
                 HintLabel(
-                    "未授权：在上方粘贴授权码并「联网激活」。"
-                    "订阅续费见「激活与订阅」页；AI Key 见「模型与 AI」。"
+                    "未授权：请前往「激活与订阅」页粘贴授权码并联网激活。"
+                    "AI Key 见「模型与 AI」。"
                 )
             )
 

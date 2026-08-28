@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QApplication, QDialog, QFormLayout, QHBoxLayout, Q
 from app.app_state import AppState
 from app.version import version_caption
 from core.base_dialog import BaseDialog
-from core.error_handler import report_error
 from core.exceptions import AuthError
 from services.auth_service import authenticate, authenticate_standalone
 from services.config_service import get_auth_config, project_root
@@ -243,7 +242,6 @@ class LoginDialog(BaseDialog):
         self._set_login_busy(False)
         msg = f"登录超时（{_LOGIN_TIMEOUT_S} 秒），请检查网络或稍后重试"
         self._set_status(msg, kind="danger")
-        report_error(self, AuthError(msg), title="登录超时", context="LoginDialog")
 
     def _on_worker_finished(self, ok: bool, session: dict, err: str) -> None:
         if self._login_poll is not None:
@@ -264,7 +262,6 @@ class LoginDialog(BaseDialog):
         self._set_login_busy(False)
         detail = err or "登录失败"
         self._set_status(detail, kind="danger")
-        report_error(self, AuthError(detail), title="登录失败", context="LoginDialog")
 
     def _on_standalone(self) -> None:
         self._start_worker(username="", license_key="", standalone=True)
@@ -272,13 +269,7 @@ class LoginDialog(BaseDialog):
     def _on_accept(self) -> None:
         key = self._key.text().strip() if hasattr(self, "_key") else ""
         if not key and not self._skip:
-            self._set_status("请粘贴 TOA 运营台签发的完整 TOA2 授权码", kind="warning")
-            report_error(
-                self,
-                AuthError("请粘贴 TOA 运营台签发的完整 TOA2 授权码"),
-                title="登录失败",
-                context="LoginDialog",
-            )
+            self._set_status("请粘贴 TOA 运营台签发的完整 TOA 授权码", kind="warning")
             return
         self._start_worker(username=self._user.text(), license_key=key, standalone=False)
 

@@ -16,6 +16,15 @@ _STATUS_DOT = {
 }
 
 
+def _dev_migration_dots_visible() -> bool:
+    try:
+        from services.runtime_paths import get_runtime_environment
+
+        return get_runtime_environment() != "release"
+    except Exception:
+        return True
+
+
 class StatusDot(QLabel):
     """迁移状态指示灯：完成亮绿，进行中琥珀，空页/缺失灰圈。"""
 
@@ -85,7 +94,7 @@ class ToolLaunchCard(QFrame):
         title_lbl.setObjectName("ToolCardTitle")
         title_lbl.setProperty("class", "section-title")
         title_row.addWidget(title_lbl)
-        if status:
+        if status and _dev_migration_dots_visible():
             title_row.addWidget(StatusDot(status))
             tip = _STATUS_DOT.get(str(status).lower(), _STATUS_DOT["mvp"])[2]
             self.setToolTip(tip)

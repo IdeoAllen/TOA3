@@ -13,6 +13,7 @@ from services.config_service import get_hotkeys_config
 from services.menu_registry import GROUP_ORDER, grouped_menu_items, is_migrated
 from services.migration_manifest import get_module_status, status_label
 from services.module_hotkeys import get_module_shortcut
+from services.runtime_paths import get_runtime_environment
 from widgets import FormSection, HintLabel, PageTitle, ScrollPage, SectionTitle, SemanticLabel
 from widgets.tool_cards import StatusDot, ToolLaunchCard
 
@@ -86,13 +87,14 @@ class HomePage(BasePage):
         hk = get_hotkeys_config()
         jump_k = str(hk.get("home_jump_office") or "K")
         jump_i = str(hk.get("home_jump_image") or "I")
-        scroll.add_widget(
-            HintLabel(
-                "状态灯：绿=已完成 · 琥珀=进行中 · 灰=未建。"
-                f" ←/→ 顶栏子模块 · ↑/↓ 侧栏功能（全应用） · "
-                f"{jump_k} 办公 · {jump_i} 图片 · Ctrl+K 命令面板。"
+        if get_runtime_environment() != "release":
+            scroll.add_widget(
+                HintLabel(
+                    "状态灯：绿=已完成 · 琥珀=进行中 · 灰=未建。"
+                    f" ←/→ 顶栏子模块 · ↑/↓ 侧栏功能（全应用） · "
+                    f"{jump_k} 办公 · {jump_i} 图片 · Ctrl+K 命令面板。"
+                )
             )
-        )
 
         groups = {
             gid: (glab, items)
@@ -204,7 +206,8 @@ def _build_wave_pins(home: HomePage) -> QWidget:
     from services.menu_registry import get_menu_item_by_id
 
     sec = FormSection("办公增效 · 一键开工")
-    sec.add_widget(HintLabel("图标 + 标题 + 快捷键；绿/琥珀/灰=模块完成度。"))
+    if get_runtime_environment() != "release":
+        sec.add_widget(HintLabel("图标 + 标题 + 快捷键；绿/琥珀/灰=模块完成度。"))
     grid = QGridLayout()
     grid.setHorizontalSpacing(12)
     grid.setVerticalSpacing(12)

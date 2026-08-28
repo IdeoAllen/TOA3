@@ -13,6 +13,7 @@ from core.user_messages import show_error, show_info, show_success, show_warning
 from services.commerce_client import create_order, list_sellable_packs, pay_order, upgrade_from_order
 from services.license_manager import global_license_manager
 from services.notify_bus import emit_license_changed
+from services.runtime_paths import get_runtime_environment
 from widgets import ComboBox, FormSection, HintLabel, LineEdit, PrimaryButton, ReadOnlyPlainTextEdit, SecondaryButton, SemanticLabel
 
 
@@ -47,13 +48,21 @@ class SubscriptionSection(FormSection):
         self._commerce: dict = {}
         self._busy = False
 
-        self.add_widget(
-            HintLabel(
-                "选择功能包并填写手机号，点击「订阅并支付」。\n"
-                "同手机号再次购买将自动续费延长到期日（不必换账号）。\n"
-                "现阶段为模拟支付；真实支付接入后由 Portal 回调 webhook 履约，终端点「同步已付订单」。"
+        if get_runtime_environment() != "release":
+            self.add_widget(
+                HintLabel(
+                    "选择功能包并填写手机号，点击「订阅并支付」。\n"
+                    "同手机号再次购买将自动续费延长到期日（不必换账号）。\n"
+                    "现阶段为模拟支付；真实支付接入后由 Portal 回调 webhook 履约，终端点「同步已付订单」。"
+                )
             )
-        )
+        else:
+            self.add_widget(
+                HintLabel(
+                    "选择功能包并填写手机号，点击「订阅并支付」。\n"
+                    "同手机号再次购买将自动续费延长到期日（不必换账号）。"
+                )
+            )
 
         self._status = SemanticLabel("", kind="info")
         self.add_widget(self._status)

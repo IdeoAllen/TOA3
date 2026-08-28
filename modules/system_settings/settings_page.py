@@ -195,7 +195,18 @@ class SettingsPage(BasePage):
     def _factory_subscription(self) -> QWidget:
         from modules.system_settings.subscription_section import SubscriptionSection
 
-        return _wrap_scroll(SubscriptionSection(self))
+        widgets: list = []
+        try:
+            from services.license_manager import global_license_manager
+
+            if not global_license_manager.is_licensed():
+                from modules.system_settings.activation_section import ActivationSection
+
+                widgets.append(ActivationSection(self))
+        except Exception:
+            pass
+        widgets.append(SubscriptionSection(self))
+        return _wrap_scroll(*widgets)
 
     def _factory_menu(self) -> QWidget:
         from modules.system_settings.menu_section import MenuSection
