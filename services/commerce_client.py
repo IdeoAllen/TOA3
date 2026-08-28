@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""TOA 云服务 · 功能包订阅与假订单客户端。"""
+"""TOA 云服务 · 产品方案订阅与订单客户端（pack_id 为兼容别名 = plan_id）。"""
 from __future__ import annotations
 
 import json
@@ -77,24 +77,34 @@ def _post_json(path: str, body: dict, *, timeout: float = 15.0) -> Tuple[bool, d
 
 
 def list_sellable_packs() -> Tuple[bool, list[dict], dict, str]:
-    ok, data, err = _get_json("packs", query={"sellable": "true"})
+    ok, data, err = _get_json("plans", query={"sellable": "true"})
+    if not ok:
+        ok, data, err = _get_json("packs", query={"sellable": "true"})
     if not ok:
         return False, [], {}, err
-    packs = data.get("packs") or []
+    packs = data.get("plans") or data.get("packs") or []
     commerce = data.get("commerce") or {}
     return True, packs if isinstance(packs, list) else [], commerce, ""
 
 
+def list_sellable_plans() -> Tuple[bool, list[dict], dict, str]:
+    """产品方案列表（与 list_sellable_packs 同源）。"""
+    return list_sellable_packs()
+
+
 def create_order(
     *,
-    pack_id: str,
+    pack_id: str = "",
+    plan_id: str = "",
     customer_name: str,
     phone: str,
     machine_id: str = "",
     license_days: int | None = None,
 ) -> Tuple[bool, dict, str]:
+    pid = str(plan_id or pack_id or "").strip()
     body: dict[str, Any] = {
-        "pack_id": pack_id,
+        "plan_id": pid,
+        "pack_id": pid,
         "customer_name": customer_name,
         "phone": phone,
         "machine_id": machine_id,

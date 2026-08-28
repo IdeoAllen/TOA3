@@ -17,5 +17,5 @@ update:
   manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
   download_page: https://www.yczh.tech/downloads/
 window:
-  theme: vs2019_blue
+  theme: dms_copper
   default_fullscreen: false

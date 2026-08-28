@@ -69,10 +69,15 @@ def save_harness_config(updates: dict[str, Any]) -> Path:
 
 def resolve_harness_path(key: str, default: str = "") -> Path:
     raw = str(load_harness_config().get(key) or default).strip()
+    if not raw:
+        return Path()
     p = Path(raw)
     if not p.is_absolute():
         p = project_root() / p
-    return p.resolve()
+    try:
+        return p.resolve()
+    except OSError:
+        return p
 
 
 def web_url() -> str:

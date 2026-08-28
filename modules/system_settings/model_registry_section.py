@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame,
-    QGridLayout,
+    QFormLayout,
     QHBoxLayout,
     QSizePolicy,
     QVBoxLayout,
@@ -26,13 +25,13 @@ from services.model_ready_registry import ReadyStatus
 from widgets import (
     ComboBox,
     DataTable,
+    FormSection,
     HintLabel,
     LineEdit,
     PasswordLineEdit,
     PrimaryButton,
     SecondaryButton,
 )
-from widgets.themed_labels import SectionTitle
 
 _COLS = ("名称", "供应商", "类型", "URL", "模型名", "状态", "Key", "默认")
 
@@ -53,7 +52,7 @@ class ModelRegistrySection(QWidget):
 
         list_header = QHBoxLayout()
         list_header.setSpacing(8)
-        list_header.addWidget(SectionTitle("模型列表"))
+        list_header.addWidget(HintLabel("模型列表"))
         list_header.addStretch(1)
         list_header.addWidget(HintLabel("类型"))
         self._filter_combo = ComboBox()
@@ -78,26 +77,13 @@ class ModelRegistrySection(QWidget):
         lay.addWidget(self._table, 1)
         self._table.itemSelectionChanged.connect(self._on_row_selected)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFrameShadow(QFrame.Shadow.Plain)
-        lay.addWidget(sep)
-
-        detail = QWidget()
-        detail.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        detail_lay = QVBoxLayout(detail)
-        detail_lay.setContentsMargins(0, 6, 0, 0)
-        detail_lay.setSpacing(8)
+        edit_box = FormSection("编辑")
+        self._name_label = HintLabel("—")
+        self._name_label.setWordWrap(True)
+        edit_box.add_widget(self._name_label)
 
         head = QHBoxLayout()
-        head.setSpacing(12)
-        head.addWidget(SectionTitle("编辑"))
-        self._name_label = HintLabel("—")
-        self._name_label.setWordWrap(False)
-        self._name_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        head.addWidget(self._name_label, 1)
+        head.setSpacing(8)
         btn_save = PrimaryButton("保存")
         btn_save.clicked.connect(self._save_selected)
         head.addWidget(btn_save)
@@ -110,39 +96,26 @@ class ModelRegistrySection(QWidget):
         btn_clear = SecondaryButton("清除 Key")
         btn_clear.clicked.connect(self._clear_key)
         head.addWidget(btn_clear)
-        detail_lay.addLayout(head)
+        head.addStretch(1)
+        edit_box.add_layout(head)
 
         self._detail_hint = HintLabel("从上方表格选择一行进行编辑。")
         self._detail_hint.setWordWrap(True)
-        detail_lay.addWidget(self._detail_hint)
+        edit_box.add_widget(self._detail_hint)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8)
-        grid.setColumnStretch(1, 3)
-        grid.setColumnStretch(3, 2)
-
-        url_lbl = HintLabel("URL")
-        url_lbl.setWordWrap(False)
-        grid.addWidget(url_lbl, 0, 0)
+        form = QFormLayout()
+        form.setSpacing(8)
         self._url = LineEdit()
         self._url.setPlaceholderText("https://api.deepseek.com/v1 或 http://127.0.0.1:11434/v1")
-        grid.addWidget(self._url, 0, 1)
-        model_lbl = HintLabel("模型名")
-        model_lbl.setWordWrap(False)
-        grid.addWidget(model_lbl, 0, 2)
+        form.addRow("URL", self._url)
         self._model = LineEdit()
         self._model.setPlaceholderText("如 kimi-k2.6、deepseek-chat、dall-e-3")
-        grid.addWidget(self._model, 0, 3)
-
-        key_lbl = HintLabel("API Key")
-        key_lbl.setWordWrap(False)
-        grid.addWidget(key_lbl, 1, 0)
+        form.addRow("模型名", self._model)
         self._key = PasswordLineEdit()
         self._key.setPlaceholderText("留空保留原 Key；本地 Ollama 通常不需要")
-        grid.addWidget(self._key, 1, 1, 1, 3)
-        detail_lay.addLayout(grid)
-        lay.addWidget(detail, 0)
+        form.addRow("API Key", self._key)
+        edit_box.add_layout(form)
+        lay.addWidget(edit_box, 0)
 
         self.refresh(report=False)
 
@@ -202,6 +175,19 @@ class ModelRegistrySection(QWidget):
                 return meta
         return None
 
+    def _format_detail_hint(self, row: dict) -> str:
+        status = str(row.get("status") or "").strip()
+        code = row.get("status_code")
+        if code == ReadyStatus.READY:
+            return "已就绪，可设为默认或测试连通。"
+        if code == ReadyStatus.NEEDS_KEY:
+            return "请填写 API Key 后点保存。"
+        if code == ReadyStatus.NEEDS_ENDPOINT:
+            return "请填写 API 地址后点保存。"
+        if not row.get("catalog"):
+            return "本机权重只读，请在 data/models 管理文件。"
+        return status or "选中上方一行后可编辑。"
+
     def _on_row_selected(self) -> None:
         row = self._selected_row()
         if not row:
@@ -212,12 +198,7 @@ class ModelRegistrySection(QWidget):
         )
         self._url.setText(str(row.get("url") or ""))
         self._model.setText(str(row.get("model") or ""))
-        hint = str(row.get("hint") or "").strip()
-        status = str(row.get("status") or "")
-        if hint:
-            self._detail_hint.setText(f"{status} — {hint}")
-        else:
-            self._detail_hint.setText(status or "—")
+        self._detail_hint.setText(self._format_detail_hint(row))
         cap = str(row.get("capability") or "")
         pid = str(row.get("profile_id") or "")
         if row.get("catalog") and cap and pid:

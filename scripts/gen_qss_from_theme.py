@@ -692,7 +692,7 @@ QDateEdit::drop-down {{
 }}
 
 QLineEdit:focus {{
-    border: 2px solid {focus};
+    border: 1px solid {focus};
 }}
 
 QComboBox:focus, QSpinBox:focus, QDateEdit:focus {{
@@ -1131,6 +1131,14 @@ QLabel#ShellBrand {{
     font-size: 13pt;
     font-weight: 700;
     color: {header_fg};
+}}
+
+QPushButton#ShellLicenseChip {{
+    min-height: 24px;
+    max-height: 26px;
+    padding: 2px 10px;
+    font-size: 12px;
+    border-radius: 4px;
 }}
 
 QLabel#ShellLogo {{

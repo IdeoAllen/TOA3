@@ -5,8 +5,9 @@ from __future__ import annotations
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from core.base_page import BasePage
+from core.ui_spec import page_content_margins
 from modules.job_scheduler.jobs_section import JobsSection
-from widgets import HintLabel, PageHeader, ScrollPage
+from widgets import PageHeader
 
 
 class JobSchedulerPage(BasePage):
@@ -16,25 +17,18 @@ class JobSchedulerPage(BasePage):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = ScrollPage()
-        outer.addWidget(scroll)
+        m = page_content_margins()
+        outer.setContentsMargins(m[0], m[1], m[2], m[3])
+        outer.setSpacing(12)
 
-        scroll.add_widget(
+        outer.addWidget(
             PageHeader(
                 "任务",
-                "管理间隔定时任务：日志清理、状态心跳、打开模块、日程扫描等。",
-            )
-        )
-        scroll.add_widget(
-            HintLabel(
-                "任务在后台由调度器执行；本页可新增、编辑、启用/停用并立即试跑。"
-                "通知通道请到侧栏「通知」。"
+                "管理后台间隔任务：新增、试跑与启停；通知见侧栏「通知」。",
             )
         )
         self._section = JobsSection(self)
-        scroll.add_widget(self._section)
-        scroll.add_stretch(1)
+        outer.addWidget(self._section, 1)
         self.apply_page_focus_policy()
 
     def primary_focus_widget(self) -> QWidget | None:

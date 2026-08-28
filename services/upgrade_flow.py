@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""用户侧开通/升级：推断功能包、一键下单支付激活。"""
+"""用户侧开通/升级：推断产品方案、一键下单支付激活（一订单一授权码）。"""
 from __future__ import annotations
 
 from enum import Enum
@@ -111,7 +111,7 @@ def intent_headline(*, intent: UpgradeIntent, module_id: str = "") -> str:
         return f"升级后即可使用「{name}」"
     if name:
         return f"开通后即可使用「{name}」"
-    return "开通完整版，解锁全部办公工具"
+    return "开通正式版，解锁全部办公工具"
 
 
 def intent_window_title(*, intent: UpgradeIntent) -> str:
@@ -134,22 +134,56 @@ def _list_cloud_packs() -> Tuple[bool, list[dict[str, Any]], dict, str]:
     return list_sellable_packs()
 
 
+def _activate_purchased_key(key: str, *, name: str, phone: str) -> Tuple[bool, str]:
+    """支付/同步订单后激活：先解除本机旧码绑定，再联网激活。"""
+    from services.license_manager import global_license_manager
+
+    lm = global_license_manager
+    lm.prepare_commerce_activation(name=name, phone=phone)
+    act_ok, act_msg, _ = lm.activate_with_code(key)
+    if act_ok:
+        return True, act_msg or ""
+    ok, _, payload = lm.verify_license_code(key)
+    if ok and payload:
+        lm.prepare_commerce_activation(
+            name=str(payload.get("name") or name),
+            phone=str(payload.get("phone") or phone),
+        )
+        act_ok, act_msg, _ = lm.activate_with_code(key)
+    return bool(act_ok), str(act_msg or "激活失败")
+
+
+def _save_commerce_meta(*, plan_id: str, order_no: str) -> None:
+    from services.license_manager import global_license_manager
+
+    info = dict(global_license_manager.get_license_info() or {})
+    if plan_id:
+        info["plan_id"] = plan_id
+    if order_no:
+        info["last_order_no"] = order_no
+    global_license_manager.license_info.update(info)
+    global_license_manager.save_license()
+
+
 def purchase_pack(
     *,
-    pack_id: str,
+    pack_id: str = "",
+    plan_id: str = "",
     name: str,
     phone: str,
 ) -> Tuple[bool, str, dict[str, Any]]:
-    """创建订单 → 模拟/真实支付 → 激活。meta 含 order_no、pending_payment。"""
+    """创建订单 → 模拟/真实支付 → 激活。meta 含 order_no、plan_id、pending_payment。"""
     from services.commerce_client import create_order, pay_order
     from services.license_manager import global_license_manager
     from services.notify_bus import emit_license_changed
+    from services.product_plans import resolve_plan_id
 
     meta: dict[str, Any] = {
         "order_no": "",
         "pending_payment": False,
         "renewed": False,
-        "pack_id": str(pack_id or "").strip() or _DEFAULT_PACK,
+        "pack_id": "",
+        "plan_id": "",
     }
 
     phone = str(phone or "").strip()
@@ -159,11 +193,13 @@ def purchase_pack(
     if not name:
         name = "用户"
 
-    pid = meta["pack_id"]
+    pid = resolve_plan_id(plan_id=plan_id, pack_id=pack_id) or _DEFAULT_PACK
+    meta["plan_id"] = pid
+    meta["pack_id"] = pid
     mid = global_license_manager.get_machine_id()
 
     ok, order, err = create_order(
-        pack_id=pid,
+        plan_id=pid,
         customer_name=name,
         phone=phone,
         machine_id=mid,
@@ -189,13 +225,23 @@ def purchase_pack(
     if not key:
         return False, "支付成功但未返回授权码", meta
 
-    act_ok, act_msg, _ = global_license_manager.activate_with_code(key)
+    act_ok, act_msg = _activate_purchased_key(key, name=name, phone=phone)
     if not act_ok:
         return False, act_msg or "激活失败", meta
 
-    meta["renewed"] = "续费" in str((paid or {}).get("remark") or "")
+    _save_commerce_meta(plan_id=pid, order_no=order_no)
+    meta["renewed"] = False
     emit_license_changed()
     return True, global_license_manager.get_validity_text(), meta
+
+
+def purchase_plan(
+    *,
+    plan_id: str,
+    name: str,
+    phone: str,
+) -> Tuple[bool, str, dict[str, Any]]:
+    return purchase_pack(plan_id=plan_id, name=name, phone=phone)
 
 
 def purchase_one_click(
@@ -233,11 +279,16 @@ def sync_paid_order(*, order_no: str, phone: str) -> Tuple[bool, str, dict[str, 
     if not key:
         return False, "同步成功但未返回授权码", meta
 
-    act_ok, act_msg, _ = global_license_manager.activate_with_code(key)
+    profile = merge_buyer_profile()
+    buyer_name = str(profile.get("name") or "用户").strip() or "用户"
+    act_ok, act_msg = _activate_purchased_key(key, name=buyer_name, phone=phone)
     if not act_ok:
         return False, act_msg or "激活失败", meta
 
-    meta["renewed"] = "续费" in str((data or {}).get("remark") or "")
+    plan_id = str((data or {}).get("plan_id") or (data or {}).get("pack_id") or "").strip()
+    _save_commerce_meta(plan_id=plan_id, order_no=meta["order_no"])
+    meta["renewed"] = False
+    meta["plan_id"] = plan_id
     emit_license_changed()
     save_profile(phone=phone)
     return True, global_license_manager.get_validity_text(), meta
@@ -245,11 +296,12 @@ def sync_paid_order(*, order_no: str, phone: str) -> Tuple[bool, str, dict[str, 
 
 def build_offer(*, module_id: str = "", reason: str = "") -> dict[str, Any]:
     intent = classify_intent(reason=reason, module_id=module_id)
-    pack_id = resolve_pack_id(intent=intent, module_id=module_id, reason=reason)
+    plan_id = resolve_pack_id(intent=intent, module_id=module_id, reason=reason)
     profile = merge_buyer_profile()
     return {
         "intent": intent,
-        "pack_id": pack_id,
+        "pack_id": plan_id,
+        "plan_id": plan_id,
         "module_id": module_id,
         "module_name": module_display_name(module_id),
         "headline": intent_headline(intent=intent, module_id=module_id),

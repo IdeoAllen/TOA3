@@ -173,22 +173,36 @@ class LicenseManager:
         self._licensed_memo = None
         code_id = str(self.license_info.get("activated_code_id") or "")
         mid = self.get_machine_id()
-        if code_id:
-            try:
-                from services.dms_license_client import check_on_dms
+        if not code_id:
+            if self.is_standalone_mode():
+                return True, self.get_validity_text()
+            return False, "尚未联网激活，无法从云端校验。请前往「开通与续费」开通或粘贴授权码。"
+        try:
+            from services.dms_license_client import check_on_dms
 
-                net_ok, net_msg, _payload = check_on_dms(code_id, mid, blocking=True)
-                if not net_ok:
-                    return False, net_msg or "无法连接 TOA 云服务，请检查网络后重试"
-            except Exception as exc:
-                return False, f"联网校验失败：{exc}"
+            net_ok, net_msg, _payload = check_on_dms(code_id, mid, blocking=True)
+            if not net_ok:
+                hint = net_msg or "无法连接 TOA 云服务"
+                if "超时" in hint or "timeout" in hint.lower():
+                    return False, f"{hint}\n请检查网络或代理后重试。"
+                if "无法连接" in hint or "refused" in hint.lower():
+                    return False, f"{hint}\n请确认网络可达：{self._cloud_service_hint()}"
+                return False, hint
+        except Exception as exc:
+            return False, f"联网校验失败：{exc}\n请检查网络连接后重试。"
         self._licensed_memo = None
         ok, msg = self._activation_still_valid()
         if ok:
             return True, self.get_validity_text()
-        if not code_id and self.is_standalone_mode():
-            return True, self.get_validity_text()
         return False, msg or "校验后授权无效或尚未联网激活"
+
+    def _cloud_service_hint(self) -> str:
+        try:
+            from services.license_client import license_service_summary
+
+            return license_service_summary() or "toa-service.yczh.tech"
+        except Exception:
+            return "toa-service.yczh.tech"
 
     def reload_from_disk(self) -> bool:
         """从磁盘重新加载授权（激活后/切换账号后调用）。"""
@@ -814,6 +828,38 @@ class LicenseManager:
         payload["_features"] = features
         return True, "授权码有效", payload
 
+    def prepare_commerce_activation(self, *, name: str = "", phone: str = "") -> None:
+        """云订单/一键开通：解除本机旧 code_id 对新授权码的误拦（非手动粘贴旧码）。"""
+        name = str(name or "").strip()
+        phone = str(phone or "").strip()
+        if not name and not phone:
+            return
+        users = list(self.license_info.get("authorized_users") or [])
+        changed = False
+        for i, u in enumerate(users):
+            if not isinstance(u, dict):
+                continue
+            un = str(u.get("name") or "").strip()
+            up = str(u.get("phone") or "").strip()
+            matched = False
+            if phone and up == phone:
+                matched = True
+            elif name and un == name and (not phone or up == phone):
+                matched = True
+            if not matched:
+                continue
+            rec = dict(u)
+            if rec.get("code_id"):
+                rec["code_id"] = ""
+                changed = True
+            if rec.get("revoked"):
+                rec["revoked"] = False
+                changed = True
+            users[i] = rec
+        if changed:
+            self.license_info["authorized_users"] = users
+            self.save_license()
+
     def activate_with_code(self, license_key: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """验码并激活本机。联网模式下必须先通过 DMS，再写本地。"""
         ok, msg, payload = self.verify_license_code(license_key)
@@ -1285,7 +1331,7 @@ class LicenseManager:
         if _dev_grant_all_enabled():
             return "开发模式 · 已默认授权全部菜单"
         if self.is_standalone_mode():
-            return "单机基础版 · 离线可用（完整版请用授权码激活）"
+            return "体验版 · 离线可用（正式版请粘贴授权码）"
         ok, msg = self._activation_still_valid()
         if not ok:
             if msg and msg not in ("ok", "当前未授权"):
@@ -1322,6 +1368,10 @@ class LicenseManager:
 
     def deactivate_local(self) -> bool:
         """退出登录时清除本机激活态，保留名单。"""
+        return self.sign_out_local()
+
+    def sign_out_local(self) -> bool:
+        """退出登录：清除本机激活 / 单机会话，保留授权名单。"""
         users = list(self.license_info.get("authorized_users") or [])
         self.license_info.update(
             {
@@ -1336,13 +1386,133 @@ class LicenseManager:
                 "activated_code_id": "",
                 "activated_at": "",
                 "license_type": "unlicensed",
+                "runtime_mode": "",
                 "issue_date": None,
                 "online_status": "",
                 "last_online_ok_at": "",
             }
         )
         self.license_info["authorized_users"] = users
+        self._licensed_memo = None
         return self.save_license()
+
+    def is_current_authorized_user(self, name: str, phone: str = "") -> bool:
+        """是否已是当前登录的授权用户。"""
+        if not self.license_info:
+            self.load_license()
+        cur_name = str(self.license_info.get("user_name") or "").strip()
+        cur_phone = str(self.license_info.get("phone") or "").strip()
+        nm = str(name or "").strip()
+        ph = str(phone or "").strip()
+        if not nm or nm != cur_name:
+            return False
+        if ph and cur_phone and ph != cur_phone:
+            return False
+        return bool(self.is_licensed() or self.is_standalone_mode())
+
+    def list_switchable_users(self) -> List[Dict[str, Any]]:
+        """本机可切换的已登记用户（已发卡且未吊销）。"""
+        out: List[Dict[str, Any]] = []
+        for user in self.get_authorized_users():
+            if not isinstance(user, dict) or user.get("revoked"):
+                continue
+            if not str(user.get("license_key") or "").strip():
+                continue
+            out.append(dict(user))
+        return out
+
+    def switch_to_authorized_user(self, name: str, phone: str = "") -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """本机快速切换身份：离线验码并写入会话，不重复联网激活。"""
+        if not self.license_info:
+            self.load_license()
+        user = self.find_authorized_user(name, phone)
+        if not user:
+            return False, "未找到该用户", None
+        if user.get("revoked"):
+            return False, "该账号已吊销", None
+        nm = str(user.get("name") or "").strip()
+        ph = str(user.get("phone") or "").strip()
+        if self.is_current_authorized_user(nm, ph):
+            role = str(user.get("role") or self.license_info.get("role") or "user")
+            return True, "已是当前用户", {"name": nm, "phone": ph, "role": role}
+
+        key = str(user.get("license_key") or "").strip()
+        if not key:
+            return False, "该用户尚未签发授权码，请管理员在「系统设置 → 授权」发卡", None
+
+        ok, msg, payload = self.verify_license_code(key)
+        if not ok or not payload:
+            return False, msg or "授权码无效或已过期", None
+
+        name = str(payload.get("name") or nm).strip() or nm
+        phone = str(payload.get("phone") or ph).strip()
+        role = str(payload.get("role") or user.get("role") or "user").strip() or "user"
+        exp = str(payload.get("_expire_date") or payload.get("exp") or user.get("expire_date") or "")
+        features = normalize_menu_features(payload.get("_features") or payload.get("menus") or user.get("features"))
+        if role == "admin":
+            features = ["all"]
+        mid = self.get_machine_id()
+        now_s = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        code_id = str(payload.get("_code_id") or self._code_id(key))
+
+        users = list(self.license_info.get("authorized_users") or [])
+        for i, u in enumerate(users):
+            if not isinstance(u, dict):
+                continue
+            if str(u.get("name") or "").strip() == name and str(u.get("phone") or "").strip() == phone:
+                rec = dict(u)
+                rec.update(
+                    {
+                        "activated_machine_id": mid,
+                        "activated_at": now_s,
+                        "revoked": False,
+                        "features": list(features),
+                        "role": role,
+                        "expire_date": exp,
+                        "code_id": code_id,
+                        "code_fingerprint": self._code_fingerprint(key),
+                        "license_key": key,
+                    }
+                )
+                users[i] = rec
+                break
+
+        self.license_info["authorized_users"] = users
+        self.license_info.update(
+            {
+                "is_licensed": True,
+                "license_key": self._code_fingerprint(key),
+                "expire_date": exp,
+                "features": list(features),
+                "user_name": name,
+                "company": str(user.get("company") or ""),
+                "phone": phone,
+                "role": role,
+                "machine_id": mid,
+                "bound_machine_id": mid,
+                "issue_date": _today().strftime("%Y-%m-%d"),
+                "license_type": "admin" if role == "admin" else "professional",
+                "activated_code_id": code_id,
+                "activated_at": now_s,
+                "online_status": str(self.license_info.get("online_status") or "active"),
+                "runtime_mode": "network",
+                "plan_id": "all" if "all" in features else str(features[0] if features else ""),
+            }
+        )
+        if not self.save_license():
+            return False, "切换失败：无法保存本机授权", None
+        self._licensed_memo = None
+        try:
+            self.load_license()
+        except Exception:
+            pass
+        return True, f"已切换为 {name}", {
+            "name": name,
+            "phone": phone,
+            "role": role,
+            "expire_date": exp,
+            "features": list(features),
+        }
 
     # ------------------------------------------------------------------ #
     # 名单 CRUD

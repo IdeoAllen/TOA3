@@ -72,10 +72,10 @@ class ActivationSection(FormSection):
         self._status = SemanticLabel("", kind="info")
         self.add_widget(self._status)
         self.add_widget(
-            HintLabel("推荐：一键开通完整版，支付后立即生效，无需粘贴授权码。")
+            HintLabel("推荐：一键开通正式版，支付后立即生效，无需粘贴授权码。")
         )
 
-        self._quote = SemanticLabel("正在获取推荐套餐…", kind="info")
+        self._quote = SemanticLabel("正在获取推荐产品方案…", kind="info")
         self.add_widget(self._quote)
 
         self._phone = LineEdit()
@@ -96,6 +96,10 @@ class ActivationSection(FormSection):
         self._btn_code = SecondaryButton("我有授权码")
         self._btn_code.clicked.connect(self._toggle_code_form)
         row.addWidget(self._btn_code)
+        btn_more = SecondaryButton("全部产品方案")
+        btn_more.setToolTip("向下查看其它可购产品方案")
+        btn_more.clicked.connect(self._scroll_to_more_packs)
+        row.addWidget(btn_more)
         row.addStretch(1)
         self.add_layout(row)
 
@@ -119,6 +123,11 @@ class ActivationSection(FormSection):
 
         self.refresh_status()
         self._load_quote()
+
+    def _scroll_to_more_packs(self) -> None:
+        from core.user_messages import show_info
+
+        show_info(self._page, "请向下滚动，在「全部产品方案」区选择其它方案。")
 
     def _toggle_code_form(self) -> None:
         self._show_code_form = not self._show_code_form
@@ -158,12 +167,12 @@ class ActivationSection(FormSection):
             return
         pack_id = self._pack_id or _DEFAULT_PACK
         if not ok:
-            self._quote.setText("推荐套餐 · 请联网后重试")
+            self._quote.setText("推荐产品方案 · 请联网后重试")
             self._btn_buy.setText("一键开通")
             return
-        name = str(quote.get("pack_name") or pack_id)
+        name = str(quote.get("plan_name") or quote.get("pack_name") or pack_id)
         price = int(quote.get("price_yuan") or 0)
-        days = int(quote.get("license_days") or 365)
+        days = int(quote.get("validity_days") or quote.get("license_days") or 365)
         self._quote.setText(f"推荐 {name} · ¥{price} / {days} 天")
         self._btn_buy.setText(primary_action_label(price_yuan=price))
 
@@ -191,13 +200,20 @@ class ActivationSection(FormSection):
         if not ok:
             data = meta if isinstance(meta, dict) else {}
             if data.get("pending_payment"):
-                show_warning(self._page, msg or "请在 Portal 完成支付后，到下方「选择套餐」同步订单。")
+                show_warning(self._page, msg or "请在 Portal 完成支付后重试，或联系管理员。")
             else:
                 show_error(self._page, msg or "开通失败")
             self._page.report_status("开通失败")
             return
         self._profile = merge_buyer_profile()
         self.refresh_status()
+        from app.app_state import AppState
+        from services.notify_bus import emit_license_changed
+
+        info = self._lm.get_license_info()
+        uname = str(info.get("user_name") or self._profile.get("name") or "用户").strip() or "用户"
+        AppState.get().set_user(uname, uname, role=str(info.get("role") or "user"))
+        emit_license_changed()
         show_success(self._page, "开通成功，已刷新授权。")
         self._page.report_status("已切换为网络授权版")
 

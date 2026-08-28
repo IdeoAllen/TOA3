@@ -50,6 +50,12 @@ def get_system_info() -> dict:
 
 
 def logo_path() -> Path | None:
+    from services.app_branding import resolve_brand_logo_png
+
+    dev_brand = resolve_brand_logo_png()
+    if dev_brand is not None:
+        return dev_brand
+
     brand = _brand_block()
     rel = str(brand.get("app_logo_path") or "").strip()
     # 顶栏优先高清 PNG（SVG 内嵌文字在 QtSvg 下易发糊）

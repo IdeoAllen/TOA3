@@ -59,7 +59,7 @@ class UpgradeOfferDialog(BaseDialog):
         super().__init__(parent)
         self._offer = build_offer(module_id=module_id, reason=reason)
         self._intent: UpgradeIntent = self._offer["intent"]
-        self._pack_id = str(self._offer["pack_id"])
+        self._pack_id = str(self._offer.get("plan_id") or self._offer["pack_id"])
         self._completed = False
         self._busy = False
 
@@ -85,7 +85,8 @@ class UpgradeOfferDialog(BaseDialog):
 
         self._actions = DialogButtonRow()
         self._btn_later = self._actions.add_secondary("稍后再说", self.reject)
-        self._btn_more = self._actions.add_secondary("更多套餐", self._open_subscription)
+        self._btn_more = self._actions.add_secondary("全部产品方案", self._open_subscription)
+        self._btn_more.setToolTip("打开系统设置 · 开通与续费，查看并选择其它产品方案")
         self._btn_pay = self._actions.add_primary("一键开通", self._on_pay)
         root.addWidget(self._actions)
 
@@ -103,12 +104,12 @@ class UpgradeOfferDialog(BaseDialog):
     def _apply_quote(self, ok: bool, quote: dict, err: str) -> None:
         if self._busy:
             return
-        pack_name = str(quote.get("pack_name") or self._pack_id)
+        pack_name = str(quote.get("plan_name") or quote.get("pack_name") or self._pack_id)
         if not ok:
             self._quote.setText(f"{pack_name} · 请联网后重试")
             self._btn_pay.setEnabled(True)
             return
-        days = int(quote.get("license_days") or 365)
+        days = int(quote.get("validity_days") or quote.get("license_days") or 365)
         price = int(quote.get("price_yuan") or 0)
         self._quote.setText(f"{pack_name} · ¥{price} / {days} 天")
         self._btn_pay.setText(primary_action_label(intent=self._intent, price_yuan=price))

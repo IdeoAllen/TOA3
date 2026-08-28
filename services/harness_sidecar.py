@@ -47,10 +47,10 @@ def _cfg() -> dict[str, Any]:
     return load_harness_config()
 
 
-def is_running() -> bool:
+def is_running(*, timeout: float = 1.5) -> bool:
     url = web_url()
     try:
-        with urllib.request.urlopen(url, timeout=1.5) as resp:
+        with urllib.request.urlopen(url, timeout=max(0.3, float(timeout))) as resp:
             return resp.status < 500
     except (urllib.error.URLError, OSError, ValueError):
         return False

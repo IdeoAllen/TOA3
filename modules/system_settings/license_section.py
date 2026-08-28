@@ -2,7 +2,7 @@
 """系统设置 · 授权与云服务联动。"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
@@ -15,25 +15,40 @@ from services.notify_bus import emit_license_changed
 from widgets import (
     DataTable,
     DangerButton,
+    FormSection,
     HintLabel,
     LineEdit,
     PrimaryButton,
     SecondaryButton,
     SemanticLabel,
-    TabWidget,
 )
 from widgets.list_edit import FormEditDialog, confirm_delete
 
+
+class _CloudCheckWorker(QObject):
+    finished = Signal(bool, str)
+
+    def run(self) -> None:
+        try:
+            ok, msg = global_license_manager.force_cloud_license_check()
+            self.finished.emit(bool(ok), str(msg or ""))
+        except Exception as exc:
+            self.finished.emit(False, str(exc))
+
+
+class _CloudSyncWorker(QObject):
+    finished = Signal(object)
+
+    def run(self) -> None:
+        try:
+            self.finished.emit(global_license_manager.sync_all_authorized_users_to_dms())
+        except Exception as exc:
+            self.finished.emit(exc)
+
+
 _USER_COLS = ("姓名", "手机", "角色", "有效期", "状态", "功能权限")
 
-_CLOUD_HINT = (
-    "【本机 ↔ TOA 云服务】\n"
-    "· 「授权用户」= 本机操作用户名单（发卡/续期/吊销），数据在本机 license。\n"
-    "· 「同步到云服务」= 推送名单供激活校验与审计；订单与 SKU 定价在运营台维护。\n"
-    "· 「联网校验」= 从云拉回最新授权写回本机 license.json，侧栏权限随即刷新。\n"
-    "· 机器 ID 用于绑机；商业新购/续费请用「激活与订阅」或拦截弹窗一键开通。\n"
-    "· 功能包 SKU、定价、订单台账：https://toa-service.yczh.tech/admin/"
-)
+_CLOUD_HINT = "云服务地址与机器 ID 只读；产品方案与订单在 TOA 运营台维护。"
 
 
 class LicenseSection(QWidget):
@@ -44,6 +59,9 @@ class LicenseSection(QWidget):
         self._page = parent
         self._lm = global_license_manager
         self._users: list[dict] = []
+        self._thread: QThread | None = None
+        self._worker: QObject | None = None
+        self._cloud_busy = False
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root = QVBoxLayout(self)
@@ -53,73 +71,53 @@ class LicenseSection(QWidget):
         self._status = SemanticLabel("", kind="info")
         root.addWidget(self._status)
 
-        self._tabs = TabWidget()
-        self._tabs.setDocumentMode(True)
-        self._tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._tabs.addTab(self._build_users_tab(), "授权用户")
-        self._tabs.addTab(self._build_cloud_tab(), "云服务连接")
-        root.addWidget(self._tabs, 1)
+        users = FormSection("授权用户")
+        users.add_widget(HintLabel("本机名单维护；同步推云、联网校验拉回。"))
 
-        self._refresh_status()
-        self._reload_list()
-
-    def _build_users_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 4, 0, 0)
-        lay.setSpacing(6)
-
-        lay.addWidget(
-            HintLabel(
-                "维护本机操作用户；改完后点「同步到云服务」写入云端，或点「联网校验」从云端拉回。"
-                "套餐与定价请在 TOA 运营台维护，不在此页编辑。"
-            )
-        )
-
-        tool = QHBoxLayout()
-        tool.setSpacing(8)
+        tool_crud = QHBoxLayout()
+        tool_crud.setSpacing(8)
         btn_add = PrimaryButton("新增用户")
         btn_add.clicked.connect(self._on_add)
-        tool.addWidget(btn_add)
+        tool_crud.addWidget(btn_add)
         btn_edit = SecondaryButton("编辑")
         btn_edit.clicked.connect(self._on_edit)
-        tool.addWidget(btn_edit)
+        tool_crud.addWidget(btn_edit)
         btn_del = DangerButton("删除")
         btn_del.clicked.connect(self._on_delete)
-        tool.addWidget(btn_del)
-        tool.addStretch(1)
-        btn_refresh = SecondaryButton("刷新名单")
+        tool_crud.addWidget(btn_del)
+        btn_refresh = SecondaryButton("刷新")
         btn_refresh.clicked.connect(self._reload_list)
-        tool.addWidget(btn_refresh)
+        tool_crud.addWidget(btn_refresh)
+        tool_crud.addStretch(1)
+        users.add_layout(tool_crud)
+
+        tool_cloud = QHBoxLayout()
+        tool_cloud.addStretch(1)
         btn_sync = PrimaryButton("同步到云服务")
         btn_sync.clicked.connect(self._on_sync_dms)
-        tool.addWidget(btn_sync)
+        tool_cloud.addWidget(btn_sync)
+        self._btn_sync = btn_sync
         btn_check = SecondaryButton("联网校验")
         btn_check.clicked.connect(self._on_check)
-        tool.addWidget(btn_check)
-        lay.addLayout(tool)
+        tool_cloud.addWidget(btn_check)
+        self._btn_check = btn_check
+        users.add_layout(tool_cloud)
 
         self._user_table = DataTable()
         self._user_table.set_headers(list(_USER_COLS))
-        self._user_table.setMinimumHeight(320)
+        self._user_table.setMinimumHeight(280)
         self._user_table.itemDoubleClicked.connect(self._on_edit)
-        lay.addWidget(self._user_table, 1)
-        return w
+        users.add_widget(self._user_table, 1)
+        root.addWidget(users, 1)
 
-    def _build_cloud_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 4, 0, 0)
-        lay.setSpacing(8)
-        lay.addWidget(HintLabel(_CLOUD_HINT))
-
+        cloud = FormSection("云服务连接")
+        cloud.add_widget(HintLabel(_CLOUD_HINT))
         env = QFormLayout()
         env.setSpacing(6)
         self._service_url = LineEdit()
         self._service_url.setReadOnly(True)
         self._service_url.setText(license_service_summary())
         env.addRow("云服务 API", self._service_url)
-
         mid_row = QHBoxLayout()
         self._machine_id = LineEdit()
         self._machine_id.setReadOnly(True)
@@ -129,9 +127,11 @@ class LicenseSection(QWidget):
         btn_copy.clicked.connect(self._copy_machine_id)
         mid_row.addWidget(btn_copy)
         env.addRow("机器 ID", mid_row)
-        lay.addLayout(env)
-        lay.addStretch(1)
-        return w
+        cloud.add_layout(env)
+        root.addWidget(cloud)
+
+        self._refresh_status()
+        self._reload_list()
 
     def _copy_machine_id(self) -> None:
         QGuiApplication.clipboard().setText(self._machine_id.text().strip())
@@ -163,11 +163,7 @@ class LicenseSection(QWidget):
         self._status.setProperty("class", f"semantic-{kind}")
         self._status.style().unpolish(self._status)
         self._status.style().polish(self._status)
-        cloud = "云服务已确认" if licensed and not self._lm.is_standalone_mode() else ""
-        parts = [f"授权状态：{text}"]
-        if cloud:
-            parts.append(cloud)
-        self._status.setText(" · ".join(parts))
+        self._status.setText(text)
 
     def _reload_list(self) -> None:
         self._users = self._lm.search_authorized_users("")
@@ -297,22 +293,75 @@ class LicenseSection(QWidget):
         self._page.report_status("已删除授权用户", level=StatusLevel.SUCCESS)
         self._emit_nav()
 
+    def _set_cloud_busy(self, busy: bool, label: str = "") -> None:
+        self._cloud_busy = busy
+        for btn in (getattr(self, "_btn_sync", None), getattr(self, "_btn_check", None)):
+            if btn is not None:
+                btn.setEnabled(not busy)
+        if busy:
+            self._page.report_status(label or "云服务操作中…")
+        elif label:
+            self._page.report_status(label)
+
+    def _cleanup_worker(self) -> None:
+        if self._worker is not None:
+            self._worker.deleteLater()
+            self._worker = None
+        if self._thread is not None:
+            self._thread.deleteLater()
+            self._thread = None
+
+    def _start_worker(self, worker: QObject, *, busy_label: str, on_done) -> None:
+        if self._cloud_busy or (self._thread is not None and self._thread.isRunning()):
+            show_warning(self._page, "云服务操作进行中，请稍候。")
+            return
+        self._set_cloud_busy(True, busy_label)
+        self._thread = QThread(self)
+        self._worker = worker
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+
+        def _finished(*args) -> None:
+            self._set_cloud_busy(False)
+            try:
+                on_done(*args)
+            finally:
+                if self._thread is not None:
+                    self._thread.quit()
+
+        worker.finished.connect(_finished)
+        self._thread.finished.connect(self._cleanup_worker)
+        self._thread.start()
+
     def _on_sync_dms(self) -> None:
-        def _run() -> None:
-            ok_n, fail_n, summary = self._lm.sync_all_authorized_users_to_dms()
+        worker = _CloudSyncWorker()
+
+        def _done(result) -> None:
+            if isinstance(result, Exception):
+                show_error(self._page, f"同步失败：{result}")
+                return
+            ok_n, fail_n, summary = result
             show_info(self._page, f"同步完成：成功 {ok_n}，失败 {fail_n}\n{summary}")
             self._emit_nav()
+            self._page.report_status("云服务同步完成", level=StatusLevel.SUCCESS)
 
-        self._page.run_safe(_run, success_status="云服务同步完成")
+        self._start_worker(worker, busy_label="正在同步到云服务…", on_done=_done)
 
     def _on_check(self) -> None:
-        def _run() -> None:
-            ok, msg = self._lm.force_cloud_license_check()
+        worker = _CloudCheckWorker()
+
+        def _done(ok: bool, msg: str) -> None:
             self._refresh_status()
             self._emit_nav()
             if ok:
                 show_info(self._page, msg or self._lm.get_validity_text())
+                self._page.report_status("联网校验完成", level=StatusLevel.SUCCESS)
             else:
-                show_error(self._page, msg or "联网校验未通过")
+                show_error(
+                    self._page,
+                    msg or "联网校验未通过",
+                    title="联网校验失败",
+                )
+                self._page.report_status("联网校验失败", level=StatusLevel.WARNING)
 
-        self._page.run_safe(_run, success_status="联网校验完成")
+        self._start_worker(worker, busy_label="正在联网校验…", on_done=_done)

@@ -12,6 +12,7 @@ from services.harness_guide import PRODUCT_POSITION
 from services.harness_setup import discover_runtime, init_dsh_home
 from services.harness_sidecar import start
 from services.harness_surface import set_surface_mode, surface_mode
+from services.harness_task_runner import HarnessTaskRunner
 from widgets import CheckBox, ComboBox, FormSection, HintLabel, LineEdit, PasswordLineEdit, PrimaryButton, SecondaryButton, SpinBox
 
 
@@ -19,6 +20,7 @@ class HarnessSection(QWidget):
     def __init__(self, parent: BasePage) -> None:
         super().__init__(parent)
         self._page = parent
+        self._task_runner = HarnessTaskRunner(self)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
@@ -78,6 +80,7 @@ class HarnessSection(QWidget):
         btn_start = SecondaryButton("测试启动")
         btn_start.clicked.connect(self._test_start)
         row.addWidget(btn_start)
+        self._btn_test_start = btn_start
         btn_open = SecondaryButton("打开编码智能体")
         btn_open.clicked.connect(self._open_harness_page)
         row.addWidget(btn_open)
@@ -127,11 +130,22 @@ class HarnessSection(QWidget):
         self._page.report_status("Harness 路径已保存")
 
     def _test_start(self) -> None:
-        def _run() -> None:
-            ok, msg = start()
-            show_info(self, msg) if ok else show_warning(self, msg)
+        if self._task_runner.is_running():
+            show_warning(self, "测试启动进行中，请稍候。")
+            return
+        self._btn_test_start.setEnabled(False)
+        self._page.report_status("正在测试启动 Harness…")
 
-        self._page.run_safe(_run, title="启动失败")
+        def _done(ok: bool, payload) -> None:
+            self._btn_test_start.setEnabled(True)
+            if ok:
+                success, msg = payload
+                (show_info if success else show_warning)(self, msg)
+                self._page.report_status(msg)
+            else:
+                show_warning(self, str(payload or "启动失败"))
+
+        self._task_runner.run(start, on_done=_done)
 
     def _open_harness_page(self) -> None:
         win = self._page.window()

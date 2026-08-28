@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QTimer, QUrl, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QSizePolicy, QVBoxLayout, QWidget
 
@@ -30,11 +30,19 @@ from services.harness_sidecar import (
     start,
     stop,
 )
+from services.harness_task_runner import HarnessTaskRunner
 from services.harness_surface import open_in_system_browser, prefer_browser
 from services.harness_web_bridge import inject_prompt
 from services.os_open import open_in_file_manager
 from services.storage_paths import module_output_dir
 from widgets import DangerButton, HintLabel, PrimaryButton, SecondaryButton
+
+
+def _idle_hint_web_unavailable() -> str:
+    return (
+        "内嵌浏览器不可用（打包环境可能未含 Qt WebEngine）。\n"
+        "服务已启动时请点「浏览器打开」使用 Harness。"
+    )
 
 
 def _webengine_available() -> bool:
@@ -51,12 +59,18 @@ class HarnessAgentPage(BasePage):
         super().__init__(parent)
         self._view = None
         self._profile = None
-        self._web_ready = _webengine_available()
+        self._web_ready: bool | None = None
         self._pending_feed_inject = False
         self._ui_external_only = False
         self._page_state = HarnessPageState.CHECKING
         self._web_load_ok = False
         self._load_status_reported = False
+        self._task_runner = HarnessTaskRunner(self)
+        self._service_busy = False
+        self._probe_watchdog: QTimer | None = None
+        self._web_load_watchdog: QTimer | None = None
+        self._view_init_watchdog: QTimer | None = None
+        self._view_init_pending = False
 
         m = page_content_margins()
         outer = QVBoxLayout(self)
@@ -178,41 +192,192 @@ class HarnessAgentPage(BasePage):
 
     def on_enter(self) -> None:
         self._apply_pending_feed()
-        state, msg = probe_page_state()
-        if state == HarnessPageState.RUNNING:
-            self._apply_page_state(state, msg)
-            if self._web_load_ok and self._view is not None:
-                self._ensure_view_visible()
-            else:
-                self._present_running_surface()
+        local_state, local_msg = probe_page_state(check_running=False)
+        if local_state in (HarnessPageState.NOT_INSTALLED, HarnessPageState.NEEDS_KEY):
+            self._apply_page_state(local_state, local_msg)
             return
-        if state == HarnessPageState.STOPPED:
-            self._apply_page_state(state, msg)
-            cfg = load_harness_config()
-            if bool(cfg.get("auto_start", True)):
-                self._on_start(silent=True)
-            return
-        self._apply_page_state(state, msg)
+        self._apply_page_state(local_state, local_msg)
+        QTimer.singleShot(0, lambda: self._confirm_running_async(auto_start_after=True))
 
     def on_leave(self) -> None:
-        pass
+        self._stop_probe_watchdog()
+        self._stop_web_load_watchdog()
+        self._stop_view_init_watchdog()
+        if self._view is not None:
+            try:
+                self._view.stop()
+            except Exception:
+                pass
+            try:
+                self._view.setUrl(QUrl("about:blank"))
+            except Exception:
+                pass
+
+    def _set_service_busy(self, busy: bool, label: str = "") -> None:
+        self._service_busy = busy
+        for btn in (
+            self._btn_start,
+            self._btn_stop,
+            self._btn_feed,
+            self._btn_browser,
+            self._btn_more,
+        ):
+            btn.setEnabled(not busy)
+        if busy and label:
+            self._status_label.setText(label)
+
+    def _run_harness_task(
+        self,
+        fn,
+        *,
+        busy_label: str,
+        on_ok,
+        on_err=None,
+    ) -> None:
+        if self._task_runner.is_running():
+            return
+
+        def _done(ok: bool, payload) -> None:
+            self._set_service_busy(False)
+            if ok:
+                on_ok(payload)
+                state = self._page_state
+                if state in (HarnessPageState.RUNNING, HarnessPageState.STOPPED):
+                    self._sync_service_bar(state)
+            elif on_err:
+                on_err(payload)
+            else:
+                show_warning(self, str(payload or "操作失败"))
+                state = self._page_state
+                if state in (HarnessPageState.RUNNING, HarnessPageState.STOPPED):
+                    self._sync_service_bar(state)
+
+        self._set_service_busy(True, busy_label)
+        if not self._task_runner.run(fn, on_done=_done):
+            self._set_service_busy(False)
+            show_warning(self, "上一项操作仍在进行，请稍候。")
+
+    def _stop_web_load_watchdog(self) -> None:
+        if self._web_load_watchdog is not None:
+            self._web_load_watchdog.stop()
+            self._web_load_watchdog.deleteLater()
+            self._web_load_watchdog = None
+
+    def _start_web_load_watchdog(self) -> None:
+        self._stop_web_load_watchdog()
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._on_web_load_timeout)
+        timer.start(15000)
+        self._web_load_watchdog = timer
+
+    def _on_web_load_timeout(self) -> None:
+        self._web_load_watchdog = None
+        if self._web_load_ok or self._page_state != HarnessPageState.RUNNING:
+            return
+        self._set_idle_hint(
+            "内嵌加载超时。\n请点「浏览器打开」使用 Harness，或在「更多」中重启服务。"
+        )
+        self.report_status("Harness 内嵌加载超时，可改用浏览器", level=StatusLevel.WARNING)
+
+    def _stop_view_init_watchdog(self) -> None:
+        if self._view_init_watchdog is not None:
+            self._view_init_watchdog.stop()
+            self._view_init_watchdog.deleteLater()
+            self._view_init_watchdog = None
+
+    def _start_view_init_watchdog(self) -> None:
+        self._stop_view_init_watchdog()
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._on_view_init_timeout)
+        timer.start(8000)
+        self._view_init_watchdog = timer
+
+    def _on_view_init_timeout(self) -> None:
+        self._view_init_watchdog = None
+        if self._view is not None or self._page_state != HarnessPageState.RUNNING or self._ui_external_only:
+            return
+        self._view_init_pending = False
+        st = health_status()
+        ext = st.get("running") and not st.get("owned")
+        hint = (
+            "外部 Harness 已运行，内嵌页初始化较慢。\n请点「浏览器打开」直接使用。"
+            if ext
+            else "内嵌浏览器初始化较慢。\n请点「浏览器打开」，或稍后在「更多」中重启服务。"
+        )
+        self._set_idle_hint(hint)
+        self.report_status("内嵌页未就绪，建议浏览器打开", level=StatusLevel.WARNING)
+
+    def _schedule_embed_load(self) -> None:
+        QTimer.singleShot(80, self._present_running_surface)
+
+    def _set_idle_hint(self, text: str, *, visible: bool = True) -> None:
+        self._placeholder.setText(text)
+        self._placeholder.setVisible(visible)
 
     def apply_pending_feed_from_stash(self) -> None:
         self._apply_pending_feed()
 
     def _run_probe(self, *, auto_start_after: bool = False) -> None:
-        self._apply_page_state(HarnessPageState.CHECKING, "正在检测 Harness…")
-        self.run_safe(
-            probe_page_state,
-            title="检测 Harness",
-            on_success=lambda r: self._after_probe(r, auto_start_after),
+        self._run_probe_async(auto_start_after=auto_start_after)
+
+    def _stop_probe_watchdog(self) -> None:
+        if self._probe_watchdog is not None:
+            self._probe_watchdog.stop()
+            self._probe_watchdog.deleteLater()
+            self._probe_watchdog = None
+
+    def _start_probe_watchdog(self) -> None:
+        self._stop_probe_watchdog()
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._on_probe_watchdog)
+        timer.start(4000)
+        self._probe_watchdog = timer
+
+    def _on_probe_watchdog(self) -> None:
+        self._probe_watchdog = None
+        if self._page_state != HarnessPageState.CHECKING:
+            return
+        self._set_service_busy(False)
+        self._apply_page_state(
+            HarnessPageState.NOT_INSTALLED,
+            "检测超时。若已安装 WorkBuddy/Node，请点「一键安装」或「高级设置」配置路径。",
         )
+
+    def _run_probe_async(self, *, auto_start_after: bool = False) -> None:
+        self._confirm_running_async(auto_start_after=auto_start_after)
+
+    def _confirm_running_async(self, *, auto_start_after: bool = False) -> None:
+        if self._task_runner.is_running():
+            QTimer.singleShot(
+                300,
+                lambda: self._confirm_running_async(auto_start_after=auto_start_after),
+            )
+            return
+
+        def _work():
+            return probe_page_state(check_running=True, running_timeout=0.5)
+
+        def _done(ok: bool, payload) -> None:
+            if not ok:
+                show_warning(self, str(payload or "检测失败"))
+                return
+            self._after_probe(payload, auto_start_after)
+
+        if not self._task_runner.run(_work, on_done=_done):
+            QTimer.singleShot(
+                300,
+                lambda: self._confirm_running_async(auto_start_after=auto_start_after),
+            )
 
     def _after_probe(
         self,
         result: tuple[HarnessPageState, str],
         auto_start_after: bool,
     ) -> None:
+        self._set_service_busy(False)
         state, msg = result
         self._apply_page_state(state, msg)
         if auto_start_after and state == HarnessPageState.STOPPED:
@@ -223,7 +388,12 @@ class HarnessAgentPage(BasePage):
             if self._web_load_ok and self._view is not None:
                 self._ensure_view_visible()
             else:
-                self._present_running_surface()
+                self._schedule_embed_load()
+
+    def _webengine_ready(self) -> bool:
+        if self._web_ready is None:
+            self._web_ready = _webengine_available()
+        return bool(self._web_ready)
 
     def _apply_page_state(self, state: HarnessPageState, message: str = "") -> None:
         prev = self._page_state
@@ -231,6 +401,8 @@ class HarnessAgentPage(BasePage):
 
         if state in (HarnessPageState.RUNNING, HarnessPageState.STOPPED) and prev == state:
             self._sync_service_bar(state)
+            if state == HarnessPageState.RUNNING and not self._web_load_ok and not self._ui_external_only:
+                self._schedule_embed_load()
             return
 
         if state == HarnessPageState.CHECKING:
@@ -240,16 +412,15 @@ class HarnessAgentPage(BasePage):
             self._btn_stop.hide()
             self._btn_feed.setEnabled(False)
             self._btn_browser.setEnabled(False)
-            if not self._web_load_ok:
-                self._show_body_gate()
-                self._setup_gate.show_state(state, message)
+            self._show_body_gate()
+            self._setup_gate.show_state(state, message)
             return
 
         if state in (HarnessPageState.NOT_INSTALLED, HarnessPageState.NEEDS_KEY):
             self._service_bar.hide()
             self._show_body_gate()
             self._setup_gate.show_state(state, message)
-            self._placeholder.show()
+            self._set_idle_hint("点击「启动服务」后，Harness 界面将显示在此处")
             return
 
         self._service_bar.show()
@@ -268,15 +439,23 @@ class HarnessAgentPage(BasePage):
                 self._status_label.setText("● 外部实例 · 运行中")
             self._btn_start.hide()
             self._btn_stop.show()
-            self._btn_feed.setEnabled(True)
-            self._btn_browser.setEnabled(True)
+            self._btn_feed.setEnabled(not self._service_busy)
+            self._btn_browser.setEnabled(not self._service_busy)
+            if self._web_load_ok and self._view is not None and not self._ui_external_only:
+                self._placeholder.hide()
+            elif not self._ui_external_only:
+                if not self._webengine_ready():
+                    self._set_idle_hint(_idle_hint_web_unavailable())
+                else:
+                    self._set_idle_hint("Harness 加载中…")
+                    self._ensure_view()
         else:
             self._status_label.setText("○ 服务未启动")
             self._btn_stop.hide()
             self._btn_start.show()
             self._btn_feed.setEnabled(False)
             self._btn_browser.setEnabled(False)
-            self._placeholder.show()
+            self._set_idle_hint("点击「启动服务」后，Harness 界面将显示在此处")
 
         if self._ui_external_only:
             self._btn_browser.setText("切回内嵌")
@@ -298,13 +477,14 @@ class HarnessAgentPage(BasePage):
             if state == HarnessPageState.STOPPED:
                 show_info(self, "点击「启动服务」即可使用。")
 
-        self.run_safe(install_harness_runtime, title="安装 DeepSeek Harness", on_success=_after)
+        self._run_harness_task(
+            install_harness_runtime,
+            busy_label="正在安装 Harness…",
+            on_ok=_after,
+        )
 
     def _after_key_saved(self) -> None:
-        state, msg = probe_page_state()
-        self._apply_page_state(state, msg)
-        if state == HarnessPageState.STOPPED:
-            self._on_start(silent=False)
+        self._run_probe_async(auto_start_after=True)
 
     def _apply_pending_feed(self) -> None:
         feed = peek_feed()
@@ -352,44 +532,83 @@ class HarnessAgentPage(BasePage):
 
     def _show_embed_surface(self) -> None:
         self._ui_external_only = False
-        if is_running():
-            self._ensure_view()
-            if self._web_load_ok:
-                self._ensure_view_visible()
-            else:
-                self._load_web()
-        self._apply_page_state(probe_page_state()[0])
+
+        def _after(result: tuple[HarnessPageState, str]) -> None:
+            state, _ = result
+            if state == HarnessPageState.RUNNING:
+                self._ensure_view()
+                if self._web_load_ok:
+                    self._ensure_view_visible()
+                else:
+                    self._load_web()
+            self._apply_page_state(state)
+
+        self._run_harness_task(
+            lambda: probe_page_state(running_timeout=0.8),
+            busy_label="正在检测 Harness…",
+            on_ok=_after,
+        )
 
     def _present_running_surface(self) -> None:
+        QTimer.singleShot(0, self._present_running_surface_impl)
+
+    def _present_running_surface_impl(self) -> None:
+        if not is_running(timeout=0.8):
+            return
         if prefer_browser() and not self._ui_external_only:
             open_in_system_browser()
             self._ui_external_only = True
-        else:
+            self._apply_page_state(HarnessPageState.RUNNING)
+            return
+        if not self._webengine_ready():
             self._ui_external_only = False
-            self._ensure_view()
-            if not self._web_load_ok:
-                self._load_web()
-            else:
-                self._ensure_view_visible()
+            self._show_body_web()
+            self._set_idle_hint(_idle_hint_web_unavailable())
+            self._apply_page_state(HarnessPageState.RUNNING)
+            return
+        self._ui_external_only = False
+        QTimer.singleShot(0, self._deferred_ensure_view)
+
+    def _deferred_ensure_view(self) -> None:
+        if not is_running(timeout=0.5):
+            return
+        if self._page_state != HarnessPageState.RUNNING or self._ui_external_only:
+            return
+        if self._view is not None:
+            self._finish_embed_present()
+            return
+        self._ensure_view()
+
+    def _finish_embed_present(self) -> None:
+        if self._view is None:
+            self._set_idle_hint(_idle_hint_web_unavailable())
+            self._apply_page_state(HarnessPageState.RUNNING)
+            return
+        if not self._web_load_ok:
+            self._set_idle_hint("Harness 加载中…")
+            self._load_web()
+        else:
+            self._ensure_view_visible()
         self._apply_page_state(HarnessPageState.RUNNING)
 
     def _on_start(self, silent: bool = False) -> None:
-        def _run() -> None:
+        def _work():
             ok, msg = start()
             state, _ = probe_page_state()
+            return ok, msg, state, silent
+
+        def _after(payload) -> None:
+            ok, msg, state, was_silent = payload
             if ok:
-                if state == HarnessPageState.RUNNING and self._web_load_ok:
-                    self._apply_page_state(state)
-                else:
-                    self._apply_page_state(state)
-                    self._present_running_surface()
-                if not silent:
+                self._apply_page_state(state)
+                self._schedule_embed_load()
+                if not was_silent:
                     self.report_status(msg, level=StatusLevel.SUCCESS)
             else:
                 self._apply_page_state(state)
                 show_warning(self, msg)
 
-        self.run_safe(_run, title="启动 Harness 服务")
+        self._run_harness_task(_work, busy_label="正在启动 Harness…", on_ok=_after)
 
     def _on_stop(self) -> None:
         st = health_status()
@@ -404,9 +623,13 @@ class HarnessAgentPage(BasePage):
         else:
             force = False
 
-        def _run() -> None:
+        def _work():
             ok, msg = stop(force=force)
             state, _ = probe_page_state()
+            return ok, msg, state
+
+        def _after(payload) -> None:
+            ok, msg, state = payload
             if ok:
                 self._web_load_ok = False
                 self._load_status_reported = False
@@ -416,7 +639,7 @@ class HarnessAgentPage(BasePage):
             else:
                 show_warning(self, msg)
 
-        self.run_safe(_run, title="停止 Harness 服务")
+        self._run_harness_task(_work, busy_label="正在停止 Harness…", on_ok=_after)
 
     def _on_takeover_restart(self) -> None:
         if not ask_confirm(
@@ -426,34 +649,42 @@ class HarnessAgentPage(BasePage):
         ):
             return
 
-        def _run() -> None:
+        def _work():
             ok, msg = restart_owned()
             state, _ = probe_page_state()
+            return ok, msg, state
+
+        def _after(payload) -> None:
+            ok, msg, state = payload
             self._apply_page_state(state)
             if ok:
-                self._present_running_surface()
+                self._schedule_embed_load()
                 self.report_status(msg, level=StatusLevel.SUCCESS)
             else:
                 show_warning(self, msg)
 
-        self.run_safe(_run, title="接管 Harness 服务")
+        self._run_harness_task(_work, busy_label="正在接管 Harness…", on_ok=_after)
 
     def _on_restart(self) -> None:
         if not is_running():
             show_warning(self, "服务未在运行。")
             return
 
-        def _run() -> None:
+        def _work():
             ok, msg = restart()
             state, _ = probe_page_state()
+            return ok, msg, state
+
+        def _after(payload) -> None:
+            ok, msg, state = payload
             self._apply_page_state(state)
             if ok:
-                self._present_running_surface()
+                self._schedule_embed_load()
                 self.report_status(msg, level=StatusLevel.SUCCESS)
             else:
                 show_warning(self, msg)
 
-        self.run_safe(_run, title="重启 Harness 服务")
+        self._run_harness_task(_work, busy_label="正在重启 Harness…", on_ok=_after)
 
     def _on_repair_env(self) -> None:
         def _after(result: tuple[bool, str]) -> None:
@@ -465,7 +696,11 @@ class HarnessAgentPage(BasePage):
             state, msg = probe_page_state()
             self._apply_page_state(state, msg)
 
-        self.run_safe(repair_harness_runtime, title="修复 Harness 环境", on_success=_after)
+        self._run_harness_task(
+            repair_harness_runtime,
+            busy_label="正在修复 Harness 环境…",
+            on_ok=_after,
+        )
 
     def _open_external(self) -> None:
         if not is_running():
@@ -488,12 +723,33 @@ class HarnessAgentPage(BasePage):
         self._show_body_web()
 
     def _ensure_view(self) -> None:
-        if not self._web_ready:
+        if not self._webengine_ready():
             return
         if self._view is not None:
             return
-        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
-        from PySide6.QtWebEngineWidgets import QWebEngineView
+        if self._view_init_pending:
+            return
+        self._view_init_pending = True
+        self._start_view_init_watchdog()
+        QTimer.singleShot(0, self._ensure_view_impl)
+
+    def _ensure_view_impl(self) -> None:
+        self._view_init_pending = False
+        if self._view is not None or not self._webengine_ready():
+            self._stop_view_init_watchdog()
+            return
+        if self._page_state != HarnessPageState.RUNNING or self._ui_external_only:
+            self._stop_view_init_watchdog()
+            return
+        try:
+            from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+        except ImportError:
+            self._web_ready = False
+            self._stop_view_init_watchdog()
+            self._set_idle_hint(_idle_hint_web_unavailable())
+            self._apply_page_state(HarnessPageState.RUNNING)
+            return
 
         from services.storage_paths import module_data_dir
 
@@ -524,6 +780,9 @@ class HarnessAgentPage(BasePage):
             lay.addWidget(self._view, 1)
 
         self._apply_web_zoom()
+        self._stop_view_init_watchdog()
+        if self._page_state == HarnessPageState.RUNNING and not self._ui_external_only:
+            QTimer.singleShot(0, self._finish_embed_present)
 
     def _apply_web_zoom(self) -> None:
         if self._view is None:
@@ -551,15 +810,21 @@ class HarnessAgentPage(BasePage):
             return
         self._ensure_view_visible()
         self._view.setUrl(QUrl(web_url()))
+        self._start_web_load_watchdog()
 
     def _on_web_loaded(self, ok: bool) -> None:
+        self._stop_web_load_watchdog()
         if not ok:
             self._web_load_ok = False
+            self._set_idle_hint(
+                "内嵌页加载失败。\n请点「浏览器打开」，或「更多 → 重启服务」。",
+            )
             if not self._load_status_reported:
                 self.report_status("加载失败，可重启服务或改用浏览器", level=StatusLevel.WARNING)
             return
         was_loaded = self._web_load_ok
         self._web_load_ok = True
+        self._placeholder.hide()
         self._apply_web_zoom()
         if not was_loaded and not self._load_status_reported:
             self.report_status("Harness 已就绪", level=StatusLevel.SUCCESS)
@@ -576,11 +841,14 @@ class HarnessAgentPage(BasePage):
     def _export_recent(self) -> None:
         out_dir = module_output_dir("harness_agent", create=True)
 
-        def _run() -> None:
-            path, title = export_most_recent_session(out_dir)
-            if path is None or not path.is_file():
-                show_warning(self, "暂无可导出的会话。")
-                return
-            show_saved(self, f"已导出：{title or path.name}", str(path.parent))
+        def _work():
+            return export_most_recent_session(out_dir)
 
-        self.run_safe(_run, title="导出会话")
+        self._run_harness_task(_work, busy_label="正在导出会话…", on_ok=self._after_export)
+
+    def _after_export(self, payload) -> None:
+        path, title = payload
+        if path is None or not path.is_file():
+            show_warning(self, "暂无可导出的会话。")
+            return
+        show_saved(self, f"已导出：{title or path.name}", str(path.parent))

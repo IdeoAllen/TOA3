@@ -23,7 +23,7 @@ from widgets import DialogButtonRow, HintLabel
 class AboutDialog(BaseDialog):
     """产品品牌、版本与愿景要点。"""
 
-    dialog_kind = "medium"
+    dialog_kind = "account"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -61,7 +61,7 @@ class AboutDialog(BaseDialog):
             meta.addRow("联系", value_label(email, selectable=True))
         add_form_section(root, "版本信息", meta)
 
-        root.addWidget(HintLabel("日志与诊断：系统设置 → 运行诊断（管理员）或 关于与应用"))
+        root.addWidget(HintLabel("检查更新在此；换码与退出见顶栏用户。"))
 
         actions = DialogButtonRow()
         self._btn_check = actions.add_secondary("检查更新", self._on_check_update)

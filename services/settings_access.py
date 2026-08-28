@@ -4,49 +4,48 @@ from __future__ import annotations
 
 from typing import Final
 
-# 页签 key（导航用，与 UI 标题解耦）
+# 顶层页签 key
+TAB_SYSTEM: Final = "system"
+TAB_PREFERENCES: Final = "preferences"
+TAB_MODELS: Final = "models"
+TAB_LOCAL_ADMIN: Final = "local_admin"
+TAB_SUBSCRIPTION: Final = "subscription"
+
+# 兼容旧 key
+TAB_APP: Final = "app"
 TAB_APPEARANCE: Final = "appearance"
 TAB_BRAND: Final = "brand"
 TAB_LICENSE: Final = "license"
-TAB_SUBSCRIPTION: Final = "subscription"
 TAB_MENU: Final = "menu"
 TAB_HOTKEYS: Final = "hotkeys"
 TAB_INTEGRATIONS: Final = "integrations"
 TAB_MODELS_AI: Final = "models_ai"
 TAB_DIAGNOSTICS: Final = "diagnostics"
+TAB_APP_UPDATE: Final = "app_update"
 TAB_ABOUT_APP: Final = "about_app"
 
-_USER_TAB_KEYS: tuple[str, ...] = (
-    TAB_APPEARANCE,
-    TAB_HOTKEYS,
-    TAB_MODELS_AI,
-    TAB_ABOUT_APP,
-)
-
-_ADMIN_EXTRA_TAB_KEYS: tuple[str, ...] = (
-    TAB_BRAND,
-    TAB_LICENSE,
-    TAB_MENU,
-    TAB_INTEGRATIONS,
-    TAB_DIAGNOSTICS,
-)
-
 _TAB_TITLES: dict[str, str] = {
+    TAB_SYSTEM: "系统",
+    TAB_PREFERENCES: "偏好",
+    TAB_MODELS: "模型管理",
+    TAB_LOCAL_ADMIN: "本机管理",
+    TAB_SUBSCRIPTION: "开通与续费",
+    TAB_APP: "系统",
     TAB_APPEARANCE: "外观与主题",
     TAB_BRAND: "品牌定制",
     TAB_LICENSE: "授权管理",
-    TAB_SUBSCRIPTION: "激活与订阅",
     TAB_MENU: "菜单",
     TAB_HOTKEYS: "快捷键",
     TAB_INTEGRATIONS: "能力接入",
-    TAB_MODELS_AI: "模型与 AI",
+    TAB_MODELS_AI: "模型管理",
     TAB_DIAGNOSTICS: "运行诊断",
-    TAB_ABOUT_APP: "关于与应用",
+    TAB_APP_UPDATE: "应用与更新",
+    TAB_ABOUT_APP: "关于产品",
 }
 
 
 def subscription_tab_visible() -> bool:
-    """未完整授权时展示订阅/激活页（已联网授权后隐藏）。"""
+    """未完整授权时展示开通页。"""
     try:
         from services.license_manager import global_license_manager
 
@@ -65,45 +64,46 @@ def is_settings_admin() -> bool:
         return False
 
 
+def can_switch_local_identity() -> bool:
+    """仅管理员且本机有多于一个已发卡账号时可切换身份。"""
+    if not is_settings_admin():
+        return False
+    try:
+        from services.license_manager import global_license_manager
+
+        return len(global_license_manager.list_switchable_users()) > 1
+    except Exception:
+        return False
+
+
+def settings_menu_plan() -> list[tuple[str, str]]:
+    """左侧菜单 (key, title) 扁平列表（来自 settings_menu 配置）。"""
+    from services.settings_menu import settings_menu_flat
+
+    return [(item.key, item.title) for item in settings_menu_flat()]
+
+
 def settings_tab_plan() -> list[tuple[str, str]]:
-    """按角色返回 (key, title) 列表。"""
-    admin = is_settings_admin()
-    order: list[str] = [TAB_APPEARANCE]
-    if admin:
-        order.append(TAB_BRAND)
-        order.append(TAB_LICENSE)
-    if subscription_tab_visible():
-        order.append(TAB_SUBSCRIPTION)
-    if admin:
-        order.append(TAB_MENU)
-    order.append(TAB_HOTKEYS)
-    if admin:
-        order.append(TAB_INTEGRATIONS)
-    else:
-        order.append(TAB_MODELS_AI)
-    if admin:
-        order.append(TAB_DIAGNOSTICS)
-    order.append(TAB_ABOUT_APP)
-    return [(k, _TAB_TITLES[k]) for k in order]
+    """兼容旧名：与 settings_menu_plan 相同。"""
+    return settings_menu_plan()
+
+
+def resolve_settings_menu_key(key: str) -> str:
+    """将旧 key 映射为左侧菜单 key。"""
+    top, sub = resolve_settings_tab(key)
+    if sub:
+        return sub
+    if top == TAB_LOCAL_ADMIN:
+        return TAB_BRAND
+    return top
 
 
 def settings_header_subtitle() -> str:
-    if is_settings_admin():
-        return (
-            "终端管理员：本机品牌 · 本机用户 · 侧栏菜单 · 能力接入 · 诊断。"
-            "SKU/定价/订单/发版在 TOA 运营台。"
-            "终端用户见主题、快捷键与模型 Key；任务与通知见系统侧栏。"
-        )
-    return (
-        "主题、快捷键、AI 模型 Key。"
-        "开通与续费见「激活与订阅」或顶栏授权 Chip。"
-        "授权名单与菜单编排仅管理员可见。"
-    )
+    return "左侧选择设置分区；也可从系统侧栏进入；换授权码点顶栏用户。"
 
 
 def capability_settings_tab_key() -> str:
-    """大模型/模型库跳转应打开的页签 key。"""
-    return TAB_INTEGRATIONS if is_settings_admin() else TAB_MODELS_AI
+    return TAB_MODELS
 
 
 def license_settings_tab_key() -> str:
@@ -111,4 +111,20 @@ def license_settings_tab_key() -> str:
         return TAB_LICENSE
     if subscription_tab_visible():
         return TAB_SUBSCRIPTION
-    return TAB_ABOUT_APP
+    return TAB_SYSTEM
+
+
+def resolve_settings_tab(key: str) -> tuple[str, str | None]:
+    """将旧 key 或子页 key 映射为 (顶层页签, 本机管理子页 key|None)。"""
+    k = str(key or "").strip()
+    if k in (TAB_SYSTEM, TAB_APP, TAB_APP_UPDATE, TAB_ABOUT_APP):
+        return TAB_SYSTEM, None
+    if k in (TAB_PREFERENCES, TAB_LOCAL_ADMIN, TAB_SUBSCRIPTION, TAB_MODELS, TAB_MODELS_AI):
+        if k == TAB_MODELS_AI:
+            return TAB_MODELS, None
+        return k, None
+    if k in (TAB_BRAND, TAB_LICENSE, TAB_MENU, TAB_INTEGRATIONS, TAB_DIAGNOSTICS):
+        return TAB_LOCAL_ADMIN, k
+    if k in (TAB_APPEARANCE, TAB_HOTKEYS):
+        return TAB_PREFERENCES, k
+    return k, None

@@ -53,7 +53,6 @@ class IntegrationsSection(QWidget):
         if admin:
             self._tabs = TabWidget()
             self._tabs.setDocumentMode(True)
-            self._tabs.addTab(self._build_model_registry_tab(), "模型管理")
             self._tabs.addTab(self._build_harness_tab(), "Harness")
             self._tabs.addTab(self._build_ocr_tab(), "OCR 识别")
             self._tabs.addTab(self._build_status_tab(), "连通总览")

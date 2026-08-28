@@ -72,9 +72,21 @@ class PageHeader(QWidget):
         super().__init__(parent)
         from widgets.themed_labels import HintLabel, PageTitle
 
+        self._hint_label: HintLabel | None = None
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         lay.addWidget(PageTitle(title))
         if hint:
-            lay.addWidget(HintLabel(hint))
+            self._hint_label = HintLabel(hint)
+            lay.addWidget(self._hint_label)
+
+    def set_hint(self, text: str) -> None:
+        if self._hint_label is None:
+            from widgets.themed_labels import HintLabel
+
+            self._hint_label = HintLabel(text or "")
+            self.layout().addWidget(self._hint_label)
+        else:
+            self._hint_label.setText(text or "")
+            self._hint_label.setVisible(bool(text))

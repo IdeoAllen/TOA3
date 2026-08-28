@@ -140,8 +140,48 @@ def ensure_iss_utf8_bom(iss_path: Path) -> None:
 def ensure_brand_assets() -> None:
     script = PROJECT_DIR / "scripts" / "gen_toa3_brand_icon.py"
     if script.is_file():
-        log("生成 TOA3 品牌图标 ...")
+        log("生成 TOA3 品牌图标（正式版 + 开发版）...")
         subprocess.run([sys.executable, str(script)], cwd=PROJECT_DIR, check=False)
+
+
+def resolve_packaging_icon(*, is_dev: bool) -> Path | None:
+    if is_dev:
+        candidates = (
+            PROJECT_DIR / "avatars" / "logo_dev.ico",
+            PROJECT_DIR / "resources" / "icons" / "app_logo_dev.ico",
+        )
+    else:
+        candidates = (
+            PROJECT_DIR / "avatars" / "logo.ico",
+            PROJECT_DIR / "resources" / "icons" / "app_logo.ico",
+        )
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def promote_dev_brand_assets(release_dir: Path) -> None:
+    """开发版安装包内快捷方式仍引用 avatars/logo.*，覆盖为 DEV 配色。"""
+    pairs = (
+        ("logo_dev.ico", "logo.ico"),
+        ("logo_dev.png", "logo.png"),
+    )
+    avatars = release_dir / "avatars"
+    icons = release_dir / "resources" / "icons"
+    for src_name, dst_name in pairs:
+        src = avatars / src_name
+        if src.is_file():
+            shutil.copy2(src, avatars / dst_name)
+    icon_pairs = (
+        ("app_logo_dev.ico", "app_logo.ico"),
+        ("app_logo_dev.png", "app_logo.png"),
+        ("brand_logo_dev.png", "brand_logo.png"),
+    )
+    for src_name, dst_name in icon_pairs:
+        src = icons / src_name
+        if src.is_file():
+            shutil.copy2(src, icons / dst_name)
 
 
 def preflight(profile: str = "release", *, skip_verify: bool = False) -> bool:
@@ -189,9 +229,15 @@ def preflight(profile: str = "release", *, skip_verify: bool = False) -> bool:
     return True
 
 
-def build_inno_setup(release_dir: Path | None = None, *, setup_basename: str = SETUP_BASENAME) -> str | None:
+def build_inno_setup(
+    release_dir: Path | None = None,
+    *,
+    setup_basename: str = SETUP_BASENAME,
+    release_dir_name: str = RELEASE_DIR_NAME,
+    is_dev: bool = False,
+) -> str | None:
     dist_dir = PACKAGING_DIR / "dist"
-    release_dir = release_dir or (dist_dir / RELEASE_DIR_NAME)
+    release_dir = release_dir or (dist_dir / release_dir_name)
     if not release_dir.is_dir():
         log(f"未找到发布目录，跳过 Setup: {release_dir}")
         return None
@@ -207,9 +253,21 @@ def build_inno_setup(release_dir: Path | None = None, *, setup_basename: str = S
         return None
 
     ensure_iss_utf8_bom(iss)
+    setup_icon = (
+        r"..\avatars\logo_dev.ico"
+        if is_dev
+        else r"..\avatars\logo.ico"
+    )
     log(f"开始构建 Inno Setup 安装包 ({setup_basename}) ...")
     result = subprocess.run(
-        [iscc, f"/DSetupBaseName={setup_basename}", f"/DMyAppVersion={APP_VERSION}", str(iss)],
+        [
+            iscc,
+            f"/DSetupBaseName={setup_basename}",
+            f"/DMyAppVersion={APP_VERSION}",
+            f"/DMyReleaseDir={release_dir_name}",
+            f"/DSetupIconFile={setup_icon}",
+            str(iss),
+        ],
         cwd=PACKAGING_DIR,
     )
     if result.returncode != 0:
@@ -255,9 +313,9 @@ def build(
         dist_dir.mkdir(parents=True, exist_ok=True)
 
     main_script = PROJECT_DIR / "app" / "main.py"
-    icon_path = PROJECT_DIR / "avatars" / "logo.ico"
-    if not icon_path.is_file():
-        icon_path = PROJECT_DIR / "resources" / "icons" / "app_logo.ico"
+    icon_path = resolve_packaging_icon(is_dev=is_dev)
+    if icon_path is not None:
+        log(f"打包图标: {icon_path.name} ({'开发版' if is_dev else '正式版'})")
 
     cmd = [
         sys.executable,
@@ -306,7 +364,7 @@ def build(
     cmd.extend(["--collect-all", "PySide6"])
     if onefile:
         cmd.append("--onefile")
-    if icon_path.is_file():
+    if icon_path is not None and icon_path.is_file():
         cmd.extend(["--icon", str(icon_path)])
 
     data_pairs = [
@@ -413,6 +471,10 @@ def build(
         else:
             shutil.copytree(src, dst, ignore=ignore)
 
+    if is_dev:
+        promote_dev_brand_assets(release_dir)
+        log("开发版：已覆盖 avatars/logo.* 为 DEV 配色（任务栏 / 快捷方式可辨）")
+
     write_clean_license(release_dir / "config" / "license.json")
 
     if not is_dev:
@@ -423,7 +485,7 @@ def build(
             log(str(exc))
             return False
 
-    profile_label = "开发版（含 app.dev.yml · 自动登录赵成）" if is_dev else "正式版（单机体验 + 授权码）"
+    profile_label = "开发版（含 app.dev.yml · 自动登录赵成）" if is_dev else "体验版 + 正式版（授权码/在线开通）"
     readme = release_dir / "README.txt"
     readme.write_text(
         f"TOA3 赋能培训运营助手（运营宝）· {profile_label}\n"
@@ -434,8 +496,8 @@ def build(
         + (
             "开发版：默认 skip_login，恢复本机赵成全功能授权；勿对外分发。\n"
             if is_dev
-            else "首次启动可选「单机体验」：免授权码、可离线，含记事/截图/剪贴板/四象限任务等基础工具。\n"
-            "完整版：向管理员索取 TOA2 授权码，在登录窗选择「授权码登录」并联网激活。\n"
+            else "首次启动可选「体验版」：免授权码、可离线，含记事/截图/剪贴板/Harness 等基础工具。\n"
+            "正式版：登录窗粘贴 TOA 授权码，或在设置内选择产品方案一键开通。\n"
         )
         + "授权到期或被停用后，无需卸载，重新申请新码激活即可。\n"
         "默认不需要管理员权限；如需装到 Program Files 可在向导中选择提升。\n"
@@ -450,7 +512,12 @@ def build(
 
     setup_path = None
     if msi:
-        setup_path = build_inno_setup(release_dir, setup_basename=setup_basename)
+        setup_path = build_inno_setup(
+            release_dir,
+            setup_basename=setup_basename,
+            release_dir_name=release_dir_name,
+            is_dev=is_dev,
+        )
         if not setup_path:
             log("错误: 未生成 setup.exe。请安装 Inno Setup 6 后重试（winget install JRSoftware.InnoSetup）")
             return False
@@ -494,7 +561,15 @@ if __name__ == "__main__":
 
     if args.setup_only:
         dist_dir = PACKAGING_DIR / "dist"
-        ok = build_inno_setup(dist_dir / release_dir_name, setup_basename=setup_base) is not None
+        ok = (
+            build_inno_setup(
+                dist_dir / release_dir_name,
+                setup_basename=setup_base,
+                release_dir_name=release_dir_name,
+                is_dev=args.profile == "dev",
+            )
+            is not None
+        )
     else:
         ok = build(
             onefile=not args.onedir,

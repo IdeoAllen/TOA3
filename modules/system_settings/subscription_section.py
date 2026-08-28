@@ -48,7 +48,7 @@ class SubscriptionSection(FormSection):
     """选套餐 → 一键开通；与 paywall 弹窗同一购买链路。"""
 
     def __init__(self, parent: BasePage) -> None:
-        super().__init__("选择套餐")
+        super().__init__("全部产品方案")
         self._page = parent
         self._lm = global_license_manager
         self._packs: list[dict] = []
@@ -58,7 +58,7 @@ class SubscriptionSection(FormSection):
         self._pending_order_no = ""
 
         self.add_widget(
-            HintLabel("选好套餐后点「一键开通」，支付成功立即生效，无需粘贴授权码。")
+            HintLabel("选择产品方案（功能 + 有效期 + 定价）；支付后立即生效，一订单一授权码。")
         )
 
         self._status = SemanticLabel("", kind="info")
@@ -67,7 +67,7 @@ class SubscriptionSection(FormSection):
         form = QFormLayout()
         self._pack_combo = ComboBox()
         self._pack_combo.currentIndexChanged.connect(self._on_pack_changed)
-        form.addRow("功能包", self._pack_combo)
+        form.addRow("产品方案", self._pack_combo)
 
         self._phone = LineEdit()
         self._phone.setPlaceholderText("11 位手机号")
@@ -89,7 +89,7 @@ class SubscriptionSection(FormSection):
         self._btn_buy = PrimaryButton("一键开通")
         self._btn_buy.clicked.connect(self._on_buy)
         row.addWidget(self._btn_buy)
-        self._btn_reload = SecondaryButton("刷新套餐")
+        self._btn_reload = SecondaryButton("刷新方案")
         self._btn_reload.clicked.connect(self._load_packs)
         row.addWidget(self._btn_reload)
         row.addStretch(1)
@@ -144,15 +144,15 @@ class SubscriptionSection(FormSection):
             self._btn_buy.setText("一键开通")
             return
         lines = [
-            str(pack.get("name") or ""),
-            str(pack.get("description") or pack.get("summary") or ""),
-            f"¥{pack.get('price_yuan', 0)} / {pack.get('default_days') or 365} 天",
+            str(pack.get("plan_name") or pack.get("name") or ""),
+            str(pack.get("desc") or pack.get("description") or pack.get("summary") or ""),
+            f"¥{pack.get('price_yuan', 0)} / {int(pack.get('validity_days') or pack.get('license_days') or 365)} 天",
         ]
         menus = pack.get("menu_ids") or pack.get("menus") or []
         if menus:
             lines.append(f"包含模块：{', '.join(str(m) for m in menus[:8])}{'…' if len(menus) > 8 else ''}")
         self._detail.setPlainText("\n".join(x for x in lines if x))
-        self._update_buy_label(str(pack.get("id") or ""))
+        self._update_buy_label(str(pack.get("plan_id") or pack.get("id") or ""))
 
     def _update_buy_label(self, pack_id: str) -> None:
         if self._busy or not pack_id:
@@ -180,7 +180,7 @@ class SubscriptionSection(FormSection):
         if self._busy:
             return
         self._set_busy(True)
-        self._page.report_status("正在加载功能包…", level=StatusLevel.INFO)
+        self._page.report_status("正在加载产品方案…", level=StatusLevel.INFO)
 
         def work():
             ok, packs, commerce, err = list_sellable_packs()
@@ -194,8 +194,8 @@ class SubscriptionSection(FormSection):
         def done(ok: bool, err: str, data: object) -> None:
             self._set_busy(False)
             if not ok:
-                show_error(self._page, err or "加载功能包失败")
-                self._page.report_status("加载功能包失败", level=StatusLevel.ERROR)
+                show_error(self._page, err or "加载产品方案失败")
+                self._page.report_status("加载产品方案失败", level=StatusLevel.ERROR)
                 self._btn_buy.setText("一键开通")
                 return
             packs, commerce = [], {}
@@ -206,10 +206,11 @@ class SubscriptionSection(FormSection):
             self._commerce = commerce
             self._pack_combo.clear()
             for p in packs:
-                pid = str(p.get("id") or "")
-                label = f"{p.get('name') or pid} · ¥{p.get('price_yuan', 0)}"
+                pid = str(p.get("plan_id") or p.get("id") or "")
+                days = int(p.get("validity_days") or 365)
+                label = f"{p.get('name') or pid} · ¥{p.get('price_yuan', 0)} · {days}天"
                 self._pack_combo.addItem(label, p)
-            self._page.report_status(f"已加载 {len(packs)} 个套餐", level=StatusLevel.SUCCESS)
+            self._page.report_status(f"已加载 {len(packs)} 个产品方案", level=StatusLevel.SUCCESS)
             self._on_pack_changed()
 
         worker.finished.connect(done)
@@ -220,7 +221,7 @@ class SubscriptionSection(FormSection):
             return
         pack = self._selected_pack()
         if not pack:
-            show_warning(self._page, "请先选择功能包")
+            show_warning(self._page, "请先选择产品方案")
             return
         phone = self._buyer_phone()
         if len(phone) != 11 or not phone.isdigit():
@@ -229,7 +230,7 @@ class SubscriptionSection(FormSection):
                 self._phone.show()
             return
 
-        pack_id = str(pack.get("id") or "")
+        pack_id = str(pack.get("plan_id") or pack.get("id") or "")
         name = self._buyer_name()
         self._set_busy(True)
         self._page.report_status("正在开通…", level=StatusLevel.INFO)

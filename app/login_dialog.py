@@ -6,18 +6,18 @@ import logging
 import threading
 import time
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QDialog, QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from app.app_state import AppState
+from app.dialog_chrome import add_dialog_hero, apply_dialog_root, make_info_form
 from app.version import version_caption
 from core.base_dialog import BaseDialog
 from core.exceptions import AuthError
 from services.auth_service import authenticate, authenticate_standalone, authenticate_trial
-from services.config_service import get_auth_config, project_root
-from services.dms_license_client import cloud_origin, license_service_label
-from widgets import DialogButtonRow, HintLabel, LineEdit, PageTitle, PasswordLineEdit, SemanticLabel
+from services.config_service import get_auth_config
+from services.icon_registry import brand_logo_pixmap
+from widgets import DialogButtonRow, LineEdit, PasswordLineEdit, PrimaryButton, SemanticLabel
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ _LOGIN_TIMEOUT_S = 20
 
 
 class LoginDialog(BaseDialog):
-    dialog_kind = "login"
+    dialog_kind = "account"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -33,38 +33,39 @@ class LoginDialog(BaseDialog):
         brand = st.brand_name()
         self.setWindowTitle(f"登录 · {brand}")
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.addWidget(self._build_header(brand))
-
         auth = get_auth_config()
         self._skip = bool(auth.get("skip_login"))
         self._allow_standalone = bool(auth.get("allow_standalone_login", True))
+
+        layout = QVBoxLayout(self)
+        apply_dialog_root(layout)
+
+        logo = brand_logo_pixmap(56, 56, parent=self)
+        add_dialog_hero(
+            layout,
+            pixmap=logo,
+            title=brand,
+            subtitle=version_caption(),
+        )
 
         if self._skip:
             hint_text = "开发模式：auth.skip_login 已开启，输入任意用户名即可。"
             hint_kind = "warning"
         elif self._allow_standalone:
-            hint_text = (
-                "单机体验：免授权码、可离线。"
-                "完整版可粘贴授权码，或填写手机号开始联网试用。"
-            )
+            hint_text = "体验版可离线使用；正式版粘贴 TOA 授权码。"
             hint_kind = "info"
         else:
-            hint_text = "请粘贴 TOA 运营台签发的完整授权码；显示名可留空。"
+            hint_text = "粘贴 TOA 运营台签发的授权码。"
             hint_kind = "info"
         layout.addWidget(SemanticLabel(hint_text, kind=hint_kind))
 
-        service_hint = f"授权服务：{license_service_label()} · {cloud_origin() or '未配置'}"
-        layout.addWidget(HintLabel(service_hint))
-
-        form = QFormLayout()
+        form = make_info_form()
         self._user = LineEdit()
         self._user.setPlaceholderText("可选：台账姓名（以授权码为准）")
         self._key = PasswordLineEdit()
-        self._key.setPlaceholderText("完整版：TOA 授权码")
+        self._key.setPlaceholderText("正式版：TOA 授权码")
         self._phone = LineEdit()
-        self._phone.setPlaceholderText("试用：11 位手机号")
+        self._phone.setPlaceholderText("正式版开通/续费用手机号（可选）")
         self._phone.setMaxLength(11)
         self._prefill_username()
         self._prefill_license_key()
@@ -78,17 +79,15 @@ class LoginDialog(BaseDialog):
         self._status.hide()
         layout.addWidget(self._status)
 
+        self._btn_login = PrimaryButton("正式版登录")
+        self._btn_login.clicked.connect(self._on_accept)
+        layout.addWidget(self._btn_login)
+
         buttons = DialogButtonRow()
         buttons.add_secondary("取消", self.reject)
         if self._allow_standalone and not self._skip:
-            self._btn_standalone = buttons.add_secondary("单机体验", self._on_standalone)
-            self._btn_trial = buttons.add_secondary("开始试用", self._on_trial)
-        self._btn_login = buttons.add_primary("授权码登录", self._on_accept)
+            self._btn_standalone = buttons.add_secondary("体验版", self._on_standalone)
         layout.addWidget(buttons)
-
-        layout.addWidget(
-            HintLabel("获取授权码：TOA 运营台 https://toa-service.yczh.tech/admin/")
-        )
 
         self._authenticated = False
         self._login_busy = False
@@ -96,28 +95,7 @@ class LoginDialog(BaseDialog):
         self._login_deadline = 0.0
         self._login_result: tuple[bool, dict, str] | None = None
         if not self._skip and hasattr(self, "_key"):
-            if self._allow_standalone:
-                self._btn_standalone.setFocus()
-            else:
-                self._key.setFocus()
-
-    def _build_header(self, brand: str) -> QWidget:
-        row = QWidget(self)
-        h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(12)
-
-        logo = QLabelLogo(self)
-        h.addWidget(logo, 0, Qt.AlignmentFlag.AlignTop)
-
-        text_col = QVBoxLayout()
-        text_col.setSpacing(4)
-        text_col.addWidget(PageTitle(brand))
-        text_col.addWidget(HintLabel(version_caption()))
-        wrap = QWidget(row)
-        wrap.setLayout(text_col)
-        h.addWidget(wrap, 1)
-        return row
+            self._key.setFocus()
 
     def _prefill_username(self) -> None:
         auth = get_auth_config()
@@ -148,9 +126,7 @@ class LoginDialog(BaseDialog):
         self._btn_login.setText("登录中…" if busy else "授权码登录")
         if hasattr(self, "_btn_standalone"):
             self._btn_standalone.setEnabled(not busy)
-        if hasattr(self, "_btn_trial"):
-            self._btn_trial.setEnabled(not busy)
-            self._btn_trial.setText("试用申请中…" if busy else "开始试用")
+            self._btn_standalone.setText("进入体验版…" if busy else "体验版")
         self._user.setEnabled(not busy)
         self._key.setEnabled(not busy)
         if hasattr(self, "_phone"):
@@ -225,7 +201,7 @@ class LoginDialog(BaseDialog):
         if trial:
             status = "正在申请试用…"
         elif standalone:
-            status = "正在进入单机体验…"
+            status = "正在进入体验版…"
         else:
             status = "正在校验授权码…"
         self._set_login_busy(True, status=status)
@@ -324,34 +300,6 @@ class LoginDialog(BaseDialog):
         return self._authenticated
 
 
-class QLabelLogo(QWidget):
-    """登录页品牌图标（HiDPI PNG，不走模糊缩放）。"""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setFixedSize(56, 56)
-        self._pix = QPixmap()
-        path = project_root() / "resources" / "icons" / "app_logo.png"
-        if path.is_file():
-            self._pix = QPixmap(str(path))
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        from PySide6.QtGui import QPainter
-
-        if self._pix.isNull():
-            return
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        scaled = self._pix.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        x = (self.width() - scaled.width()) // 2
-        y = (self.height() - scaled.height()) // 2
-        p.drawPixmap(x, y, scaled)
-
-
 def _license_file_candidates() -> list:
     paths: list = []
     seen: set[str] = set()
@@ -409,7 +357,7 @@ def _local_restorable_session() -> tuple[bool, str]:
 
         if is_standalone_record(info) and not info.get("is_licensed"):
             name = str(info.get("user_name") or "").strip()
-            return True, name or "单机用户"
+            return True, name or "体验用户"
 
         if not info.get("is_licensed"):
             return False, ""

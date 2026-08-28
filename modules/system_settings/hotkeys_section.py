@@ -28,10 +28,7 @@ class HotkeysSection(FormSection):
         self._mod_form: QFormLayout | None = None
 
         self.add_widget(
-            HintLabel(
-                "全局键须带 Alt/Ctrl（托盘隐藏时仍可用）。"
-                "模块只需配常用的；其它用 Ctrl+K 或侧栏打开。"
-            )
+            HintLabel("全局键须带 Alt/Ctrl；模块热键按需添加，其它入口用侧栏或 Ctrl+K。")
         )
 
         app_sec = FormSection("全局 · 应用 · 页内")
@@ -53,14 +50,14 @@ class HotkeysSection(FormSection):
         self._home_k = LineEdit(str(hk.get("home_jump_office") or "K"))
         self._home_i = LineEdit(str(hk.get("home_jump_image") or "I"))
 
-        form.addRow("全局 · 区域截图", self._shot)
-        form.addRow("全局 · 全屏截图", self._shot_region)
-        form.addRow("应用 · 沉浸全屏", self._fullscreen)
-        form.addRow("全局 · 呼出模块 ID", self._summon)
-        form.addRow("应用 · 完全退出", self._exit)
-        form.addRow("应用 · 重启", self._restart)
-        form.addRow("页内 · 首页跳办公", self._home_k)
-        form.addRow("页内 · 首页跳图片", self._home_i)
+        form.addRow("区域截图", self._shot)
+        form.addRow("全屏截图", self._shot_region)
+        form.addRow("沉浸全屏", self._fullscreen)
+        form.addRow("呼出模块 ID", self._summon)
+        form.addRow("完全退出", self._exit)
+        form.addRow("重启应用", self._restart)
+        form.addRow("首页跳办公", self._home_k)
+        form.addRow("首页跳图片", self._home_i)
         app_sec.add_layout(form)
         self.add_widget(app_sec)
 

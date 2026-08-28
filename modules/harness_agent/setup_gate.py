@@ -69,7 +69,7 @@ class SetupGate(QWidget):
         self._state = state
         if state == HarnessPageState.CHECKING:
             self.show()
-            self._body.setText("正在检测本机是否已安装 Harness…")
+            self._body.setText(message or "正在确认服务状态…")
             self._btn_primary.hide()
             self._btn_secondary.hide()
             self._key_row.hide()

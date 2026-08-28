@@ -9,7 +9,12 @@
 #define MyAppPublisher "YCZH"
 #define MyAppExeName "TOA3.exe"
 #define MyAppURL "mailto:chengchengzhao@eautosh.com"
-#define MyReleaseDir "TOA3-v" + MyAppVersion + "-win64"
+#ifndef MyReleaseDir
+  #define MyReleaseDir "TOA3-v" + MyAppVersion + "-win64"
+#endif
+#ifndef SetupIconFile
+  #define SetupIconFile "..\avatars\logo.ico"
+#endif
 
 [Setup]
 AppId={{B9D4F2E3-5C6A-7D8E-9F0A-1B2C3D4E5F6A}
@@ -32,7 +37,7 @@ OutputDir=dist
   #define SetupBaseName "TOA3-Setup-v{#MyAppVersion}"
 #endif
 OutputBaseFilename={#SetupBaseName}
-SetupIconFile=..\avatars\logo.ico
+SetupIconFile={#SetupIconFile}
 UninstallDisplayName={#MyAppNameCN}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64

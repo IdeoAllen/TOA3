@@ -104,7 +104,7 @@ def _can_open_uncached(
     if _is_standalone_session():
         if mid in local_free_module_ids():
             return True, ""
-        return False, f"完整版功能「{name or mid}」"
+        return False, f"正式版功能「{name or mid}」"
 
     try:
         from services.license_manager import global_license_manager

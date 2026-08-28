@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""系统设置：按管理员 / 终端用户展示不同页签。
+"""系统设置：按角色展示左侧菜单 + 内容区。
 
-页签懒加载：首屏仅「外观与主题」，其余首次点开再构建。
-定时任务与通知见系统侧栏 job_scheduler / notifications。
+菜单懒加载：首次选中再构建。定时任务与通知见系统侧栏 job_scheduler / notifications。
 """
 from __future__ import annotations
 
@@ -12,8 +11,17 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.theme_loader import apply_theme, theme_display_name
 from core.base_page import BasePage
@@ -25,21 +33,27 @@ from services.system_info import get_system_info, log_directory
 from services.theme_catalog import selectable_themes, theme_description
 from services.user_system_info import save_user_overrides
 from services.settings_access import (
-    TAB_ABOUT_APP,
-    TAB_APPEARANCE,
     TAB_BRAND,
     TAB_DIAGNOSTICS,
-    TAB_HOTKEYS,
     TAB_INTEGRATIONS,
     TAB_LICENSE,
     TAB_MENU,
-    TAB_MODELS_AI,
+    TAB_MODELS,
+    TAB_PREFERENCES,
     TAB_SUBSCRIPTION,
+    TAB_SYSTEM,
     capability_settings_tab_key,
-    is_settings_admin,
     license_settings_tab_key,
+    resolve_settings_menu_key,
     settings_header_subtitle,
     subscription_tab_visible,
+)
+from services.icon_registry import menu_item_icon
+from services.settings_menu import (
+    SettingsMenuItem,
+    settings_menu_groups,
+    settings_menu_item,
+    settings_nav_icon_size,
 )
 from core.ui_spec import page_content_margins
 from widgets import (
@@ -52,7 +66,6 @@ from widgets import (
     ReadOnlyPlainTextEdit,
     ScrollPage,
     SecondaryButton,
-    TabWidget,
 )
 
 
@@ -104,42 +117,40 @@ class SettingsPage(BasePage):
         self._theme_combo: ComboBox | None = None
         self._theme_desc: HintLabel | None = None
         self._lazy_hosts: list[_LazyTabHost] = []
-        self._tab_keys: dict[str, int] = {}
+        self._menu_keys: dict[str, int] = {}
+        self._nav_buttons: dict[str, QPushButton] = {}
+        self._current_menu_key = TAB_SYSTEM
 
         outer = QVBoxLayout(self)
         m = page_content_margins()
         outer.setContentsMargins(m[0], m[1], m[2], m[3])
         outer.setSpacing(6)
 
-        header = PageHeader("系统设置", settings_header_subtitle())
-        outer.addWidget(header)
+        self._header = PageHeader("系统设置", settings_header_subtitle())
+        outer.addWidget(self._header)
 
-        self._tabs = TabWidget()
-        self._tabs.setDocumentMode(True)
-        outer.addWidget(self._tabs, 1)
+        body = QHBoxLayout()
+        body.setSpacing(12)
 
-        admin = is_settings_admin()
-        appearance = _wrap_scroll(self._build_theme_box())
-        self._add_tab(TAB_APPEARANCE, "外观与主题", appearance)
+        self._nav_host = QWidget()
+        self._nav_host.setFixedWidth(200)
+        self._nav_col = QVBoxLayout(self._nav_host)
+        self._nav_col.setSpacing(4)
+        self._nav_col.setContentsMargins(0, 0, 0, 0)
 
-        if admin:
-            self._add_lazy_tab(TAB_BRAND, "品牌定制", self._factory_brand)
-            self._add_lazy_tab(TAB_LICENSE, "授权管理", self._factory_license)
-        if subscription_tab_visible():
-            title = "激活与订阅"
-            self._add_lazy_tab(TAB_SUBSCRIPTION, title, self._factory_subscription)
-        if admin:
-            self._add_lazy_tab(TAB_MENU, "菜单", self._factory_menu)
-        self._add_lazy_tab(TAB_HOTKEYS, "快捷键", self._factory_hotkeys)
-        if admin:
-            self._add_lazy_tab(TAB_INTEGRATIONS, "能力接入", self._factory_integrations_admin)
-        else:
-            self._add_lazy_tab(TAB_MODELS_AI, "模型与 AI", self._factory_integrations_user)
-        if admin:
-            self._add_lazy_tab(TAB_DIAGNOSTICS, "运行诊断", self._factory_diagnostics)
-        self._add_lazy_tab(TAB_ABOUT_APP, "关于与应用", self._factory_about_app)
+        self._stack = QStackedWidget()
+        self._stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
 
-        self._tabs.currentChanged.connect(self._on_tab_changed)
+        self._build_settings_nav()
+
+        self._nav_col.addStretch(1)
+        body.addWidget(self._nav_host)
+        body.addWidget(self._stack, 1)
+        outer.addLayout(body, 1)
+
+        QTimer.singleShot(0, lambda: self._select_menu(TAB_SYSTEM))
 
         ui = get_ui_config()
         cur = str(ui.get("theme") or "dms_blue")
@@ -150,30 +161,125 @@ class SettingsPage(BasePage):
             else:
                 self._update_description()
 
-    def _add_tab(self, key: str, title: str, widget: QWidget) -> None:
-        idx = self._tabs.addTab(widget, title)
-        self._tab_keys[key] = idx
+    def _factory_for(self, key: str) -> Callable[[], QWidget]:
+        factories: dict[str, Callable[[], QWidget]] = {
+            TAB_SYSTEM: self._factory_system,
+            TAB_PREFERENCES: self._factory_preferences,
+            TAB_MODELS: self._factory_models,
+            TAB_BRAND: self._factory_brand,
+            TAB_LICENSE: self._factory_license,
+            TAB_MENU: self._factory_menu,
+            TAB_INTEGRATIONS: self._factory_integrations_admin,
+            TAB_DIAGNOSTICS: self._factory_diagnostics,
+            TAB_SUBSCRIPTION: self._factory_subscription,
+        }
+        factory = factories.get(key)
+        if factory is None:
+            raise KeyError(key)
+        return factory
 
-    def _add_lazy_tab(self, key: str, title: str, factory: Callable[[], QWidget]) -> None:
-        host = _LazyTabHost(factory, self)
+    def _build_settings_nav(self) -> None:
+        icon_size = settings_nav_icon_size()
+        first_group = True
+        for group in settings_menu_groups():
+            if not first_group and group.label:
+                self._nav_col.addSpacing(6)
+            if group.label:
+                self._nav_col.addWidget(HintLabel(group.label))
+            first_group = False
+            for item in group.items:
+                self._add_menu_item(item, icon_size)
+
+    def _add_menu_item(self, item: SettingsMenuItem, icon_size: int) -> None:
+        key = item.key
+        host = _LazyTabHost(self._factory_for(key), self)
         self._lazy_hosts.append(host)
-        idx = self._tabs.addTab(host, title)
-        self._tab_keys[key] = idx
+        idx = self._stack.addWidget(host)
+        self._menu_keys[key] = idx
+
+        btn = QPushButton(item.title)
+        btn.setObjectName("NavButton")
+        btn.setCheckable(True)
+        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn.setProperty("navItem", "true")
+        btn.setIcon(menu_item_icon(item.icon, size=icon_size, parent=self))
+        btn.setIconSize(QSize(icon_size, icon_size))
+        if item.subtitle:
+            btn.setToolTip(item.subtitle)
+        btn.clicked.connect(lambda _=False, k=key: self._select_menu(k))
+        self._nav_buttons[key] = btn
+        self._nav_col.addWidget(btn)
+
+    def _select_menu(self, key: str) -> None:
+        idx = self._menu_keys.get(key)
+        if idx is None:
+            return
+        self._current_menu_key = key
+        self._stack.setCurrentIndex(idx)
+        w = self._stack.widget(idx)
+        if isinstance(w, _LazyTabHost):
+            w.ensure_built()
+        for mk, btn in self._nav_buttons.items():
+            btn.setChecked(mk == key)
+        self._sync_theme_selection()
+        meta = settings_menu_item(key)
+        title = meta.title if meta else key
+        if meta and meta.subtitle:
+            self._header.set_hint(meta.subtitle)
+        self.report_status(f"系统设置 · {title}")
 
     def open_tab(self, key: str) -> bool:
-        idx = self._tab_keys.get(key)
-        if idx is None:
+        menu_key = resolve_settings_menu_key(key)
+        if menu_key not in self._menu_keys:
+            menu_key = TAB_SYSTEM if TAB_SYSTEM in self._menu_keys else next(iter(self._menu_keys), "")
+        if not menu_key:
             return False
-        self._tabs.setCurrentIndex(idx)
-        w = self._tabs.widget(idx)
-        if isinstance(w, _LazyTabHost):
-            w.ensure_built()
+        self._select_menu(menu_key)
         return True
 
-    def _on_tab_changed(self, index: int) -> None:
-        w = self._tabs.widget(index)
-        if isinstance(w, _LazyTabHost):
-            w.ensure_built()
+    def _factory_preferences(self) -> QWidget:
+        parts: list = [self._build_theme_box()]
+        from modules.system_settings.hotkeys_section import HotkeysSection
+
+        parts.append(HotkeysSection(self))
+        return _wrap_scroll(*parts)
+
+    def _factory_models(self) -> QWidget:
+        from modules.system_settings.model_registry_section import ModelRegistrySection
+
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._integrations = ModelRegistrySection(self)
+        self._integrations.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        lay.addWidget(self._integrations, 1)
+        return host
+
+    def _factory_system(self) -> QWidget:
+        from modules.system_settings.system_section import SystemSection
+
+        host = QWidget()
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(SystemSection(self), 1)
+        return host
+
+    def _sync_theme_selection(self) -> None:
+        if self._theme_combo is None:
+            return
+        self._applying = True
+        ui = get_ui_config()
+        cur = str(ui.get("theme") or "dms_blue")
+        idx = self._theme_combo.findData(cur)
+        if idx >= 0:
+            self._theme_combo.setCurrentIndex(idx)
+        self._update_description()
+        self._applying = False
 
     def _factory_brand(self) -> QWidget:
         return _wrap_scroll(self._build_system_info_box())
@@ -193,20 +299,10 @@ class SettingsPage(BasePage):
         return host
 
     def _factory_subscription(self) -> QWidget:
+        from modules.system_settings.activation_section import ActivationSection
         from modules.system_settings.subscription_section import SubscriptionSection
 
-        widgets: list = []
-        try:
-            from services.license_manager import global_license_manager
-
-            if not global_license_manager.is_licensed():
-                from modules.system_settings.activation_section import ActivationSection
-
-                widgets.append(ActivationSection(self))
-        except Exception:
-            pass
-        widgets.append(SubscriptionSection(self))
-        return _wrap_scroll(*widgets)
+        return _wrap_scroll(ActivationSection(self), SubscriptionSection(self))
 
     def _factory_menu(self) -> QWidget:
         from modules.system_settings.menu_section import MenuSection
@@ -232,36 +328,24 @@ class SettingsPage(BasePage):
         lay = QVBoxLayout(host)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        self._integrations = IntegrationsSection(self, admin=True)
-        self._integrations.setSizePolicy(
+        section = IntegrationsSection(self, admin=True)
+        section.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        lay.addWidget(self._integrations, 1)
+        lay.addWidget(section, 1)
         return host
 
     def _factory_integrations_user(self) -> QWidget:
-        from modules.system_settings.integrations_section import IntegrationsSection
+        return self._factory_models()
 
-        host = QWidget()
-        lay = QVBoxLayout(host)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-        self._integrations = IntegrationsSection(self, admin=False)
-        self._integrations.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        lay.addWidget(self._integrations, 1)
-        return host
+    def _factory_app_update(self) -> QWidget:
+        return self._factory_system()
+
+    def _factory_app(self) -> QWidget:
+        return self._factory_system()
 
     def _factory_about_app(self) -> QWidget:
-        from modules.system_settings.about_app_section import AboutAppSection
-
-        host = QWidget()
-        lay = QVBoxLayout(host)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-        lay.addWidget(AboutAppSection(self), 1)
-        return host
+        return self._factory_system()
 
     def _factory_diagnostics(self) -> QWidget:
         # 不用外层 ScrollPage：日志框本身可滚，并吃满页签剩余高度
@@ -401,10 +485,7 @@ class SettingsPage(BasePage):
     def _build_theme_box(self) -> FormSection:
         box = FormSection("主题与外观")
         box.add_widget(
-            HintLabel(
-                "切换后立即生效；主题配色来自 config/themes，"
-                "改 JSON 后运行 scripts/gen_qss_from_theme.py。"
-            )
+            HintLabel("切换后立即生效；下方为当前主题说明。")
         )
         self._theme_desc = HintLabel("")
         box.add_widget(self._theme_desc)
@@ -508,29 +589,16 @@ class SettingsPage(BasePage):
             self.report_status("已刷新日志预览")
 
     def open_model_hub_tab(self) -> None:
-        """外部跳转到模型库。"""
-        self.open_capability_tab()
-        if self._integrations is None:
-            key = capability_settings_tab_key()
-            if key == TAB_INTEGRATIONS:
-                self._factory_integrations_admin()
-            else:
-                self._factory_integrations_user()
-        if self._integrations is not None:
-            self._integrations.select_sub_tab("模型管理")
+        """外部跳转到模型管理。"""
+        self.open_models_tab()
 
     def open_capability_tab(self, *, image: bool = False) -> None:
-        """外部跳转到能力/模型配置。"""
-        self.open_tab(capability_settings_tab_key())
-        if image:
-            if self._integrations is None:
-                key = capability_settings_tab_key()
-                if key == TAB_INTEGRATIONS:
-                    self._factory_integrations_admin()
-                else:
-                    self._factory_integrations_user()
-            if self._integrations is not None:
-                self._integrations.select_sub_tab("图像生成")
+        """外部跳转到模型管理。"""
+        self.open_models_tab()
+        if image and self._integrations is not None and hasattr(
+            self._integrations, "set_capability_filter"
+        ):
+            self._integrations.set_capability_filter("image_gen")
 
     def open_license_or_subscription(self) -> None:
         from services.settings_access import subscription_tab_visible
@@ -550,22 +618,27 @@ class SettingsPage(BasePage):
         if subscription_tab_visible():
             self.open_tab(TAB_SUBSCRIPTION)
         else:
-            self.open_about_tab()
+            self.open_app_update_tab()
+
+    def open_app_update_tab(self) -> None:
+        self.open_tab(TAB_SYSTEM)
+
+    def open_system_tab(self) -> None:
+        self.open_tab(TAB_SYSTEM)
+
+    def open_models_tab(self) -> None:
+        self.open_tab(TAB_MODELS)
 
     def open_about_tab(self) -> None:
-        self.open_tab(TAB_ABOUT_APP)
+        shell = self.window()
+        if shell is not None and hasattr(shell, "_show_about"):
+            shell._show_about()
+            return
+        self.open_tab(TAB_SYSTEM)
 
     def on_enter(self) -> None:
-        # 仅同步主题选择，不读日志、不联网探测
-        if self._theme_combo is None:
-            self.report_status("系统设置")
-            return
-        self._applying = True
-        ui = get_ui_config()
-        cur = str(ui.get("theme") or "dms_blue")
-        idx = self._theme_combo.findData(cur)
-        if idx >= 0:
-            self._theme_combo.setCurrentIndex(idx)
-        self._update_description()
-        self._applying = False
+        self._select_menu(self._current_menu_key or TAB_SYSTEM)
         self.report_status("系统设置")
+
+    def open_preferences_tab(self) -> None:
+        self.open_tab(TAB_PREFERENCES)

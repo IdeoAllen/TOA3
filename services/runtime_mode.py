@@ -47,4 +47,4 @@ def standalone_display_name() -> str:
             return f"{label}用户"
     except Exception:
         pass
-    return "单机用户"
+    return "体验用户"

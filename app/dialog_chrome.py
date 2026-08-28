@@ -45,8 +45,9 @@ def add_dialog_hero(
 def make_info_form() -> QFormLayout:
     form = QFormLayout()
     form.setHorizontalSpacing(16)
-    form.setVerticalSpacing(8)
+    form.setVerticalSpacing(12)
     form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
     return form
 
 

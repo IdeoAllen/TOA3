@@ -21,13 +21,29 @@ def is_runtime_installed() -> bool:
     return node_exe_path().is_file() and dsh_bin_path().is_file() and dsh_home_path().is_dir()
 
 
-def probe_page_state() -> tuple[HarnessPageState, str]:
-    if not node_exe_path().is_file() or not dsh_bin_path().is_file():
+def probe_page_state(*, check_running: bool = True, running_timeout: float = 0.5) -> tuple[HarnessPageState, str]:
+    node = node_exe_path()
+    dsh = dsh_bin_path()
+    try:
+        node_ok = node.is_file()
+    except OSError:
+        node_ok = False
+    try:
+        dsh_ok = dsh.is_file()
+    except OSError:
+        dsh_ok = False
+    if not node_ok or not dsh_ok:
         return HarnessPageState.NOT_INSTALLED, "未检测到 DeepSeek Harness 运行组件"
-    if not dsh_home_path().is_dir():
+    try:
+        home_ok = dsh_home_path().is_dir()
+    except OSError:
+        home_ok = False
+    if not home_ok:
         return HarnessPageState.NOT_INSTALLED, "Harness 数据目录未初始化"
     if not has_api_key():
         return HarnessPageState.NEEDS_KEY, "请配置 DeepSeek API Key"
-    if is_running():
+    if not check_running:
+        return HarnessPageState.STOPPED, "Harness 已安装，服务未启动"
+    if is_running(timeout=running_timeout):
         return HarnessPageState.RUNNING, "Harness 服务运行中"
     return HarnessPageState.STOPPED, "Harness 已安装，服务未启动"

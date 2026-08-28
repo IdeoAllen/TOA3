@@ -168,6 +168,12 @@ def main() -> int:
 
     def _on_quit() -> None:
         try:
+            from services.webengine_shutdown import prepare_app_exit
+
+            prepare_app_exit()
+        except Exception:
+            pass
+        try:
             from services.harness_sidecar import stop_on_app_exit_if_configured
 
             stop_on_app_exit_if_configured()

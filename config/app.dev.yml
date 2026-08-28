@@ -25,6 +25,7 @@ hotkeys:
   exit_app: Ctrl+Q
   restart_app: Ctrl+Shift+R
   open_about: Alt+Shift+O
+  switch_user: Alt+U
   open_settings: Alt+S
   open_home: Ctrl+H
   open_notepad: Alt+N
@@ -39,5 +40,5 @@ hotkeys:
   toggle_fullscreen: F11
   toggle_window: none
 window:
-  theme: dms_blue
+  theme: dms_green
   default_fullscreen: true

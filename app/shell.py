@@ -268,6 +268,7 @@ class MainShell(QMainWindow):
         get_clipboard_watcher()
 
         get_platform_experience().attach_shell(self)
+        self.refresh_brand_chrome()
 
         hk = get_hotkeys_config()
         bindings = {}
@@ -383,6 +384,7 @@ class MainShell(QMainWindow):
         hlay = QHBoxLayout(header)
         hlay.setContentsMargins(16, 0, 10, 0)
         hlay.setSpacing(4)
+        header_align = Qt.AlignmentFlag.AlignVCenter
 
         from services.system_info import logo_path
 
@@ -397,45 +399,35 @@ class MainShell(QMainWindow):
                 logo.setPixmap(pix)
                 logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._header_logo_label = logo
-                hlay.addWidget(logo)
+                hlay.addWidget(logo, 0, header_align)
 
         brand = QLabel(self._st.brand_name())
         brand.setObjectName("ShellBrand")
         self._brand_label = brand
-        hlay.addWidget(brand)
+        hlay.addWidget(brand, 0, header_align)
 
         self._license_chip = MessageKindButton("授权", kind="info")
         self._license_chip.setObjectName("ShellLicenseChip")
         self._license_chip.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._license_chip.setFixedHeight(28)
+        self._license_chip.setFixedHeight(26)
+        self._license_chip.setMaximumHeight(26)
         self._license_chip.setMaximumWidth(140)
         self._license_chip.clicked.connect(self._on_license_chip_clicked)
-        hlay.addWidget(self._license_chip)
+        hlay.addWidget(self._license_chip, 0, header_align)
 
         hlay.addStretch(1)
 
-        hk_boot = get_hotkeys_config()
-        fs_key = str(hk_boot.get("toggle_fullscreen") or "F11").strip()
-
-        hlay.addWidget(self._build_theme_button())
-        self._fullscreen_btn = self._header_icon_button(
-            "fullscreen",
-            f"沉浸全屏 ({fs_key}) · Esc 退出",
-            self._toggle_fullscreen,
-        )
-        hlay.addWidget(self._fullscreen_btn)
-
         hlay.addWidget(
             self._header_icon_button(
-                "home",
-                "命令面板 (Ctrl+K)",
-                self._open_command_palette,
+                "settings",
+                "系统设置 (Alt+S)",
+                self._open_system_settings,
             )
         )
         hlay.addWidget(
             self._header_icon_button(
-                "settings",
-                "关于与应用 · 系统设置 (Alt+Shift+O)",
+                "about",
+                "关于 (Alt+Shift+O)",
                 self._show_about,
             )
         )
@@ -534,12 +526,24 @@ class MainShell(QMainWindow):
 
         UserProfileDialog(self).exec()
 
+    def _show_switch_user(self) -> None:
+        from services.settings_access import can_switch_local_identity
+
+        if not can_switch_local_identity():
+            from core.user_messages import show_warning
+
+            show_warning(self, "切换身份仅管理员可用，且本机需有多个已发卡账号。")
+            return
+        from app.switch_user_dialog import SwitchUserDialog
+
+        SwitchUserDialog(self).exec()
+
     def _build_user_menu_button(self) -> QToolButton:
-        """账号入口：授权摘要（关于/重启/退出在系统设置）。"""
+        """账号入口：查看、退出。"""
         user_name = self._st.display_name or self._st.username or "用户"
         btn = QToolButton()
         btn.setObjectName("ShellHeaderBtn")
-        btn.setToolTip(f"账号与授权 · {user_name}")
+        btn.setToolTip(f"账号 · {user_name} · 点击查看/退出")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setAutoRaise(True)
         btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
@@ -746,6 +750,16 @@ class MainShell(QMainWindow):
 
         QTimer.singleShot(0, lambda g=gid: self._navigate_first_in_domain(g))
 
+    def _sync_nav_checks(self, module_id: str | None = None) -> None:
+        mid = self._current_id if module_id is None else module_id
+        for m, btn in self._nav_buttons.items():
+            btn.blockSignals(True)
+            btn.setChecked(m == mid)
+            btn.blockSignals(False)
+
+    def _on_nav_clicked(self, module_id: str) -> None:
+        self.navigate(module_id)
+
     def _navigate_first_in_domain(self, gid: str) -> None:
         """打开当前子模块下侧栏首个可见且可打开的二级页。"""
         if self._current_domain != gid:
@@ -758,14 +772,22 @@ class MainShell(QMainWindow):
             if ok:
                 self.navigate(mid)
                 return
-        members = self._nav_group_members.get(gid, [])
-        if members and gid != "home":
-            first = members[0]
-            ok, reason = can_open(first)
-            if not ok:
-                self.show_status(reason or "该子模块需要授权", level=StatusLevel.WARNING)
         if gid == "home":
             self.navigate("home")
+            return
+        reason = ""
+        for mid in self._nav_group_members.get(gid, []):
+            item = self._nav_items.get(mid) or {}
+            if not self._nav_item_want_show(mid, item):
+                continue
+            ok, reason = can_open(mid)
+            if not ok:
+                break
+        self.navigate("home")
+        self.show_status(
+            reason or "该子模块需正式版授权",
+            level=StatusLevel.WARNING,
+        )
 
     def _sync_domain_for_module(self, module_id: str) -> None:
         gid = self._module_groups.get(module_id)
@@ -815,7 +837,8 @@ class MainShell(QMainWindow):
         mapping = {
             str(hk.get("exit_app") or "Ctrl+Q"): self._quit_app,
             str(hk.get("restart_app") or "Ctrl+Shift+R"): self._restart_app,
-            str(hk.get("open_settings") or "Alt+S"): lambda: self.navigate("system_settings"),
+            str(hk.get("open_settings") or "Alt+S"): self.open_system_settings,
+            str(hk.get("switch_user") or "Alt+U"): self._show_switch_user,
             str(hk.get("open_about") or "Alt+Shift+O"): self._show_about,
             str(hk.get("open_home") or "Ctrl+H"): lambda: self.navigate("home"),
             "Ctrl+K": self._open_command_palette,
@@ -1198,7 +1221,7 @@ class MainShell(QMainWindow):
         btn.setIcon(menu_item_icon(icon_key, size=_NAV_ICON, parent=self))
         btn.setIconSize(QSize(_NAV_ICON, _NAV_ICON))
         btn.setProperty("navItem", "true")
-        btn.clicked.connect(lambda _=False, m=module_id: self.navigate(m))
+        btn.clicked.connect(lambda _=False, m=module_id: self._on_nav_clicked(m))
         self._nav_buttons[module_id] = btn
         self._nav_items[module_id] = menu_item
         self._nav_layout.addWidget(btn)
@@ -1227,6 +1250,16 @@ class MainShell(QMainWindow):
             item = self._nav_items.get(mid) or {}
             want_show = self._nav_item_want_show(mid, item)
             btn.setVisible(bool(want_show and expanded))
+
+    def _invalidate_cached_page(self, module_id: str) -> None:
+        """身份/菜单变更后丢弃懒加载页，下次进入按新角色重建。"""
+        page = self._pages.pop(module_id, None)
+        if page is None:
+            return
+        self._stack.removeWidget(page)
+        page.deleteLater()
+        if self._current_id == module_id:
+            self.navigate(module_id)
 
     def _ensure_page(self, module_id: str) -> BasePage | None:
         if module_id in self._pages:
@@ -1306,6 +1339,8 @@ class MainShell(QMainWindow):
         """授权变更：刷新侧栏、状态栏与顶栏 Chip。"""
         self.rebuild_nav()
         get_platform_experience().refresh_license_chip()
+        self.refresh_brand_chrome()
+        self._invalidate_cached_page("system_settings")
         try:
             from services.license_manager import global_license_manager
 
@@ -1384,11 +1419,13 @@ class MainShell(QMainWindow):
                 return
             show_warning(self, reason or "无权限打开该模块")
             self.show_status(reason or "无权限", level=StatusLevel.WARNING)
+            self._sync_nav_checks()
             return
 
         page = self._ensure_page(module_id)
         if page is None:
             logger.warning("未知模块: %s", module_id)
+            self._sync_nav_checks()
             return
 
         if self._current_id and self._current_id in self._pages:
@@ -1409,12 +1446,30 @@ class MainShell(QMainWindow):
         title = page.page_title or module_id
         self.show_status(f"当前：{title}", level=StatusLevel.INFO)
 
-    def _show_about(self) -> None:
+    def _open_system_settings(self) -> None:
         self.navigate("system_settings")
         page = self._pages.get("system_settings")
-        if page is not None and hasattr(page, "open_about_tab"):
-            page.open_about_tab()
+        if page is not None and hasattr(page, "open_system_tab"):
+            page.open_system_tab()
+
+    def open_system_settings(self) -> None:
+        """外部入口：打开系统设置并定位「系统」页签。"""
+        self._open_system_settings()
+
+    def _sign_out_user(self, *, confirmed: bool = False) -> None:
+        from core.user_messages import ask_confirm
+        from services.license_manager import global_license_manager
+
+        if not confirmed and not ask_confirm(self, "退出当前账号？将返回登录界面。"):
             return
+        try:
+            global_license_manager.sign_out_local()
+        except Exception:
+            logger.debug("退出登录清理失败", exc_info=True)
+        self._st.set_user("", "")
+        self._restart_app()
+
+    def _show_about(self) -> None:
         from app.about_dialog import AboutDialog
 
         AboutDialog(self).exec()
@@ -1458,9 +1513,14 @@ class MainShell(QMainWindow):
                 self._header_logo_label.setPixmap(pix)
         if self._user_btn is not None:
             name = self._st.display_name or self._st.username or "用户"
-            self._user_btn.setToolTip(f"账号与系统 · {name}")
+            self._user_btn.setToolTip(f"账号 · {name} · 点击查看/退出")
             self._user_btn.setIcon(
-                get_header_icon("user", color=header_fg, size=_HEADER_ICON, parent=self)
+                get_header_icon(
+                    "user",
+                    color=self._header_icon_color(),
+                    size=_HEADER_ICON,
+                    parent=self,
+                )
             )
 
     def on_theme_changed(self, theme_id: str, palette: dict) -> None:

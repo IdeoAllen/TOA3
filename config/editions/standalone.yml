@@ -1,7 +1,7 @@
 # 单机版发行配置 — 与 config/feature_packs.yml local_free 对齐
 id: standalone
-label: 单机版
-window_title_suffix: " · 单机版"
+label: 体验版
+window_title_suffix: " · 体验版"
 
 menu_whitelist:
   - home

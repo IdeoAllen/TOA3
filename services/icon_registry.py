@@ -16,6 +16,7 @@ ICON_DIR = project_root() / "resources" / "icons" / "svg"
 _ALIAS: dict[str, str] = {
     # 壳 / 顶栏
     "system_settings": "settings",
+    "main_window": "main_window",
     "job_scheduler": "clock",
     "notifications": "notifications",
     "settings": "settings_svg",
@@ -29,6 +30,7 @@ _ALIAS: dict[str, str] = {
     "immersive": "fullscreen_svg",
     "home": "home",
     "user": "user",
+    "switch_user": "list",
     # 办公
     "web_workspace": "web_workspace",
     "quick_notepad": "quick_notepad",
@@ -389,10 +391,12 @@ def clear_cache() -> None:
 
 
 def app_window_icon(*, parent=None) -> QIcon:
-    """任务栏 / 托盘 / 窗口图标：多尺寸 PNG + 修复后的 ICO，避免仅 16×16 发糊。"""
+    """任务栏 / 托盘 / 窗口图标：开发版橙 DEV / 正式版蓝 3.0。"""
+    from services.app_branding import resolve_app_icon_ico, resolve_app_icon_png
+
     icon = QIcon()
-    png = project_root() / "resources" / "icons" / "app_logo.png"
-    if png.is_file():
+    png = resolve_app_icon_png()
+    if png is not None and png.is_file():
         src = QPixmap(str(png))
         if not src.isNull():
             for logical in (16, 24, 32, 48, 64, 128, 256):
@@ -403,9 +407,9 @@ def app_window_icon(*, parent=None) -> QIcon:
                     Qt.TransformationMode.SmoothTransformation,
                 )
                 icon.addPixmap(scaled)
-    ico = project_root() / "resources" / "icons" / "app_logo.ico"
-    if ico.is_file():
+    ico = resolve_app_icon_ico()
+    if ico is not None and ico.is_file():
         icon.addFile(str(ico))
-    if icon.isNull() and ico.is_file():
+    if icon.isNull() and ico is not None and ico.is_file():
         return QIcon(str(ico))
     return icon

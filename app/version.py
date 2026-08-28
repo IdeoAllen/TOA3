@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """TOA3 版本号（单一来源）。"""
-APP_VERSION = "3.1.1"
+APP_VERSION = "3.1.2"
 APP_NAME = "TOA3"
 
 
@@ -21,7 +21,7 @@ def build_profile_label() -> str:
     except Exception:
         eid = ""
     if eid == "standalone":
-        return "正式版（单机）"
+        return "体验版"
     return "正式版（网络）"
 
 

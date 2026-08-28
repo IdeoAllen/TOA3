@@ -75,6 +75,7 @@ hotkeys:
   exit_app: Ctrl+Q
   restart_app: Ctrl+Shift+R
   open_about: Alt+Shift+O
+  switch_user: Alt+U
   open_settings: Alt+S
   open_home: Ctrl+H
   open_notepad: Alt+N
@@ -537,8 +538,6 @@ menu:
     feature_id: system_settings
     requires_license: false
     show: true
-    # 顶栏齿轮进入；不占系统子模块侧栏
-    sidebar: false
   - class_name: JobSchedulerPage
     desc: 定时任务：间隔执行、立即试跑、jobs.json 落盘
     group: system
@@ -562,6 +561,55 @@ menu:
     requires_license: false
     show: true
   show_advanced_options: true
+settings_menu:
+  groups:
+    - id: general
+      label: 通用
+      items:
+        - key: system
+          title: 系统
+          icon: system_settings
+          subtitle: 版本、检查更新、关于与运行
+        - key: preferences
+          title: 偏好
+          icon: theme
+          subtitle: 主题配色与全局快捷键
+        - key: models
+          title: 模型管理
+          icon: llm_assistant
+          subtitle: 模型 Key 与能力配置
+    - id: admin
+      label: 本机维护
+      admin_only: true
+      items:
+        - key: brand
+          title: 品牌
+          icon: main_window
+          subtitle: Logo、名称与关于页文案
+        - key: license
+          title: 授权
+          icon: user
+          subtitle: 本机用户、发卡与云服务连接
+        - key: menu
+          title: 菜单
+          icon: list
+          subtitle: 侧栏模块可见性与排序
+        - key: integrations
+          title: 能力接入
+          icon: harness_agent
+          subtitle: Harness、OCR 与三方连通
+        - key: diagnostics
+          title: 诊断
+          icon: file_text
+          subtitle: 运行环境与本机日志
+    - id: commerce
+      label: 授权与开通
+      items:
+        - key: subscription
+          title: 开通与续费
+          icon: package
+          subtitle: 一键开通与粘贴授权码
+          unlicensed_only: true
 ocr:
   tesseract_path: C:\Program Files\Tesseract-OCR\tesseract.exe
 path:

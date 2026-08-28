@@ -41,7 +41,10 @@ def page_spec() -> dict[str, Any]:
 
 def dialog_spec(kind: str) -> dict[str, Any]:
     dialogs = _block("dialogs")
-    spec = dict(dialogs.get(kind) or dialogs.get("medium") or {})
+    k = str(kind or "medium").strip().lower()
+    if k == "login":
+        k = "account"
+    spec = dict(dialogs.get(k) or dialogs.get("medium") or {})
     return spec
 
 
@@ -132,8 +135,12 @@ def finalize_dialog_geometry(dialog: QDialog, kind: str | None = None) -> None:
     if lay is not None:
         lay.activate()
     dialog.adjustSize()
-    # sizeHint 常不含 QGroupBox 标题的 margin-top，略加余量避免标题被裁切
-    hint_h = max(dialog.sizeHint().height(), dialog.minimumSizeHint().height()) + 8
+    from PySide6.QtWidgets import QGroupBox, QLineEdit
+
+    group_extra = 14 * len(dialog.findChildren(QGroupBox))
+    field_extra = 2 * max(0, len(dialog.findChildren(QLineEdit)) - 1)
+    hint_h = max(dialog.sizeHint().height(), dialog.minimumSizeHint().height())
+    hint_h += 8 + group_extra + field_extra
     h = min(max(min_h, hint_h), max_h)
     dialog.setFixedSize(w, h)
     try:

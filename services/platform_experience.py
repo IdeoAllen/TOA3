@@ -157,7 +157,7 @@ class PlatformExperience(QObject):
 
             chip = shell._license_chip
             if lm.is_standalone_mode():
-                text, kind = "升级", "warning"
+                text, kind = "正式版", "warning"
             elif lm.is_licensed():
                 days = lm.get_remaining_days()
                 if days != float("inf") and days <= 7:

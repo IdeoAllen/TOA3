@@ -2,14 +2,15 @@
 """定时任务列表与编辑（原系统设置「任务与通知」页签）。"""
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout, QTableWidgetItem
 
 from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.user_messages import show_info, show_warning
-from services.job_scheduler import get_scheduler
-from widgets import FormSection, HintLabel, PrimaryButton, SecondaryButton
-from widgets.list_edit import FormEditDialog, ListPanel, confirm_delete
+from services.job_scheduler import JobSpec, get_scheduler
+from widgets import DangerButton, DataTable, FormSection, HintLabel, PrimaryButton, SecondaryButton
+from widgets.list_edit import FormEditDialog, confirm_delete
 
 
 class JobsSection(FormSection):
@@ -17,61 +18,70 @@ class JobsSection(FormSection):
         super().__init__("定时任务")
         self._page = parent
         self._sched = get_scheduler()
+        self._jobs: list[JobSpec] = []
 
-        self.add_widget(
-            HintLabel(
-                "间隔任务落盘于 data/module/job_scheduler/jobs.json；"
-                f"可用动作：{', '.join(self._sched.list_actions())}"
-            )
-        )
+        self.add_widget(HintLabel("任务在本机后台运行；双击行可编辑。"))
 
-        self._list = ListPanel(
-            add_label="新增",
-            edit_label="编辑",
-            delete_label="删除",
-            refresh_label="刷新",
-            hint="选中后可「立即执行」。",
-        )
-        self._list.bind_add(self._on_add)
-        self._list.bind_edit(self._on_edit)
-        self._list.bind_delete(self._on_delete)
-        self._list.bind_refresh(self._reload)
-        self.add_widget(self._list)
+        self._table = DataTable()
+        self._table.set_headers(["状态", "名称", "动作", "间隔", "上次运行", "结果"])
+        self._table.setMinimumHeight(300)
+        self._table.itemDoubleClicked.connect(self._on_edit)
+        self.add_widget(self._table, 1)
 
-        row = QHBoxLayout()
+        bar = QHBoxLayout()
+        bar.setSpacing(8)
+        btn_add = PrimaryButton("新增")
+        btn_add.clicked.connect(self._on_add)
+        bar.addWidget(btn_add)
+        btn_edit = SecondaryButton("编辑")
+        btn_edit.clicked.connect(self._on_edit)
+        bar.addWidget(btn_edit)
+        btn_del = DangerButton("删除")
+        btn_del.clicked.connect(self._on_delete)
+        bar.addWidget(btn_del)
+        btn_refresh = SecondaryButton("刷新")
+        btn_refresh.clicked.connect(self._reload)
+        bar.addWidget(btn_refresh)
+        bar.addSpacing(16)
         self._btn_run = PrimaryButton("立即执行")
         self._btn_run.clicked.connect(self._on_run)
-        row.addWidget(self._btn_run)
+        bar.addWidget(self._btn_run)
         btn_toggle = SecondaryButton("启用/停用")
         btn_toggle.clicked.connect(self._on_toggle)
-        row.addWidget(btn_toggle)
-        row.addStretch(1)
-        self.add_layout(row)
+        bar.addWidget(btn_toggle)
+        bar.addStretch(1)
+        self.add_layout(bar)
         self._reload()
 
     def primary_focus_widget(self):
-        return self._btn_run
+        return self._table
 
     def reload(self) -> None:
         self._reload()
 
     def _reload(self) -> None:
-        jobs = self._sched.list_jobs()
-        lines = []
-        for j in jobs:
-            state = "开" if j.enabled else "停"
-            lines.append(
-                f"[{state}] {j.name} · {j.action} · 每{j.interval_seconds}s · "
-                f"上次 {j.last_run or '—'} {j.last_result}"
-            )
-        self._list.set_items(lines)
-        self._page.report_status(f"定时任务 {len(jobs)} 条")
+        self._jobs = self._sched.list_jobs()
+        self._table.setRowCount(len(self._jobs))
+        for row, job in enumerate(self._jobs):
+            state = "启用" if job.enabled else "停用"
+            interval = f"{job.interval_seconds}s"
+            last = job.last_run or "—"
+            result = job.last_result or "—"
+            values = (state, job.name, job.action, interval, last, result)
+            for col, text in enumerate(values):
+                item = QTableWidgetItem(str(text))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, job.id)
+                self._table.setItem(row, col, item)
+        if self._jobs:
+            self._table.selectRow(0)
+        self._page.report_status(f"定时任务 {len(self._jobs)} 条")
 
-    def _current(self):
-        row = self._list.current_row()
-        jobs = self._sched.list_jobs()
-        if 0 <= row < len(jobs):
-            return jobs[row]
+    def _current(self) -> JobSpec | None:
+        row = self._table.currentRow()
+        if 0 <= row < len(self._jobs):
+            return self._jobs[row]
         return None
 
     def _on_add(self) -> None:

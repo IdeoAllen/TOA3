@@ -110,25 +110,27 @@ def renew_profile(info: dict[str, Any] | None = None) -> dict[str, str]:
     }
 
 
-def fetch_renew_quote(pack_id: str) -> Tuple[bool, dict, str]:
-    from services.commerce_client import list_sellable_packs
+def fetch_renew_quote(plan_id: str = "", pack_id: str = "") -> Tuple[bool, dict, str]:
+    from services.commerce_client import list_sellable_plans
+    from services.product_plans import resolve_plan_id
 
-    ok, packs, commerce, err = list_sellable_packs()
+    pid = resolve_plan_id(plan_id=plan_id, pack_id=pack_id)
+    ok, plans, commerce, err = list_sellable_plans()
     if not ok:
         return False, {}, err
-    row = next((p for p in packs if str(p.get("id") or "") == pack_id), None)
+    row = next((p for p in plans if str(p.get("plan_id") or p.get("id") or "") == pid), None)
     if not row:
-        return False, {}, f"未找到功能包 {pack_id}"
-    days = int(commerce.get("default_license_days") or 365)
-    try:
-        days = int(row.get("default_days") or days)
-    except Exception:
-        pass
+        return False, {}, f"未找到产品方案 {pid}"
+    days = int(row.get("validity_days") or commerce.get("default_license_days") or 365)
+    name = str(row.get("plan_name") or row.get("name") or pid)
     return True, {
-        "pack_id": pack_id,
-        "pack_name": str(row.get("name") or pack_id),
+        "pack_id": pid,
+        "plan_id": pid,
+        "pack_name": name,
+        "plan_name": name,
         "price_yuan": int(row.get("price_yuan") or 0),
         "license_days": days,
+        "validity_days": days,
         "mock_pay": bool((commerce.get("mock_payment") or {}).get("enabled", True)),
     }, ""
 
