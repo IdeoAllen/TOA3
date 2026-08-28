@@ -35,7 +35,7 @@ _TAB_TITLES: dict[str, str] = {
     TAB_APPEARANCE: "外观与主题",
     TAB_BRAND: "品牌定制",
     TAB_LICENSE: "授权管理",
-    TAB_SUBSCRIPTION: "订阅购买",
+    TAB_SUBSCRIPTION: "激活与订阅",
     TAB_MENU: "菜单",
     TAB_HOTKEYS: "快捷键",
     TAB_INTEGRATIONS: "能力接入",
@@ -90,13 +90,13 @@ def settings_tab_plan() -> list[tuple[str, str]]:
 def settings_header_subtitle() -> str:
     if is_settings_admin():
         return (
-            "管理员：品牌 · 授权 · 菜单 · 能力接入 · 诊断。"
-            "终端用户见主题、快捷键与模型 Key。"
-            "任务与通知见系统侧栏。"
+            "终端管理员：本机品牌 · 本机用户 · 侧栏菜单 · 能力接入 · 诊断。"
+            "SKU/定价/订单/发版在 TOA 运营台。"
+            "终端用户见主题、快捷键与模型 Key；任务与通知见系统侧栏。"
         )
     return (
         "主题、快捷键、AI 模型 Key。"
-        "关于、续费提示与退出见「关于与应用」。"
+        "开通与续费见「激活与订阅」或顶栏授权 Chip。"
         "授权名单与菜单编排仅管理员可见。"
     )
 

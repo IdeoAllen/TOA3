@@ -11,7 +11,6 @@ from core.status_service import StatusLevel
 from core.user_messages import show_error, show_info, show_warning
 from services.license_client import license_service_summary
 from services.license_manager import global_license_manager
-from services.menu_registry import all_menu_items
 from services.notify_bus import emit_license_changed
 from widgets import (
     DataTable,
@@ -26,22 +25,19 @@ from widgets import (
 from widgets.list_edit import FormEditDialog, confirm_delete
 
 _USER_COLS = ("姓名", "手机", "角色", "有效期", "状态", "功能权限")
-_MENU_COLS = ("模块", "显示名", "需完整版")
-_PACK_COLS = ("包 ID", "名称", "功能数", "说明")
 
 _CLOUD_HINT = (
     "【本机 ↔ TOA 云服务】\n"
-    "· 本页「授权用户」= 本机发码/续期操作台；名单存在本机 license 数据里。\n"
-    "· 「同步到云服务」= 把名单推到 TOA 云服务（下方地址），供激活校验、到期判定、"
-    "试用/续订与运营台审计；不是 DMS 业务库。\n"
-    "· 「联网校验」= 从云服务拉最新授权状态写回本机 license.json，侧栏权限随即刷新。\n"
-    "· 单机基础版可不连云，仅用本机激活码；完整版/多用户发卡建议配置云服务。\n"
-    "· 机器 ID 用于绑机发码；复制后可在运营台或发卡流程中登记。"
+    "· 「授权用户」= 本机操作用户名单（发卡/续期/吊销），数据在本机 license。\n"
+    "· 「同步到云服务」= 推送名单供激活校验与审计；订单与 SKU 定价在运营台维护。\n"
+    "· 「联网校验」= 从云拉回最新授权写回本机 license.json，侧栏权限随即刷新。\n"
+    "· 机器 ID 用于绑机；商业新购/续费请用「激活与订阅」或拦截弹窗一键开通。\n"
+    "· 功能包 SKU、定价、订单台账：https://toa-service.yczh.tech/admin/"
 )
 
 
 class LicenseSection(QWidget):
-    """授权状态 + 用户名单（主表）+ 运营参考 / 云服务说明（子页签）。"""
+    """本机授权用户 + 云服务连接（SKU/定价见运营台）。"""
 
     def __init__(self, parent: BasePage) -> None:
         super().__init__(parent)
@@ -61,7 +57,6 @@ class LicenseSection(QWidget):
         self._tabs.setDocumentMode(True)
         self._tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._tabs.addTab(self._build_users_tab(), "授权用户")
-        self._tabs.addTab(self._build_reference_tab(), "运营参考")
         self._tabs.addTab(self._build_cloud_tab(), "云服务连接")
         root.addWidget(self._tabs, 1)
 
@@ -76,7 +71,8 @@ class LicenseSection(QWidget):
 
         lay.addWidget(
             HintLabel(
-                "维护本机授权名单；改完后点「同步到云服务」写入云端，或点「联网校验」从云端拉回。"
+                "维护本机操作用户；改完后点「同步到云服务」写入云端，或点「联网校验」从云端拉回。"
+                "套餐与定价请在 TOA 运营台维护，不在此页编辑。"
             )
         )
 
@@ -110,22 +106,6 @@ class LicenseSection(QWidget):
         lay.addWidget(self._user_table, 1)
         return w
 
-    def _build_reference_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 4, 0, 0)
-        lay.setSpacing(6)
-        lay.addWidget(
-            HintLabel("发卡、订阅对照用：各模块是否要求完整版，以及可售功能包 SKU。")
-        )
-
-        inner = TabWidget()
-        inner.setDocumentMode(True)
-        inner.addTab(self._build_menu_tab(), "菜单授权对照")
-        inner.addTab(self._build_pack_tab(), "功能包 SKU")
-        lay.addWidget(inner, 1)
-        return w
-
     def _build_cloud_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
@@ -153,62 +133,9 @@ class LicenseSection(QWidget):
         lay.addStretch(1)
         return w
 
-    def _build_menu_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 4, 0, 0)
-        lay.setSpacing(4)
-        self._menu_table = DataTable()
-        self._menu_table.set_headers(list(_MENU_COLS))
-        lay.addWidget(self._menu_table, 1)
-        self._reload_menu_table()
-        return w
-
-    def _build_pack_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 4, 0, 0)
-        lay.setSpacing(4)
-        self._pack_table = DataTable()
-        self._pack_table.set_headers(list(_PACK_COLS))
-        lay.addWidget(self._pack_table, 1)
-        self._reload_pack_table()
-        return w
-
     def _copy_machine_id(self) -> None:
         QGuiApplication.clipboard().setText(self._machine_id.text().strip())
         self._page.report_status("机器 ID 已复制", level=StatusLevel.SUCCESS)
-
-    def _reload_menu_table(self) -> None:
-        rows: list[tuple[str, ...]] = []
-        for it in all_menu_items():
-            if not it.get("show", True):
-                continue
-            mid = str(it.get("id") or "")
-            name = str(it.get("name") or mid)
-            req = it.get("requires_license", True)
-            rows.append((mid, name, "是" if req else "否"))
-        self._menu_table.set_rows(rows)
-
-    def _reload_pack_table(self) -> None:
-        rows: list[tuple[str, ...]] = []
-        try:
-            from services.feature_packs import expand_features, list_packs
-
-            for p in list_packs(sellable_only=True):
-                feats = expand_features([p["id"]])
-                n = "全部" if feats == ["all"] else str(len(feats))
-                rows.append(
-                    (
-                        str(p.get("id") or ""),
-                        str(p.get("name") or ""),
-                        n,
-                        str(p.get("desc") or ""),
-                    )
-                )
-        except Exception as exc:
-            rows.append(("—", "加载失败", "", str(exc)))
-        self._pack_table.set_rows(rows)
 
     def _user_role_label(self, user: dict) -> str:
         role = str(user.get("role") or "").strip().lower()

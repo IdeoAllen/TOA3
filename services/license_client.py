@@ -54,4 +54,4 @@ def license_service_summary() -> str:
     if str(lic.get("service_url") or "").strip():
         return license_service_url()
     fb = dms_base_url()
-    return f"{fb}（DMS 过渡 fallback）"
+    return f"{fb}（云服务备用地址）"

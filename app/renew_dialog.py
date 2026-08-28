@@ -137,15 +137,9 @@ _dialog_open = False
 
 def offer_renew_dialog(parent, *, message: str = "", reason: str = "") -> bool:
     """弹出续费窗；成功返回 True。同一时刻只弹一次。"""
-    global _dialog_open
-    if _dialog_open:
+    from app.upgrade_offer_dialog import offer_upgrade_for_module
+
+    text = str(message or reason or "")
+    if text and not is_renewable_block(text):
         return False
-    if reason and not is_renewable_block(reason):
-        return False
-    _dialog_open = True
-    try:
-        dlg = RenewDialog(parent, message=message or reason)
-        accepted = dlg.exec()
-        return bool(accepted and dlg.renewed)
-    finally:
-        _dialog_open = False
+    return offer_upgrade_for_module(parent, reason=text)

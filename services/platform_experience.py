@@ -157,15 +157,15 @@ class PlatformExperience(QObject):
 
             chip = shell._license_chip
             if lm.is_standalone_mode():
-                text, kind = "单机版", "info"
+                text, kind = "升级", "warning"
             elif lm.is_licensed():
                 days = lm.get_remaining_days()
                 if days != float("inf") and days <= 7:
-                    text, kind = f"剩余 {int(days)} 天", "warning"
+                    text, kind = f"续费 {int(days)}天", "warning"
                 else:
                     text, kind = "已授权", "success"
             else:
-                text, kind = "未授权", "warning"
+                text, kind = "开通", "warning"
             chip.setText(text)
             chip.setProperty("class", f"msg-{kind}")
             chip.setToolTip(lm.get_validity_text())

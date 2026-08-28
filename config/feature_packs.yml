@@ -93,6 +93,8 @@ packs:
       - llm_assistant
       - harness_agent
       - media_studio
+
+  professional:
     name: 专业版
     desc: 入门 + 图片 + 目录 + 转换 + AI
     sellable: true

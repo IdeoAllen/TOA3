@@ -140,48 +140,7 @@ def renew_one_click(
     pack_id: str | None = None,
 ) -> Tuple[bool, str]:
     """创建订单 → 模拟/终端支付 → 激活。成功返回新的有效期文案。"""
-    from services.commerce_client import create_order, pay_order
-    from services.license_manager import global_license_manager
-    from services.notify_bus import emit_license_changed
-
-    phone = str(phone or "").strip()
-    name = str(name or "").strip()
-    if len(phone) != 11 or not phone.isdigit():
-        return False, "请填写 11 位手机号"
-    if not name:
-        name = "用户"
+    from services.upgrade_flow import purchase_one_click
 
     pid = str(pack_id or infer_renew_pack_id()).strip() or _DEFAULT_PACK
-    mid = global_license_manager.get_machine_id()
-
-    ok, order, err = create_order(
-        pack_id=pid,
-        customer_name=name,
-        phone=phone,
-        machine_id=mid,
-    )
-    if not ok:
-        return False, err or "创建订单失败"
-    order_no = str((order or {}).get("order_no") or "")
-    if not order_no:
-        return False, "订单号为空"
-
-    ok, quote, _ = fetch_renew_quote(pid)
-    mock_pay = quote.get("mock_pay", True) if ok else True
-    if not mock_pay:
-        return False, f"订单 {order_no} 已创建，请完成支付后同步"
-
-    ok, paid, err = pay_order(order_no=order_no, phone=phone, machine_id=mid)
-    if not ok:
-        return False, err or "支付失败"
-
-    key = str((paid or {}).get("license_key") or "").strip()
-    if not key:
-        return False, "支付成功但未返回授权码"
-
-    act_ok, act_msg, _ = global_license_manager.activate_with_code(key)
-    if not act_ok:
-        return False, act_msg or "激活失败"
-
-    emit_license_changed()
-    return True, global_license_manager.get_validity_text()
+    return purchase_one_click(pack_id=pid, name=name, phone=phone)

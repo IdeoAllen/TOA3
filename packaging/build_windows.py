@@ -209,7 +209,7 @@ def build_inno_setup(release_dir: Path | None = None, *, setup_basename: str = S
     ensure_iss_utf8_bom(iss)
     log(f"开始构建 Inno Setup 安装包 ({setup_basename}) ...")
     result = subprocess.run(
-        [iscc, f"/DSetupBaseName={setup_basename}", str(iss)],
+        [iscc, f"/DSetupBaseName={setup_basename}", f"/DMyAppVersion={APP_VERSION}", str(iss)],
         cwd=PACKAGING_DIR,
     )
     if result.returncode != 0:

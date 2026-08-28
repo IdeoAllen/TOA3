@@ -446,9 +446,9 @@ class LicenseManager:
 
             ok_net, net_msg, _ = register_on_dms(code)
             if not ok_net:
-                return False, f"同步 DMS 失败：{net_msg}", None
+                return False, f"同步云服务失败：{net_msg}", None
         except Exception as e:
-            return False, f"同步 DMS 异常：{e}", None
+            return False, f"同步云服务异常：{e}", None
 
         user = self.find_authorized_user(name, phone)
         old_cid = str((user or {}).get("code_id") or "").strip()
@@ -484,11 +484,11 @@ class LicenseManager:
             users.append(record)
         self.license_info["authorized_users"] = users
         if not self.save_license():
-            return False, "已同步 DMS，但本机名单保存失败（授权码仍可用）", code
+            return False, "已同步到云服务，但本机名单保存失败（授权码仍可用）", code
         if old_cid and old_cid != record["code_id"]:
             self.sync_user_to_dms({"code_id": old_cid, "name": name, "phone": phone}, op="delete", remark="终端换发删除旧码")
         self.sync_user_to_dms(record, op="upsert", license_key=code, remark="终端签发")
-        return True, "授权码已生成并同步到 DMS", code
+        return True, "授权码已生成并同步到云服务", code
 
     def _sign_dms_sync(self, envelope: dict) -> dict:
         data = dict(envelope or {})
@@ -509,7 +509,7 @@ class LicenseManager:
         cid = str(user.get("code_id") or "").strip()
         key = str(license_key or "").strip()
         if not cid and not key:
-            return True, "无授权码，跳过 DMS 同步"
+            return True, "无授权码，跳过云服务同步"
         envelope = {
             "v": _SCHEMA_VER,
             "op": str(op or "upsert"),
@@ -533,10 +533,10 @@ class LicenseManager:
 
             ok, msg, _ = sync_roster_on_dms(self._sign_dms_sync(envelope))
             if not ok:
-                return False, msg or "同步 DMS 失败"
-            return True, "已同步 DMS"
+                return False, msg or "同步云服务失败"
+            return True, "已同步到云服务"
         except Exception as e:
-            return False, f"同步 DMS 异常：{e}"
+            return False, f"同步云服务异常：{e}"
 
     def update_authorized_user(
         self,
@@ -598,8 +598,8 @@ class LicenseManager:
             return False, "本机保存失败", None
         ok, msg = self.sync_user_to_dms(rec, op="upsert", remark="终端修改")
         if not ok:
-            return False, f"本机已保存，但同步 DMS 失败：{msg}", rec
-        return True, "已保存并同步 DMS", rec
+            return False, f"本机已保存，但同步云服务失败：{msg}", rec
+        return True, "已保存并同步到云服务", rec
 
     def purge_duplicate_placeholder_admins(self) -> int:
         """只保留一个固定管理员；同名「管理员」占位从本机名单去掉。"""
@@ -669,7 +669,7 @@ class LicenseManager:
         if skip_n:
             summary += f"，固定管理员已跳过 {skip_n} 条"
         if rec_ok and rec_n:
-            summary += f"，已从 DMS 清除多余 {rec_n} 条"
+            summary += f"，已从云服务清除多余 {rec_n} 条"
         if fail_n:
             summary += f"，失败 {fail_n} 条"
             if errors:
@@ -1118,7 +1118,7 @@ class LicenseManager:
                 ):
                     pass
                 else:
-                    return False, "需联网校验 DMS 授权，请连接网络后重试"
+                    return False, "需联网校验 TOA 云服务授权，请连接网络后重试"
         except Exception as e:
             last_status = str(self.license_info.get("online_status") or "")
             try:
@@ -1131,7 +1131,7 @@ class LicenseManager:
             if last_status == "active":
                 return True, "ok"
             if not within_grace(str(self.license_info.get("last_online_ok_at") or "")):
-                return False, f"需联网校验 DMS 授权：{e}"
+                return False, f"需联网校验 TOA 云服务授权：{e}"
 
         return True, "ok"
 
@@ -1384,7 +1384,7 @@ class LicenseManager:
                     remark="终端删除",
                 )
                 if not ok:
-                    print(f"本机已删除，但同步 DMS 删除失败：{msg}")
+                    print(f"本机已删除，但同步云服务删除失败：{msg}")
                 return True
             return False
         except Exception as e:
@@ -1445,8 +1445,8 @@ class LicenseManager:
             return False, "本机保存失败"
         ok, msg = self.sync_user_to_dms(rec, op="unbind", remark="终端解绑")
         if not ok:
-            return False, f"本机已保存，但同步 DMS 失败：{msg}"
-        return True, "已解绑并同步 DMS"
+            return False, f"本机已保存，但同步云服务失败：{msg}"
+        return True, "已解绑并同步到云服务"
 
     def get_authorized_users(self) -> List[Dict[str, Any]]:
         return list(self.license_info.get("authorized_users") or [])

@@ -3,7 +3,9 @@
 #define MyAppName "Training Operations Assistant 3 (TOA3)"
 #define MyAppNameCN "赋能培训运营助手 TOA3（运营宝）"
 #define MyAppDirName "TOA3"
+#ifndef MyAppVersion
 #define MyAppVersion "3.0.0"
+#endif
 #define MyAppPublisher "YCZH"
 #define MyAppExeName "TOA3.exe"
 #define MyAppURL "mailto:chengchengzhao@eautosh.com"

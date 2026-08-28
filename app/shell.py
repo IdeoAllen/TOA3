@@ -1272,6 +1272,31 @@ class MainShell(QMainWindow):
                 self.navigate("home")
 
     def _on_license_chip_clicked(self) -> None:
+        try:
+            from services.license_manager import global_license_manager as lm
+            from services.upgrade_flow import should_offer_purchase
+
+            if lm.is_standalone_mode() or not lm.is_licensed():
+                from app.upgrade_offer_dialog import offer_upgrade_for_module
+
+                if offer_upgrade_for_module(self, reason=lm.get_validity_text()):
+                    from services.platform_experience import get_platform_experience
+
+                    get_platform_experience().refresh_license_chip()
+                return
+            if should_offer_purchase(reason=lm.get_validity_text()):
+                from app.upgrade_offer_dialog import offer_upgrade_for_module
+
+                if offer_upgrade_for_module(self, reason=lm.get_validity_text()):
+                    from services.platform_experience import get_platform_experience
+
+                    get_platform_experience().refresh_license_chip()
+                return
+        except Exception:
+            pass
+        self.open_subscription_settings()
+
+    def open_subscription_settings(self) -> None:
         self.navigate("system_settings")
         page = self._pages.get("system_settings")
         if page is not None and hasattr(page, "open_license_or_subscription"):
@@ -1291,25 +1316,12 @@ class MainShell(QMainWindow):
         if cur and cur not in ("home", "system_settings", "notifications", "job_scheduler"):
             ok, reason = can_open(cur)
             if not ok:
-                if not self._try_renew_and_open(cur, reason):
+                if not self._try_purchase_and_open(cur, reason):
                     show_warning(self, reason or "当前模块已不可用")
                 self.navigate("home")
 
-    def _try_renew_and_open(self, module_id: str, reason: str) -> bool:
-        """到期拦截时弹续费窗，成功则重试打开模块。"""
-        from services.subscription_renew import is_renewable_block
-
-        if not is_renewable_block(reason):
-            return False
-        from app.renew_dialog import offer_renew_dialog
-
-        if not offer_renew_dialog(self, reason=reason):
-            return False
-        ok, reason2 = can_open(module_id)
-        if not ok:
-            show_warning(self, reason2 or "续费后仍无法打开该模块")
-            return False
-        # 续费成功：直接走打开逻辑（避免 navigate 递归）
+    def _open_module_direct(self, module_id: str) -> bool:
+        """授权已通过校验后直接打开模块（避免 navigate 递归）。"""
         page = self._ensure_page(module_id)
         if page is None:
             return False
@@ -1335,6 +1347,25 @@ class MainShell(QMainWindow):
             pass
         return True
 
+    def _try_purchase_and_open(self, module_id: str, reason: str) -> bool:
+        """拦截时弹无感开通窗，成功则直接进入目标模块。"""
+        from app.upgrade_offer_dialog import offer_upgrade_for_module
+        from services.upgrade_flow import should_offer_purchase
+
+        if not should_offer_purchase(reason=reason):
+            return False
+        if not offer_upgrade_for_module(self, module_id=module_id, reason=reason):
+            return False
+        ok, reason2 = can_open(module_id)
+        if not ok:
+            show_warning(self, reason2 or "开通后仍无法打开该模块")
+            return False
+        return self._open_module_direct(module_id)
+
+    def _try_renew_and_open(self, module_id: str, reason: str) -> bool:
+        """兼容旧入口。"""
+        return self._try_purchase_and_open(module_id, reason)
+
     def rebuild_nav(self) -> None:
         """授权变更后刷新侧栏：按当前域过滤二级模块。"""
         self._rebuild_domain_tabs()
@@ -1349,7 +1380,7 @@ class MainShell(QMainWindow):
 
         ok, reason = can_open(module_id)
         if not ok:
-            if self._try_renew_and_open(module_id, reason):
+            if self._try_purchase_and_open(module_id, reason):
                 return
             show_warning(self, reason or "无权限打开该模块")
             self.show_status(reason or "无权限", level=StatusLevel.WARNING)

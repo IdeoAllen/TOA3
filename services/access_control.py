@@ -104,10 +104,7 @@ def _can_open_uncached(
     if _is_standalone_session():
         if mid in local_free_module_ids():
             return True, ""
-        return (
-            False,
-            f"「{name or mid}」属于完整版功能。请使用授权码登录，或在「关于与应用」联网激活。",
-        )
+        return False, f"完整版功能「{name or mid}」"
 
     try:
         from services.license_manager import global_license_manager
@@ -127,8 +124,8 @@ def _can_open_uncached(
         except Exception:
             reason = "当前未授权"
         if "到期" in str(reason):
-            return False, f"{reason}"
-        return False, f"{reason}。请使用 TOA 运营台签发的授权码登录。"
+            return False, str(reason)
+        return False, "未授权"
 
     if not requires_license and not licensed:
         return True, ""
@@ -144,7 +141,7 @@ def _can_open_uncached(
             if global_license_manager is not None and not global_license_manager.has_feature_access(
                 feature_key
             ):
-                return False, f"当前授权未包含功能「{name or feature_key}」，请联系管理员开通。"
+                return False, f"未包含功能「{name or feature_key}」"
         except Exception:
             pass
 

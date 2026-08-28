@@ -28,7 +28,9 @@ from services.config_service import (
 )
 from services.menu_registry import GROUP_ORDER, MIGRATED_MODULES, group_label
 from services.migration_manifest import status_label
+from services.access_control import is_admin_session
 from services.notify_bus import request_nav_rebuild
+from services.toa_catalog_client import publish_menu_catalog_to_cloud
 from widgets import (
     CheckBox,
     ComboBox,
@@ -196,9 +198,8 @@ class MenuSection(QWidget):
         box.add_widget(
             HintLabel(
                 "在此调整侧栏显示、分组与排序，点「保存菜单」立即生效。\n"
-                "点选左侧子模块行（如「编码智能体」）可改顶栏名；点选具体功能可改功能名。\n"
-                "上移/下移只在本组内调整顺序。「从菜单移除」= 隐藏出厂项或删自定义项。\n"
-                "「恢复默认」= 出厂菜单。"
+                "「同步目录到运营台」仅上传 module 池供运营台组包；侧栏 IA 不在运营台修改。\n"
+                "点选左侧子模块行可改顶栏名；点选具体功能可改功能名。"
             )
         )
 
@@ -272,6 +273,11 @@ class MenuSection(QWidget):
         btn_save = PrimaryButton("保存菜单")
         btn_save.clicked.connect(self._save)
         row.addWidget(btn_save)
+        self._btn_sync_cloud = SecondaryButton("同步目录到运营台")
+        self._btn_sync_cloud.setAutoDefault(False)
+        self._btn_sync_cloud.setDefault(False)
+        self._btn_sync_cloud.clicked.connect(self._sync_catalog_to_cloud)
+        row.addWidget(self._btn_sync_cloud)
         btn_reload = SecondaryButton("重新加载")
         btn_reload.setAutoDefault(False)
         btn_reload.setDefault(False)
@@ -286,7 +292,27 @@ class MenuSection(QWidget):
         box.add_layout(row)
 
         lay.addWidget(box, 1)
+        self._btn_sync_cloud.setVisible(is_admin_session())
         self.reload(quiet=True)
+
+    def _sync_catalog_to_cloud(self) -> None:
+        if not is_admin_session():
+            show_warning(self._page, "仅终端管理员（admin 授权）可同步菜单目录。")
+            return
+        self._flush_edits()
+        if not ask_confirm(
+            self._page,
+            "将当前菜单 module 目录上传至 TOA 云服务？\n"
+            "运营台将据此组功能包；建议先点「保存菜单」。",
+        ):
+            return
+        ok, msg = publish_menu_catalog_to_cloud()
+        if ok:
+            show_info(self._page, msg)
+            self._page.report_status(msg)
+        else:
+            show_warning(self._page, msg)
+            self._page.report_status(msg)
 
     def _sync_form_from_selection(self) -> None:
         """强制右侧表单与内存菜单同步（重选同一行时 Qt 不触发 currentItemChanged）。"""

@@ -1,15 +1,31 @@
 # -*- coding: utf-8 -*-
-"""系统设置 · 单机升级 / 授权码联网激活。"""
+"""系统设置 · 一键开通 + 可选授权码激活。"""
 from __future__ import annotations
 
+import threading
+
 from PySide6.QtCore import QObject, QThread, Signal
-from PySide6.QtWidgets import QFormLayout, QHBoxLayout
+from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
 
 from core.base_page import BasePage
 from core.user_messages import show_error, show_success, show_warning
+from services.commerce_profile import merge_buyer_profile
 from services.license_manager import global_license_manager
-from services.notify_bus import emit_license_changed
+from services.subscription_renew import _DEFAULT_PACK, fetch_renew_quote
+from services.upgrade_flow import primary_action_label, purchase_pack, suggest_pack_for_module
 from widgets import FormSection, HintLabel, LineEdit, PasswordLineEdit, PrimaryButton, SecondaryButton, SemanticLabel
+
+
+class _QuoteWorker(QObject):
+    finished = Signal(bool, dict)
+
+    def __init__(self, pack_id: str) -> None:
+        super().__init__()
+        self._pack_id = pack_id
+
+    def run(self) -> None:
+        ok, quote, _ = fetch_renew_quote(self._pack_id)
+        self.finished.emit(ok, quote or {})
 
 
 class _ActivateWorker(QObject):
@@ -27,48 +43,86 @@ class _ActivateWorker(QObject):
             self.finished.emit(False, str(exc), None)
 
 
+class _PurchaseWorker(QObject):
+    finished = Signal(bool, str, object)
+
+    def __init__(self, pack_id: str, name: str, phone: str) -> None:
+        super().__init__()
+        self._pack_id = pack_id
+        self._name = name
+        self._phone = phone
+
+    def run(self) -> None:
+        ok, msg, meta = purchase_pack(pack_id=self._pack_id, name=self._name, phone=self._phone)
+        self.finished.emit(ok, msg, meta)
+
+
 class ActivationSection(FormSection):
     def __init__(self, parent: BasePage) -> None:
-        super().__init__("升级完整版（联网激活）")
+        super().__init__("一键开通")
         self._page = parent
         self._lm = global_license_manager
         self._thread: QThread | None = None
         self._worker: _ActivateWorker | None = None
         self._busy = False
+        self._profile = merge_buyer_profile()
+        self._pack_id = suggest_pack_for_module("")
+        self._show_code_form = False
 
         self._status = SemanticLabel("", kind="info")
         self.add_widget(self._status)
         self.add_widget(
-            HintLabel(
-                "单机基础版可离线使用部分办公工具。"
-                "粘贴 TOA 运营台签发的授权码并联网激活后，将切换为完整网络版。"
-                "获取授权码：https://toa-service.yczh.tech/admin/"
-            )
+            HintLabel("推荐：一键开通完整版，支付后立即生效，无需粘贴授权码。")
         )
 
-        form = QFormLayout()
-        self._display = LineEdit()
-        self._display.setPlaceholderText("可选，以授权码登记姓名为准")
-        info = self._lm.get_license_info()
-        self._display.setText(str(info.get("user_name") or "").strip())
-        form.addRow("显示名", self._display)
+        self._quote = SemanticLabel("正在获取推荐套餐…", kind="info")
+        self.add_widget(self._quote)
 
-        self._key = PasswordLineEdit()
-        self._key.setPlaceholderText("TOA 授权码")
-        form.addRow("授权码", self._key)
-        self.add_layout(form)
+        self._phone = LineEdit()
+        self._phone.setPlaceholderText("11 位手机号")
+        phone = str(self._profile.get("phone") or "")
+        if phone:
+            self._phone.setText(phone)
+        if not phone:
+            self.add_widget(HintLabel("首次开通需验证手机号"))
+        self.add_widget(self._phone)
+        if phone:
+            self._phone.hide()
 
         row = QHBoxLayout()
-        self._btn_activate = PrimaryButton("联网激活")
-        self._btn_activate.clicked.connect(self._on_activate)
-        row.addWidget(self._btn_activate)
-        self._btn_sub = SecondaryButton("订阅购买")
-        self._btn_sub.clicked.connect(self._open_subscription)
-        row.addWidget(self._btn_sub)
+        self._btn_buy = PrimaryButton("一键开通")
+        self._btn_buy.clicked.connect(self._on_one_click)
+        row.addWidget(self._btn_buy)
+        self._btn_code = SecondaryButton("我有授权码")
+        self._btn_code.clicked.connect(self._toggle_code_form)
+        row.addWidget(self._btn_code)
         row.addStretch(1)
         self.add_layout(row)
 
+        self._code_panel = QWidget()
+        code_lay = QVBoxLayout(self._code_panel)
+        code_lay.setContentsMargins(0, 8, 0, 0)
+        code_lay.addWidget(HintLabel("粘贴运营台签发的授权码，联网激活。"))
+        form = QFormLayout()
+        self._key = PasswordLineEdit()
+        self._key.setPlaceholderText("TOA 授权码")
+        form.addRow("授权码", self._key)
+        code_lay.addLayout(form)
+        code_row = QHBoxLayout()
+        self._btn_activate = SecondaryButton("联网激活")
+        self._btn_activate.clicked.connect(self._on_activate)
+        code_row.addWidget(self._btn_activate)
+        code_row.addStretch(1)
+        code_lay.addLayout(code_row)
+        self.add_widget(self._code_panel)
+        self._code_panel.setVisible(False)
+
         self.refresh_status()
+        self._load_quote()
+
+    def _toggle_code_form(self) -> None:
+        self._show_code_form = not self._show_code_form
+        self._code_panel.setVisible(self._show_code_form)
 
     def refresh_status(self) -> None:
         text = self._lm.get_validity_text() or "—"
@@ -78,22 +132,74 @@ class ActivationSection(FormSection):
         self._status.style().unpolish(self._status)
         self._status.style().polish(self._status)
         self._status.setText(f"当前：{text}")
-
-        from services.settings_access import subscription_tab_visible
-
-        self._btn_sub.setVisible(subscription_tab_visible())
         self._set_busy(self._busy)
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
+        self._btn_buy.setEnabled(not busy)
+        self._btn_code.setEnabled(not busy)
         self._btn_activate.setEnabled(not busy)
-        self._btn_activate.setText("激活中…" if busy else "联网激活")
         self._key.setEnabled(not busy)
+        if busy:
+            self._btn_buy.setText("处理中…")
+        elif not self._busy:
+            self._load_quote()
 
-    def _open_subscription(self) -> None:
-        page = self._page
-        if hasattr(page, "open_subscription_tab"):
-            page.open_subscription_tab()
+    def _load_quote(self) -> None:
+        if self._busy:
+            return
+        pack_id = self._pack_id or _DEFAULT_PACK
+        worker = _QuoteWorker(pack_id)
+        worker.finished.connect(self._apply_quote)
+        threading.Thread(target=worker.run, daemon=True).start()
+
+    def _apply_quote(self, ok: bool, quote: dict) -> None:
+        if self._busy:
+            return
+        pack_id = self._pack_id or _DEFAULT_PACK
+        if not ok:
+            self._quote.setText("推荐套餐 · 请联网后重试")
+            self._btn_buy.setText("一键开通")
+            return
+        name = str(quote.get("pack_name") or pack_id)
+        price = int(quote.get("price_yuan") or 0)
+        days = int(quote.get("license_days") or 365)
+        self._quote.setText(f"推荐 {name} · ¥{price} / {days} 天")
+        self._btn_buy.setText(primary_action_label(price_yuan=price))
+
+    def _buyer_phone(self) -> str:
+        return self._phone.text().strip() or str(self._profile.get("phone") or "").strip()
+
+    def _on_one_click(self) -> None:
+        if self._busy:
+            return
+        phone = self._buyer_phone()
+        if len(phone) != 11 or not phone.isdigit():
+            show_warning(self._page, "请填写 11 位手机号")
+            self._phone.show()
+            return
+        name = str(self._profile.get("name") or "用户").strip() or "用户"
+        self._set_busy(True)
+        self._page.report_status("正在开通…")
+
+        worker = _PurchaseWorker(self._pack_id, name, phone)
+        worker.finished.connect(self._on_purchase_done)
+        threading.Thread(target=worker.run, daemon=True).start()
+
+    def _on_purchase_done(self, ok: bool, msg: str, meta: object) -> None:
+        self._set_busy(False)
+        if not ok:
+            data = meta if isinstance(meta, dict) else {}
+            if data.get("pending_payment"):
+                show_warning(self._page, msg or "请在 Portal 完成支付后，到下方「选择套餐」同步订单。")
+            else:
+                show_error(self._page, msg or "开通失败")
+            self._page.report_status("开通失败")
+            return
+        self._profile = merge_buyer_profile()
+        self.refresh_status()
+        show_success(self._page, "开通成功，已刷新授权。")
+        self._page.report_status("已切换为网络授权版")
 
     def _on_activate(self) -> None:
         if self._busy:
@@ -124,9 +230,10 @@ class ActivationSection(FormSection):
             show_error(self._page, msg or "激活失败", title="联网激活失败")
             self._page.report_status("联网激活失败")
             return
-        name = str((payload or {}).get("name") or self._display.text().strip() or "用户")
+        name = str((payload or {}).get("name") or "用户")
         role = str((payload or {}).get("role") or "user")
         from app.app_state import AppState
+        from services.notify_bus import emit_license_changed
 
         AppState.get().set_user(name, name, role=role)
         emit_license_changed()
