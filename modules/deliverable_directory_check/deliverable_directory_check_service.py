@@ -190,7 +190,7 @@ def _add_delivery_cover_page(doc, ctx: DeliveryReportContext) -> None:
         row.cells[0].width = Inches(1.4)
         row.cells[1].width = Inches(4.8)
 
-    _add_cover_spacer(doc, 48)
+    _add_cover_spacer(doc, 24)
 
     footer_para = doc.add_paragraph()
     footer_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
@@ -199,8 +199,8 @@ def _add_delivery_cover_page(doc, ctx: DeliveryReportContext) -> None:
     footer_run.font.name = "微软雅黑"
     footer_run.font.size = Pt(10)
     footer_run.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
-
-    doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+    # 分页符须接在封面最后一行，勿另起空段（否则会多出一页空白）
+    footer_run.add_break(WD_BREAK.PAGE)
 
 
 def export_word_report(
