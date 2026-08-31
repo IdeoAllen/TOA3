@@ -48,7 +48,7 @@ class DirectoryInspectorPage(BasePage):
             PageHeader(
                 "目录结构检查",
                 "列出相对路径，检查空目录与命名问题；导出 TXT/Word/Excel 报告。"
-                "（班级交付 Word 贴图请用业务侧「目录检查工具」，尚未迁入 TOA3。）",
+                "（班级交付 Word 贴图请用业务侧「生成交付报告」。）",
             )
         )
 

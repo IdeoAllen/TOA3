@@ -34,6 +34,172 @@ def images_dir() -> Path:
     return d
 
 
+def markdown_demo_template() -> str:
+    """多功能模式新建默认正文：Markdown 语法全景示例（可整段删除后开写）。"""
+    return """# TOA 快速记事 · Markdown 全景示例
+
+> 本页演示常用 Markdown 写法。点上方 **源码 / 设计 / 预览** 页签切换；**全屏** 专注写作。全选删除即可开写。
+
+---
+
+## 1. 强调与颜色语义
+
+**加粗重点** · *斜体补充* · ~~已完成划掉~~ · `行内代码`
+
+普通段落里混排 **会议结论** 与 *待确认事项*，适合会议纪要速记。
+
+---
+
+## 2. 列表与待办
+
+### 无序列表
+
+- 收集素材与背景
+- 整理参会人名单
+  - 业务方
+  - 技术方
+- 输出行动项
+
+### 有序列表
+
+1. 开场对齐目标
+2. 逐项过议题
+3. 确认责任人与截止时间
+
+### 任务清单
+
+- [x] 已完成：定会议室
+- [ ] 待办：发纪要
+- [ ] 待办：跟进采购流程
+
+---
+
+## 3. 引用与提示
+
+> 引用块适合放领导原话、客户反馈或规范摘录。
+>
+> 多行引用会自动合并成一块，便于和正文区分。
+
+---
+
+## 4. 代码
+
+行内：`python -m app.main` 或 `git status`
+
+块级：
+
+```python
+def summarize(items: list[str]) -> str:
+    return "\\n".join(f"- {x}" for x in items)
+```
+
+```bash
+# 打包前自检
+python scripts/audit_migration.py
+```
+
+---
+
+## 5. 表格
+
+| 模块 | 负责人 | 状态 | 备注 |
+| --- | --- | --- | --- |
+| 剪贴板历史 | 张三 | 进行中 | Wave★ |
+| 截图工具 | 李四 | 已完成 | 热键已验 |
+| 快速记事 | 王五 | 联调 | 本页 |
+
+---
+
+## 6. 链接与分隔
+
+- 官网：[一舟科技](https://www.yczh.tech)
+- 文档：<https://docs.example.com/guide>
+
+---
+
+## 7. 分步计划（示例）
+
+### 阶段 A · 今天
+
+1. 清空本模板，写下真实标题
+2. 用 **Tab** 在大纲里降级子项
+3. `Ctrl+S` 或等自动保存
+
+### 阶段 B · 本周
+
+- 把剪贴板内容 **从剪贴板** 落入正文
+- 截图完成后粘贴图片（多功能模式）
+- 需要时用 **导入 MD** 拉本地文件
+
+---
+
+## 8. 分割线
+
+上文是结构示例，下面开始你的正文。
+
+---
+
+写在这里 👇
+"""
+
+
+def refresh_markdown_preview(source: QTextEdit, preview: QTextEdit) -> None:
+    """源码 → 预览（Qt 内置 Markdown 渲染）。"""
+    text = source.toPlainText()
+    preview.blockSignals(True)
+    try:
+        if not text.strip():
+            preview.clear()
+        else:
+            preview.setMarkdown(text)
+    finally:
+        preview.blockSignals(False)
+
+
+def sync_markdown_to_design(source: QTextEdit, design: QTextEdit) -> None:
+    """Markdown 源码 → 所见即所得设计区。"""
+    load_body_into(design, source.toPlainText())
+
+
+def sync_design_to_markdown(design: QTextEdit, source: QTextEdit) -> None:
+    """设计区 → Markdown 源码（尽量保留结构）。"""
+    text = ""
+    try:
+        text = design.toMarkdown()
+    except Exception:
+        text = design.toPlainText()
+    source.blockSignals(True)
+    try:
+        source.setPlainText(text)
+    finally:
+        source.blockSignals(False)
+
+
+def refresh_editor_preview(
+    *,
+    source: QTextEdit,
+    preview: QTextEdit,
+    design: QTextEdit | None = None,
+    prefer_design: bool = False,
+) -> None:
+    """预览：Markdown 走源码；富文本/HTML 走设计区渲染。"""
+    preview.blockSignals(True)
+    try:
+        if prefer_design and design is not None and design.toPlainText().strip():
+            preview.setHtml(design.toHtml())
+            return
+        refresh_markdown_preview(source, preview)
+    finally:
+        preview.blockSignals(False)
+
+
+def rich_has_images(edit: QTextEdit) -> bool:
+    doc = edit.document()
+    if doc is None:
+        return False
+    return bool(doc.toHtml().lower().find("<img") >= 0)
+
+
 def rich_starter_template() -> str:
     """多功能模式「新建」默认正文：多样式示例 + 工具对照，可整段删掉后开写。"""
     return """<!--toa-html-->

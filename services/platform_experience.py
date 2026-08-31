@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject, QTimer
 
 from core.status_service import StatusLevel
 from services.notify_bus import get_bus
-from services.tray_menu import build_tray_entries
+from services.tray_menu import build_tray_menu_model
 from services.tray_service import get_tray
 from services.update_check import UpdateCheckResult, get_update_hub
 
@@ -32,6 +32,12 @@ class PlatformExperience(QObject):
         self._shell = shell
         self._start_tray()
         self.refresh_license_chip()
+        try:
+            from services.windows_app_identity import wire_taskbar_activate
+
+            wire_taskbar_activate(shell)
+        except Exception:
+            logger.debug("wire_taskbar_activate failed", exc_info=True)
         bus = get_bus()
         bus.license_changed.connect(self.refresh_license_chip)
         bus.license_changed.connect(self._rebuild_tray_menu)
@@ -55,7 +61,7 @@ class PlatformExperience(QObject):
                 return
             get_tray().show_message(
                 shell._st.brand_name(),
-                f"授权将于 {int(days)} 天后到期，请前往「授权与订阅」续费。",
+                f"付费版将于 {int(days)} 天后到期，请在此续费。",
             )
         except Exception:
             pass
@@ -87,27 +93,49 @@ class PlatformExperience(QObject):
             return
         from services.screenshot_service import run_screenshot_hotkey
 
-        entries = build_tray_entries(
+        model = build_tray_menu_model(
             summon_module=shell._summon_module,
             screenshot_region=lambda: run_screenshot_hotkey(shell, full=False),
             screenshot_full=lambda: run_screenshot_hotkey(shell, full=True),
             open_clipboard=shell._open_clipboard_quick,
         )
         get_tray().rebuild_menu(
-            entries,
+            model,
             has_update=bool(self._last_update and self._last_update.has_update),
             on_check_update=lambda: self.check_for_update(reason="tray"),
-            on_open_license=self._open_license_settings,
+            on_open_settings=self._open_settings,
+            on_open_expiry=self._open_expiry_action,
         )
+
+    def _open_settings(self) -> None:
+        shell = self._shell
+        if shell is None:
+            return
+        shell.navigate("system_settings")
+
+    def _open_expiry_action(self) -> None:
+        shell = self._shell
+        if shell is None:
+            return
+        from app.commerce_dialog import open_purchase_dialog
+
+        open_purchase_dialog(shell, forced=False)
 
     def _open_license_settings(self) -> None:
         shell = self._shell
         if shell is None:
             return
-        shell.navigate("system_settings")
-        page = shell._pages.get("system_settings")
-        if page is not None and hasattr(page, "open_license_or_subscription"):
-            page.open_license_or_subscription()
+        from services.settings_access import is_settings_admin
+
+        if is_settings_admin():
+            shell.navigate("system_settings")
+            page = shell._pages.get("system_settings")
+            if page is not None and hasattr(page, "open_license_or_subscription"):
+                page.open_license_or_subscription()
+            return
+        from app.commerce_dialog import open_account_dialog
+
+        open_account_dialog(shell)
 
     def check_for_update(self, *, reason: str = "manual") -> None:
         hub = get_update_hub()
@@ -153,24 +181,20 @@ class PlatformExperience(QObject):
         if shell is None or not hasattr(shell, "_license_chip"):
             return
         try:
-            from services.license_manager import global_license_manager as lm
+            from services.user_plan_presentation import user_chip_display
 
             chip = shell._license_chip
-            if lm.is_standalone_mode():
-                text, kind = "正式版", "warning"
-            elif lm.is_licensed():
-                days = lm.get_remaining_days()
-                if days != float("inf") and days <= 7:
-                    text, kind = f"续费 {int(days)}天", "warning"
-                else:
-                    text, kind = "已授权", "success"
-            else:
-                text, kind = "开通", "warning"
+            text, kind, tooltip = user_chip_display()
             chip.setText(text)
             chip.setProperty("class", f"msg-{kind}")
-            chip.setToolTip(lm.get_validity_text())
+            chip.setToolTip(tooltip)
+            chip.setMaximumWidth(120)
             chip.style().unpolish(chip)
             chip.style().polish(chip)
+            if hasattr(shell, "_refresh_status_plan_label"):
+                shell._refresh_status_plan_label()
+            if hasattr(shell, "_refresh_status_version_label"):
+                shell._refresh_status_version_label()
         except Exception:
             pass
 

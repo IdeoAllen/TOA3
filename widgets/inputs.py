@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QDate, QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QMouseEvent, QWheelEvent
+from PySide6.QtGui import QFocusEvent, QKeyEvent, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -339,3 +339,66 @@ class DateEdit(QWidget):
             return
         parsed = QDate.fromString(text, "yyyy-MM-dd")
         self.setDate(parsed if parsed.isValid() else QDate.currentDate())
+
+
+class HotkeyCaptureEdit(LineEdit):
+    """点击后按下组合键自动录制；Backspace/Delete 清空；Esc 取消。"""
+
+    def __init__(
+        self,
+        text: str = "",
+        parent=None,
+        *,
+        allow_page_keys: bool = False,
+        require_modifier: bool = True,
+    ) -> None:
+        super().__init__(text, parent)
+        self._allow_page_keys = bool(allow_page_keys)
+        self._require_modifier = bool(require_modifier)
+        self._capturing = False
+        self._default_placeholder = "点击后按下快捷键"
+        self.setPlaceholderText(self._default_placeholder)
+        self.setClearButtonEnabled(True)
+
+    def focusInEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        self._capturing = True
+        self.setPlaceholderText("正在录制… 按 Esc 取消 · Backspace 清空")
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusOutEvent(event)
+        self._capturing = False
+        if not self.text().strip():
+            self.setPlaceholderText(self._default_placeholder)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        super().mousePressEvent(event)
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if not self._capturing:
+            super().keyPressEvent(event)
+            return
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self.clearFocus()
+            event.accept()
+            return
+        if key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            self.clear()
+            event.accept()
+            return
+        from services.hotkey_format import format_qt_key_event
+
+        seq = format_qt_key_event(
+            event,
+            allow_page_keys=self._allow_page_keys,
+            require_modifier=self._require_modifier,
+        )
+        if seq:
+            self.setText(seq)
+            self.clearFocus()
+            event.accept()
+            return
+        event.accept()
+

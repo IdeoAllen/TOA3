@@ -48,8 +48,9 @@
 ## 5. TOA 原生面 **禁止做**（山寨红线）
 
 - 自研聊天/Agent 输入框作为主界面
-- TOA 内插件安装器（须在 Harness / `dsh plugin` 或 Harness 设置）
+- TOA 内 **dsh/Cordis** 插件安装器（须在 Harness / `dsh plugin` 或 Harness 设置）
 - TOA 内工作区管理器（须在 Harness 左侧工作区）
+- 把 Harness 插件误当成 TOA 侧栏模块（TOA **业务插件包**另见 `28-Harness驱动的业务插件开发范式.md`）
 - 注入 CSS 改 Harness 主题（默认 `theme_harmonize: false`）
 - 默认自动 JS 填输入框（默认 `feed_auto_inject: false`；以剪贴板为主）
 

@@ -9,8 +9,9 @@ from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QVBoxLayout
 
 from core.base_page import BasePage
 from core.status_service import StatusLevel
-from core.user_messages import show_error, show_success, show_warning
+from core.user_messages import show_error, show_info, show_success, show_warning
 from services.commerce_client import list_sellable_packs
+from services.commerce_urls import open_admin_purchase_page
 from services.commerce_profile import merge_buyer_profile
 from services.license_manager import global_license_manager
 from services.subscription_renew import fetch_renew_quote
@@ -48,7 +49,7 @@ class SubscriptionSection(FormSection):
     """选套餐 → 一键开通；与 paywall 弹窗同一购买链路。"""
 
     def __init__(self, parent: BasePage) -> None:
-        super().__init__("全部产品方案")
+        super().__init__("付费版方案")
         self._page = parent
         self._lm = global_license_manager
         self._packs: list[dict] = []
@@ -58,7 +59,10 @@ class SubscriptionSection(FormSection):
         self._pending_order_no = ""
 
         self.add_widget(
-            HintLabel("选择产品方案（功能 + 有效期 + 定价）；支付后立即生效，一订单一授权码。")
+            HintLabel(
+                "选方案、填手机号、支付；成功后顶栏显示付费套餐与有效期。"
+                "外部支付后点「同步已付订单」。"
+            )
         )
 
         self._status = SemanticLabel("", kind="info")
@@ -92,6 +96,9 @@ class SubscriptionSection(FormSection):
         self._btn_reload = SecondaryButton("刷新方案")
         self._btn_reload.clicked.connect(self._load_packs)
         row.addWidget(self._btn_reload)
+        self._btn_portal = SecondaryButton("打开运营台")
+        self._btn_portal.clicked.connect(self._on_open_portal)
+        row.addWidget(self._btn_portal)
         row.addStretch(1)
         self.add_layout(row)
 
@@ -99,12 +106,21 @@ class SubscriptionSection(FormSection):
         self._btn_sync = SecondaryButton("同步已付订单")
         self._btn_sync.clicked.connect(self._on_sync_paid)
         adv.addWidget(self._btn_sync)
-        adv.addWidget(HintLabel("仅在 Portal 完成真实支付后使用"))
+        adv.addWidget(HintLabel("仅在 Portal / 运营台完成真实支付后使用"))
         adv.addStretch(1)
         self.add_layout(adv)
 
         self._refresh_status_line()
         self._load_packs()
+
+    def _on_open_portal(self) -> None:
+        pack = self._selected_pack()
+        plan_id = str(pack.get("plan_id") or pack.get("id") or "") if pack else ""
+        if open_admin_purchase_page(plan_id=plan_id):
+            show_info(self._page, "已在浏览器打开运营台产品方案页。")
+            self._page.report_status("已打开运营台")
+        else:
+            show_warning(self._page, "无法打开浏览器，请手动访问运营台。")
 
     def _refresh_status_line(self) -> None:
         text = self._lm.get_validity_text() or "—"
@@ -118,6 +134,7 @@ class SubscriptionSection(FormSection):
         self._busy = busy
         self._btn_buy.setEnabled(not busy)
         self._btn_reload.setEnabled(not busy)
+        self._btn_portal.setEnabled(not busy)
         self._pack_combo.setEnabled(not busy)
         self._phone.setEnabled(not busy)
         self._btn_sync.setEnabled(not busy)

@@ -1,0 +1,50 @@
+{
+    "is_licensed": true,
+    "license_key": "",
+    "expire_date": "2027-08-30",
+    "features": [
+        "all"
+    ],
+    "user_name": "验收员·正式版",
+    "company": "",
+    "phone": "13800000007",
+    "role": "user",
+    "bound_machine_id": "",
+    "issue_date": "2026-08-30",
+    "license_type": "paid",
+    "authorized_users": [
+        {
+            "name": "验收员·正式版",
+            "phone": "13800000007",
+            "role": "user",
+            "company": "",
+            "expire_date": "2027-08-30",
+            "issue_date": "2026-08-30",
+            "added_date": "2026-08-30 10:05:10",
+            "updated_date": "2026-08-30 10:05:10",
+            "code_id": "acceptance_paid_active",
+            "code_fingerprint": "ACCEPT-acceptan",
+            "license_key": "",
+            "revoked": false,
+            "bind_machine": false,
+            "features": [
+                "all"
+            ],
+            "menus": [
+                "all"
+            ],
+            "activated_at": "2026-08-30 10:05:10"
+        }
+    ],
+    "activated_code_id": "acceptance_paid_active",
+    "runtime_mode": "network",
+    "plan_id": "tiyan",
+    "online_status": "active",
+    "last_online_ok_at": "2026-08-30 10:05:10",
+    "activated_at": "2026-08-30 10:05:10",
+    "entitlement": "paid",
+    "order_no": "ACCEPT-ORDER-20260830",
+    "machine_id": "b5a72b9818ed3f67f700bf3e8372d010",
+    "schema_ver": 2,
+    "_integrity": "bff782ca7c874900183de3a5fa5e50cb91aa26b086fcc5be3329373aac041086"
+}

@@ -75,6 +75,140 @@ from services.screenshot_service import virtual_screen_geometry
 
 logger = logging.getLogger(__name__)
 
+# 全局单会话：从热键受理到叠加层关闭全程占锁；再按只取消、绝不叠层
+_active_overlay: ScreenshotOverlay | None = None
+_session_busy = False
+_session_token = 0
+_app_state_hooked = False
+_ignore_focus_loss_until = 0.0
+_cooldown_until = 0.0
+
+
+def is_screenshot_session_active() -> bool:
+    """热键/抓屏/叠加层任一阶段均视为占用。"""
+    if _session_busy:
+        return True
+    try:
+        if _active_overlay is not None:
+            return True
+    except RuntimeError:
+        pass
+    return _any_overlay_alive()
+
+
+def _any_overlay_alive() -> bool:
+    app = QApplication.instance()
+    if app is None:
+        return False
+    for w in app.topLevelWidgets():
+        if isinstance(w, ScreenshotOverlay):
+            try:
+                return True
+            except RuntimeError:
+                continue
+    return False
+
+
+def try_acquire_screenshot_session() -> int:
+    """抢锁成功返回 >0 令牌；失败返回 0（调用方只取消、勿新开）。"""
+    global _session_busy, _session_token, _cooldown_until
+    import time
+
+    if time.monotonic() < _cooldown_until:
+        return 0
+    if _session_busy or _active_overlay is not None or _any_overlay_alive():
+        return 0
+    _session_busy = True
+    _session_token += 1
+    return _session_token
+
+
+def current_screenshot_token() -> int:
+    return _session_token
+
+
+def release_screenshot_session() -> None:
+    global _session_busy, _active_overlay
+    _session_busy = False
+    _active_overlay = None
+
+
+def release_screenshot_session_if_token(token: int) -> None:
+    """抓屏失败或未进入叠加层时，按令牌释放占锁。"""
+    global _session_busy
+    if token and token == _session_token and _active_overlay is None:
+        _session_busy = False
+
+
+def cancel_active_screenshot(*, reason: str = "") -> bool:
+    """终止当前截图层并作废进行中的抓屏令牌，清掉所有残留层。"""
+    global _active_overlay, _session_busy, _session_token, _cooldown_until
+    import time
+
+    if reason:
+        logger.info("cancel screenshot session: %s", reason)
+    # 作废进行中的 grab→open，防止取消后旧调用又弹出一层
+    _session_token += 1
+    _cooldown_until = time.monotonic() + 0.4
+    closed = False
+    ov = _active_overlay
+    _active_overlay = None
+    if ov is not None:
+        try:
+            ov._force_abort()
+            closed = True
+        except Exception:
+            logger.debug("cancel primary overlay failed", exc_info=True)
+            try:
+                ov.close()
+                closed = True
+            except Exception:
+                pass
+    app = QApplication.instance()
+    if app is not None:
+        for w in list(app.topLevelWidgets()):
+            if not isinstance(w, ScreenshotOverlay):
+                continue
+            if w is ov:
+                continue
+            try:
+                w._force_abort()
+                closed = True
+            except Exception:
+                try:
+                    w.close()
+                    closed = True
+                except Exception:
+                    pass
+    _session_busy = False
+    return closed
+
+
+def _hook_app_state_once() -> None:
+    """应用失去前台焦点时自动终止截图。"""
+    global _app_state_hooked
+    if _app_state_hooked:
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    _app_state_hooked = True
+
+    def _on_state(state) -> None:
+        import time
+
+        if time.monotonic() < _ignore_focus_loss_until:
+            return
+        if state in (
+            Qt.ApplicationState.ApplicationInactive,
+            Qt.ApplicationState.ApplicationSuspended,
+            Qt.ApplicationState.ApplicationHidden,
+        ):
+            if is_screenshot_session_active():
+                cancel_active_screenshot(reason="app_focus_lost")
+
+    app.applicationStateChanged.connect(_on_state)
+
 
 def _save_pixmap(pix: QPixmap, module_id: str = "screenshot") -> Path:
     from services.storage_paths import module_output_dir
@@ -96,13 +230,17 @@ class ScreenshotOverlay(QWidget):
     finished_cancel = Signal()
 
     def __init__(self, bg: QPixmap, *, interactive_select: bool = False, parent=None) -> None:
-        super().__init__(parent)
+        # 必须顶层窗：挂到 MainShell 时 WindowShortcut(Esc) 会被壳吃掉，多屏几何也被父窗裁切 → 框选/Esc 失灵
+        super().__init__(None)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        _ = parent  # 仅兼容旧调用，不作为 Qt parent
         self._bg = bg
         self._session = AnnotSession()
         self._style = AnnotStyle()
@@ -142,6 +280,54 @@ class ScreenshotOverlay(QWidget):
             QTimer.singleShot(30, self._show_toolbar)
         else:
             QTimer.singleShot(0, self._seed_loupe_from_cursor)
+            QTimer.singleShot(0, self._claim_input)
+
+    def _claim_input(self) -> None:
+        """框选阶段即抢键鼠，避免 Esc/拖拽被主壳或其它浮层截走。"""
+        if not self.isVisible():
+            return
+        try:
+            self.raise_()
+            self.activateWindow()
+            self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+            self.grabMouse()
+            self.grabKeyboard()
+        except Exception:
+            logger.debug("screenshot claim input failed", exc_info=True)
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        # 切到其它应用时终止（与 applicationStateChanged 双保险）
+        if event.type() == QEvent.Type.WindowDeactivate:
+            import time
+
+            if time.monotonic() >= _ignore_focus_loss_until and is_screenshot_session_active():
+                # 延迟一拍：工具栏弹窗等内部失焦勿误杀
+                QTimer.singleShot(80, self._maybe_abort_on_deactivate)
+        super().changeEvent(event)
+
+    def _maybe_abort_on_deactivate(self) -> None:
+        import time
+
+        if time.monotonic() < _ignore_focus_loss_until:
+            return
+        app = QApplication.instance()
+        if app is None:
+            return
+        active = app.activeWindow()
+        # 本应用内其它窗（主壳/错误弹窗）抢焦点时也要退出，否则 grabKeyboard 卡死
+        if active is not None and active is not self:
+            try:
+                if not self.isAncestorOf(active):
+                    if is_screenshot_session_active():
+                        cancel_active_screenshot(reason="focus_lost_in_app")
+                    return
+            except RuntimeError:
+                pass
+        # 仍属本应用前台则保留（例如工具栏子菜单）；真正切到其它进程才取消
+        if app.applicationState() == Qt.ApplicationState.ApplicationActive:
+            return
+        if is_screenshot_session_active():
+            cancel_active_screenshot(reason="window_deactivate")
 
     def _bind_shortcuts(self) -> None:
         for seq, slot in (
@@ -150,7 +336,7 @@ class ScreenshotOverlay(QWidget):
             ("Ctrl+Shift+Z", self._redo),
             ("Return", self._on_ok),
             ("Enter", self._on_ok),
-            ("Esc", self._on_cancel),
+            # Esc 不走 QShortcut：与 eventFilter 双触发会「一键连退两级」甚至卡死
             ("R", lambda: self._select_tool("rect")),
             ("C", lambda: self._select_tool("ellipse")),
             ("A", lambda: self._select_tool("arrow")),
@@ -162,11 +348,7 @@ class ScreenshotOverlay(QWidget):
             ("Ctrl+S", self._save_as),
         ):
             sc = QShortcut(QKeySequence(seq), self)
-            # Esc 用应用级，避免被主窗吃掉；其余保持窗口级
-            if seq == "Esc":
-                sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
-            else:
-                sc.setContext(Qt.ShortcutContext.WindowShortcut)
+            sc.setContext(Qt.ShortcutContext.WindowShortcut)
             sc.activated.connect(slot)
 
         # 1/2/3：全部标注工具线宽/字号（Application 级，避免焦点落在子控件时失效）
@@ -183,6 +365,7 @@ class ScreenshotOverlay(QWidget):
             sc_c.activated.connect(lambda i=idx: self._pick_width_hotkey(i, force=True))
 
         QApplication.instance().installEventFilter(self)
+        self._esc_guard_until = 0.0
         self.setFocus()
 
     def _try_width_key(self, event) -> bool:
@@ -210,17 +393,32 @@ class ScreenshotOverlay(QWidget):
             | Qt.KeyboardModifier.ShiftModifier
         ):
             return False
+        # 文字输入框聚焦时不抢数字键
+        if self._text_edit is not None:
+            try:
+                if self._text_edit.hasFocus():
+                    return False
+            except RuntimeError:
+                pass
         self._pick_width_hotkey(width_map[key], force=True)
         return True
 
     def eventFilter(self, obj, event):  # noqa: N802
         et = event.type()
-        if et in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride) and self.isVisible():
-            if event.key() == Qt.Key.Key_Escape:
-                event.accept()
-                if et == QEvent.Type.KeyPress:
-                    self._on_cancel()
-                return True
+        if not self.isVisible():
+            return super().eventFilter(obj, event)
+        # 模态对话框（另存/OCR）期间不抢 Esc
+        if QApplication.activeModalWidget() is not None:
+            return super().eventFilter(obj, event)
+        if et == QEvent.Type.ShortcutOverride and event.key() == Qt.Key.Key_Escape:
+            # accept = 声明接管 Esc；return False 让 KeyPress 继续到达
+            event.accept()
+            return False
+        if et == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            event.accept()
+            self._handle_escape()
+            return True
+        if et == QEvent.Type.KeyPress:
             if self._try_width_key(event):
                 event.accept()
                 return True
@@ -228,7 +426,7 @@ class ScreenshotOverlay(QWidget):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape:
-            self._on_cancel()
+            self._handle_escape()
             event.accept()
             return
         if self._try_width_key(event):
@@ -424,11 +622,21 @@ class ScreenshotOverlay(QWidget):
             self.releaseKeyboard()
         except Exception:
             pass
+        try:
+            self.releaseMouse()
+        except Exception:
+            pass
 
     def _hide_toolbar(self) -> None:
         if self._toolbar is not None:
             self._toolbar.hide()
-        self._release_toolbar_keyboard()
+        # 重新框选时再抢鼠标
+        try:
+            if self.isVisible():
+                self.grabMouse()
+                self.grabKeyboard()
+        except Exception:
+            pass
 
     def _show_toolbar(self) -> None:
         if self._sel is None or self._sel.width() < 6 or self._sel.height() < 6:
@@ -442,7 +650,11 @@ class ScreenshotOverlay(QWidget):
         self._position_toolbar()
         self._toolbar.show()
         self._toolbar.raise_()
-        # 框选完成后抢键盘，保证 1/2/3 不被壳层其它快捷键吃掉
+        # 工具栏需正常点选：松开鼠标抢占，仅保留键盘
+        try:
+            self.releaseMouse()
+        except Exception:
+            pass
         self.activateWindow()
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
         self.grabKeyboard()
@@ -501,7 +713,7 @@ class ScreenshotOverlay(QWidget):
         btn_ok.clicked.connect(self._on_ok)
         bar_l.addWidget(btn_ok)
         btn_cancel = _ToolBtn(tip="取消 (Esc)", icon_key="cancel", parent=bar)
-        btn_cancel.clicked.connect(self._on_cancel)
+        btn_cancel.clicked.connect(self._abort_overlay)
         bar_l.addWidget(btn_cancel)
 
         outer.addWidget(bar)
@@ -975,19 +1187,23 @@ class ScreenshotOverlay(QWidget):
         return None
 
     def _begin_text(self, pt: QPointF) -> None:
-        self._commit_text_if_any()
+        # 只允许一个文字框：先结束旧框并清孤儿
+        self._finish_text_edit()
+        self._purge_all_text_edits()
         self._release_toolbar_keyboard()
         edit = QLineEdit(self)
         edit.setObjectName(_SHOT_TEXT_EDIT_OBJECT)
         self._text_edit = edit
-        edit.setPlaceholderText("输入文字，Enter 确认")
+        edit.setPlaceholderText("输入文字，Enter 确认 · Esc 退出编辑")
         edit._img_origin = pt  # type: ignore[attr-defined]
         self._sync_text_edit_style()
         edit.resize(max(160, 220), edit.height())
         edit.move(int(pt.x()), int(pt.y()))
-        edit.returnPressed.connect(self._commit_text_if_any)
+        edit.returnPressed.connect(self._finish_text_edit)
+        edit.installEventFilter(self)
         edit.show()
-        edit.setFocus()
+        edit.raise_()
+        edit.setFocus(Qt.FocusReason.MouseFocusReason)
 
     def _sync_text_edit_style(self) -> None:
         if self._text_edit is None:
@@ -1006,34 +1222,99 @@ class ScreenshotOverlay(QWidget):
         fs = font.pixelSize() if font.pixelSize() > 0 else st.font_size
         self._text_edit.setMinimumWidth(max(160, int(fs * 8)))
 
-    def _commit_text_if_any(self) -> None:
+    def _purge_all_text_edits(self) -> None:
+        """销毁所有文字输入框（含 Esc 曾只清引用留下的孤儿）。"""
+        self._text_edit = None
+        for child in list(self.findChildren(QLineEdit)):
+            try:
+                if child.objectName() == _SHOT_TEXT_EDIT_OBJECT:
+                    child.hide()
+                    child.deleteLater()
+            except RuntimeError:
+                pass
+
+    def _finish_text_edit(self) -> bool:
+        """结束文字编辑：有内容则写入标注保留，无内容则丢弃。返回是否处理了编辑框。"""
         edit = self._text_edit
         if edit is None:
-            return
-        text = edit.text().strip()
-        origin = getattr(edit, "_img_origin", QPointF(0, 0))
-        edit.hide()
-        edit.deleteLater()
-        self._text_edit = None
+            orphans = [
+                c
+                for c in self.findChildren(QLineEdit)
+                if c.objectName() == _SHOT_TEXT_EDIT_OBJECT
+            ]
+            if not orphans:
+                return False
+            edit = orphans[0]
+
+        text = ""
+        origin = QPointF(0, 0)
+        try:
+            text = edit.text().strip()
+            origin = getattr(edit, "_img_origin", QPointF(0, 0))
+        except RuntimeError:
+            pass
+
+        self._purge_all_text_edits()
         self._restore_toolbar_keyboard()
-        if not text:
-            self.update()
-            return
-        st = self._style
-        self._session.push(
-            {
-                "type": "text",
-                "x": float(origin.x()),
-                "y": float(origin.y()),
-                "text": text,
-                "color": st.color,
-                "size": st.font_size,
-                "bold": st.bold,
-                "italic": st.italic,
-                "strike": st.strike,
-            }
-        )
+        if text:
+            st = self._style
+            self._session.push(
+                {
+                    "type": "text",
+                    "x": float(origin.x()),
+                    "y": float(origin.y()),
+                    "text": text,
+                    "color": st.color,
+                    "size": st.font_size,
+                    "bold": st.bold,
+                    "italic": st.italic,
+                    "strike": st.strike,
+                }
+            )
         self.update()
+        try:
+            self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        except Exception:
+            pass
+        return True
+
+    def _commit_text_if_any(self) -> None:
+        """点击别处 / Enter：有字保留，无字丢弃（与 Esc 退出编辑一致）。"""
+        self._finish_text_edit()
+
+    def _handle_escape(self) -> None:
+        """Esc 分级：① 退出文字框（有字保留）② 再按退出截图。防双触发。"""
+        import time
+
+        now = time.monotonic()
+        if now < float(getattr(self, "_esc_guard_until", 0.0) or 0.0):
+            return
+        self._esc_guard_until = now + 0.15
+        if self._finish_text_edit():
+            return
+        self._abort_overlay()
+
+    def _abort_overlay(self) -> None:
+        """安全退出截图：必松键鼠，清文字框，关层。"""
+        if getattr(self, "_aborting", False):
+            return
+        self._aborting = True
+        self._accepted = False
+        self._purge_all_text_edits()
+        try:
+            self.releaseMouse()
+        except Exception:
+            pass
+        try:
+            self.releaseKeyboard()
+        except Exception:
+            pass
+        try:
+            self.finished_cancel.emit()
+        except Exception:
+            pass
+        self._remove_width_filter()
+        self.close()
 
     def _save_as(self) -> None:
         def _do() -> None:
@@ -1145,12 +1426,12 @@ class ScreenshotOverlay(QWidget):
 
         self._with_keyboard_released(_do)
     def _on_ok(self) -> None:
-        if self._text_edit is not None and self._text_edit.hasFocus():
-            self._commit_text_if_any()
+        if self._text_edit is not None:
+            self._finish_text_edit()
             return
         pix = self._compose_result()
         if pix is None or pix.isNull():
-            self._on_cancel()
+            self._abort_overlay()
             return
         path = _save_pixmap(pix)
         try:
@@ -1189,18 +1470,25 @@ class ScreenshotOverlay(QWidget):
         self._remove_width_filter()
         self.close()
 
+    def _force_abort(self) -> None:
+        """外部强制结束（失焦/重复热键）：松开抢键并关闭，不弹保存。"""
+        self._abort_overlay()
+
     def _on_cancel(self) -> None:
-        if self._text_edit is not None:
-            self._text_edit = None
-            self.update()
-            return
-        self._accepted = False
-        self.finished_cancel.emit()
-        self._remove_width_filter()
-        self.close()
+        """工具栏 × / 兼容旧调用 → 与 Esc 同级处理。"""
+        self._handle_escape()
 
     def _remove_width_filter(self) -> None:
         self._release_toolbar_keyboard()
+        try:
+            self.releaseMouse()
+        except Exception:
+            pass
+        try:
+            self.releaseKeyboard()
+        except Exception:
+            pass
+        self._purge_all_text_edits()
         app = QApplication.instance()
         if app is not None:
             try:
@@ -1217,7 +1505,23 @@ class ScreenshotOverlay(QWidget):
             self._restore_toolbar_keyboard()
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        global _active_overlay
+        if _active_overlay is self:
+            _active_overlay = None
+        try:
+            self.releaseMouse()
+        except Exception:
+            pass
+        try:
+            self.releaseKeyboard()
+        except Exception:
+            pass
+        self._purge_all_text_edits()
         self._remove_width_filter()
+        try:
+            release_screenshot_session()
+        except Exception:
+            pass
         super().closeEvent(event)
 
 
@@ -1226,22 +1530,66 @@ def open_screenshot_overlay(
     *,
     interactive_select: bool = False,
     parent=None,
+    session_token: int = 0,
 ) -> Path | None:
-    """全屏框选 + 标注；确认返回保存路径。"""
+    """全屏框选 + 标注。session_token 与当前令牌不一致则丢弃（取消后的过期抓屏）。"""
+    global _active_overlay, _ignore_focus_loss_until, _session_busy
     if bg is None or bg.isNull():
+        release_screenshot_session()
         return None
+
+    # 页面按钮等未带令牌：自行抢锁；已占用则拒绝叠层
+    if not session_token:
+        if is_screenshot_session_active():
+            return None
+        session_token = try_acquire_screenshot_session()
+        if not session_token:
+            return None
+    elif session_token != _session_token:
+        logger.info("drop stale screenshot open token=%s current=%s", session_token, _session_token)
+        return None
+
+    # 已有叠加层：只取消，绝不新开第二层
+    if _active_overlay is not None or _any_overlay_alive():
+        cancel_active_screenshot(reason="duplicate_open")
+        return None
+
+    import time
+
+    _session_busy = True
+    _hook_app_state_once()
+    _ignore_focus_loss_until = time.monotonic() + 0.45
     held: list[Path | None] = [None]
 
     def _ok(path: object) -> None:
         held[0] = path if isinstance(path, Path) else None
 
-    overlay = ScreenshotOverlay(bg, interactive_select=interactive_select, parent=parent)
+    overlay = ScreenshotOverlay(bg, interactive_select=interactive_select, parent=None)
+    _ = parent
+    _active_overlay = overlay
     overlay.finished_ok.connect(_ok)
     loop = QEventLoop()
     overlay.destroyed.connect(loop.quit)
-    overlay.showFullScreen()
+    overlay.finished_cancel.connect(loop.quit)
+    overlay.finished_ok.connect(lambda *_: loop.quit())
+    left, top, w, h = virtual_screen_geometry()
+    overlay.setGeometry(left, top, w, h)
+    overlay.show()
     overlay.raise_()
     overlay.activateWindow()
-    overlay.setFocus()
-    loop.exec()
+    overlay.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+    if interactive_select:
+        overlay._claim_input()
+    else:
+        try:
+            overlay.grabKeyboard()
+        except Exception:
+            pass
+    try:
+        loop.exec()
+    finally:
+        if _active_overlay is overlay:
+            _active_overlay = None
+        if session_token == _session_token:
+            release_screenshot_session()
     return held[0]

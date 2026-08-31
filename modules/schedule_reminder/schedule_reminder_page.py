@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QSizePolicy, QVBoxLayout
 
 from core.base_page import BasePage
 from core.status_service import StatusLevel
+from core.ui_spec import page_content_margins
 from core.user_messages import show_info, show_saved, show_warning
 from modules.schedule_reminder.reminder_service import (
     add_event,
@@ -31,7 +32,6 @@ from widgets import (
     PageHeader,
     PrimaryButton,
     ReadOnlyPlainTextEdit,
-    ScrollPage,
     SecondaryButton,
     TabWidget,
 )
@@ -49,22 +49,23 @@ class ScheduleReminderPage(BasePage):
         self._tables: dict[str, DataTable] = {}
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = ScrollPage()
-        outer.addWidget(scroll, 1)
+        m = page_content_margins()
+        outer.setContentsMargins(m[0], m[1], m[2], m[3])
+        outer.setSpacing(10)
 
-        scroll.add_widget(
-            PageHeader(
-                "班级日程提醒",
-                "加载课表 Excel，按五场景筛选并导出；也可维护简易到期事件。",
-            )
+        header = PageHeader(
+            "班级日程提醒",
+            "加载课表 Excel，按五场景筛选并导出；也可维护简易到期事件。",
         )
+        header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        outer.addWidget(header)
 
         self._main_tabs = TabWidget()
         self._main_tabs.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        scroll.content_layout.addWidget(self._main_tabs, 1)
+        self._main_tabs.setDocumentMode(True)
+        outer.addWidget(self._main_tabs, 1)
         self._main_tabs.addTab(self._build_scenes_tab(), "五场景课表")
         self._main_tabs.addTab(self._build_events_tab(), "简易事件")
 
@@ -73,13 +74,13 @@ class ScheduleReminderPage(BasePage):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
         )
         self._log = ReadOnlyPlainTextEdit()
-        self._log.setMinimumHeight(56)
-        self._log.setMaximumHeight(88)
+        self._log.setMinimumHeight(44)
+        self._log.setMaximumHeight(68)
         self._log.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         log_box.add_widget(self._log)
-        scroll.add_widget(log_box)
+        outer.addWidget(log_box)
         self.apply_page_focus_policy()
         self._reload_events()
 
@@ -91,42 +92,37 @@ class ScheduleReminderPage(BasePage):
         tab.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         lay = QVBoxLayout(tab)
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
 
-        src = FormSection("课表数据源")
-        src.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-        row = QHBoxLayout()
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
         self._excel_path = LineEdit()
         self._excel_path.setReadOnly(True)
+        self._excel_path.setToolTip(
+            "需含「开始时间」「结束时间」列（可用开课时间/结课时间等别名）。"
+        )
         existing = data_file_path()
         if existing.is_file():
             self._excel_path.setText(str(existing))
-        row.addWidget(self._excel_path, 1)
+        toolbar.addWidget(self._excel_path, 1)
         btn_load = SecondaryButton("加载课表…")
+        btn_load.setToolTip("选择 Excel 并缓存到本机数据目录")
         btn_load.clicked.connect(self._pick_schedule)
-        row.addWidget(btn_load)
+        toolbar.addWidget(btn_load)
         btn_reload = SecondaryButton("重新查询")
+        btn_reload.setToolTip("按五场景重新筛选当前课表")
         btn_reload.clicked.connect(self._reload_scenes)
-        row.addWidget(btn_reload)
-        src.add_layout(row)
-        src.add_widget(
-            HintLabel(
-                "需含「开始时间」「结束时间」列（可用开课时间/结课时间等别名）。"
-                "场景：布置场地(明天开始) / 课程签到(进行中) / 物流订单(今天结束) / 本周 / 下周。"
-            )
-        )
-        lay.addWidget(src)
-
-        actions = QHBoxLayout()
+        toolbar.addWidget(btn_reload)
         btn_cur = PrimaryButton("导出当前场景")
         btn_cur.clicked.connect(self._export_current)
-        actions.addWidget(btn_cur)
+        toolbar.addWidget(btn_cur)
         btn_all = SecondaryButton("导出五场景 xlsx")
         btn_all.clicked.connect(self._export_all)
-        actions.addWidget(btn_all)
-        actions.addStretch(1)
-        lay.addLayout(actions)
+        toolbar.addWidget(btn_all)
+        lay.addLayout(toolbar)
 
         self._scene_tabs = TabWidget()
+        self._scene_tabs.setDocumentMode(True)
         self._scene_tabs.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -138,7 +134,7 @@ class ScheduleReminderPage(BasePage):
             pl = QVBoxLayout(panel)
             pl.setContentsMargins(0, 0, 0, 0)
             table = DataTable()
-            table.setMinimumHeight(160)
+            table.setMinimumHeight(280)
             table.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
             )

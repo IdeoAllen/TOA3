@@ -2,6 +2,7 @@
 """菜单注册表（与 TOA2 menu_registry 同源字段）。"""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from services.config_service import get_all_menu_items, get_menu_item_by_id, get_menu_items
@@ -32,11 +33,80 @@ DOMAIN_TAB_LABELS = {
     "other": "其它",
 }
 
+
+_GROUP_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
+
+
+def is_custom_group_id(group_id: str | None) -> bool:
+    """用户提升为顶栏子模块时，group 可等于模块 id（不在出厂 GROUP_ORDER）。"""
+    gid = str(group_id or "").strip().lower()
+    return bool(gid) and gid not in GROUP_ORDER and bool(_GROUP_ID_RE.match(gid))
+
+
+def extra_group_ids_from_items(items: list[dict] | None = None) -> set[str]:
+    """从菜单项收集自定义顶栏子模块 id。"""
+    if items is None:
+        items = get_all_menu_items()
+    out: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        gid = str(item.get("group") or "").strip().lower()
+        if is_custom_group_id(gid):
+            out.add(gid)
+    return out
+
+
+def normalize_group_order(raw: Any, *, extra_allowed: Any = None) -> list[str]:
+    """校验并补齐子模块顺序：覆盖出厂 GROUP_ORDER，并保留合法自定义子模块 id。"""
+    base = list(GROUP_ORDER)
+    base_set = set(base)
+    extras: set[str] = set()
+    if extra_allowed:
+        for item in extra_allowed:
+            gid = str(item or "").strip().lower()
+            if is_custom_group_id(gid):
+                extras.add(gid)
+    if isinstance(raw, (list, tuple)):
+        for item in raw:
+            gid = str(item or "").strip().lower()
+            if is_custom_group_id(gid):
+                extras.add(gid)
+    allowed_set = base_set | extras
+    out: list[str] = []
+    seen: set[str] = set()
+    if isinstance(raw, (list, tuple)):
+        for item in raw:
+            gid = str(item or "").strip().lower()
+            if gid in allowed_set and gid not in seen:
+                out.append(gid)
+                seen.add(gid)
+    for gid in base:
+        if gid not in seen:
+            out.append(gid)
+            seen.add(gid)
+    for gid in sorted(extras):
+        if gid not in seen:
+            out.append(gid)
+            seen.add(gid)
+    return out
+
+
+def get_group_order() -> list[str]:
+    """当前生效的顶栏子模块顺序（可被 menu.yml 覆盖）。"""
+    try:
+        from services.config_service import get_group_order as _cfg_order
+
+        return _cfg_order()
+    except Exception:
+        return list(GROUP_ORDER)
+
 # TOA3 已实现的模块页
 MIGRATED_MODULES: dict[str, str] = {
     "home": "modules.home.home_page.HomePage",
     "theme_preview": "modules.gallery.control_library_page.ControlLibraryPage",
     "system_settings": "modules.system_settings.settings_page.SettingsPage",
+    "user_extensions": "modules.user_extensions.user_extensions_page.UserExtensionsPage",
     "job_scheduler": "modules.job_scheduler.job_scheduler_page.JobSchedulerPage",
     "notifications": "modules.notifications.notifications_page.NotificationsPage",
     "deduction_note_formatter": "modules.deduction_note_formatter.deduction_note_page.DeductionNotePage",
@@ -63,6 +133,7 @@ MIGRATED_MODULES: dict[str, str] = {
     "directory_inspector": "modules.directory_inspector.directory_inspector_page.DirectoryInspectorPage",
     "column_preview": "modules.column_preview.column_preview_page.ColumnPreviewPage",
     "enhanced_directory_inspector": "modules.enhanced_directory_inspector.enhanced_directory_inspector_page.EnhancedDirectoryInspectorPage",
+    "deliverable_directory_check": "modules.deliverable_directory_check.deliverable_directory_check_page.DeliverableDirectoryCheckPage",
     "excel_row_to_column": "modules.excel_row_to_column.excel_row_to_column_page.ExcelRowToColumnPage",
     "document_composer": "modules.document_composer.document_composer_page.DocumentComposerPage",
     "schedule_format_converter": "modules.schedule_format_converter.schedule_format_converter_page.ScheduleFormatConverterPage",
@@ -117,7 +188,8 @@ def grouped_menu_items(
     migrated_only: bool = False,
     include_hidden: bool = False,
 ) -> list[tuple[str, str, list[dict]]]:
-    """返回 [(group_id, group_label, items)] 按 GROUP_ORDER 排序。"""
+    """返回 [(group_id, group_label, items)] 按当前 group_order 排序。"""
+    order = get_group_order()
     if licensed_only:
         items = visible_menu_items()
     elif include_hidden:
@@ -128,19 +200,28 @@ def grouped_menu_items(
         items = [i for i in items if is_migrated(str(i.get("id") or ""))]
     if not include_hidden:
         items = [i for i in items if i.get("show", True)]
-    buckets: dict[str, list[dict]] = {g: [] for g in GROUP_ORDER}
+    buckets: dict[str, list[dict]] = {g: [] for g in order}
     other: list[dict] = []
     for item in items:
         g = str(item.get("group") or "business").lower()
         if g in buckets:
             buckets[g].append(item)
+        elif is_custom_group_id(g):
+            buckets[g] = [item]
         else:
             other.append(item)
     out: list[tuple[str, str, list[dict]]] = []
-    for g in GROUP_ORDER:
-        if buckets[g]:
+    seen_groups: set[str] = set()
+    for g in order:
+        if buckets.get(g):
             buckets[g].sort(key=lambda x: int(x.get("order") or 0))
             out.append((g, group_label(g), buckets[g]))
+            seen_groups.add(g)
+    for g in sorted(buckets):
+        if g in seen_groups or not buckets[g]:
+            continue
+        buckets[g].sort(key=lambda x: int(x.get("order") or 0))
+        out.append((g, group_label(g), buckets[g]))
     if other:
         out.append(("other", "其它", other))
     return out
@@ -149,6 +230,13 @@ def grouped_menu_items(
 def is_migrated(module_id: str) -> bool:
     if module_id in MIGRATED_MODULES:
         return True
+    try:
+        from services.plugin_registry import is_registered_plugin
+
+        if is_registered_plugin(module_id):
+            return True
+    except Exception:
+        pass
     from services.migration_manifest import get_module_meta
 
     return bool(get_module_meta(module_id))

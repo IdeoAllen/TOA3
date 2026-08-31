@@ -30,6 +30,40 @@ vision:
     - 业务页只从 widgets 控件库出 UI
     - 图标必须清晰：禁止模糊、锯齿（HiDPI 矢量光栅化规范）
 
+# 首页展示（curated · 不随 app.yml 菜单整表渲染）
+home:
+  search_hint: 点击顶栏 ⌂ 或按 Ctrl+K，输入关键字直达任一工作。
+  advanced_note: 文生图、视频、Harness 等高级算力请到「系统设置 → 模型管理」自行绑定 Key 或安装本机组件；向导式配置，无需手改配置文件。
+  office_pins:
+    - id: quick_notepad
+      title: 快速记事
+      subtitle: 会议纪要草稿
+    - id: screenshot_tool
+      title: 截图工具
+      subtitle: 区域 / 全屏
+    - id: clipboard_history
+      title: 剪贴板历史
+      subtitle: Alt+Shift+C 速贴
+    - id: quadrant_tasks
+      title: 四象限任务
+      subtitle: 本地看板
+    - id: pomodoro
+      title: 番茄钟
+      subtitle: 沉浸专注
+  suite_highlights:
+    - id: directory_generator
+      title: 目录生成
+      subtitle: 培训交付结构
+    - id: batch_rename
+      title: 批量重命名
+      subtitle: 整理文件名
+    - id: watermark_remover
+      title: 去水印
+      subtitle: 框选清理
+    - id: column_preview
+      title: 桌面浏览
+      subtitle: 列式预览
+
 module_groups:
   # 顶栏一级 = 子模块（子系统）；侧栏二级 = 功能模块（见 shell 术语表）
   home: 首页与导航

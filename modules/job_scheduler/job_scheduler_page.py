@@ -12,7 +12,7 @@ from widgets import PageHeader
 
 class JobSchedulerPage(BasePage):
     page_id = "job_scheduler"
-    page_title = "任务"
+    page_title = "定时任务"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -24,7 +24,7 @@ class JobSchedulerPage(BasePage):
         outer.addWidget(
             PageHeader(
                 "任务",
-                "管理后台间隔任务：新增、试跑与启停；通知见侧栏「通知」。",
+                "按间隔执行；通知分「提示/留档」，邮件与执行结果在「通知」页可查。",
             )
         )
         self._section = JobsSection(self)

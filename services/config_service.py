@@ -217,7 +217,9 @@ def _default_menu_items_from_app() -> list[dict]:
     return items
 
 
-_USER_MENU_OVERRIDE_KEYS = frozenset({"show", "order", "group", "name", "desc", "icon", "sidebar"})
+_USER_MENU_OVERRIDE_KEYS = frozenset(
+    {"show", "order", "group", "name", "desc", "icon", "sidebar", "requires_license", "feature_id"}
+)
 
 
 def _merge_menu_with_user_overrides(
@@ -345,28 +347,59 @@ def get_group_labels() -> dict[str, str]:
     return labels
 
 
+def get_group_order() -> list[str]:
+    """顶栏子模块顺序（出厂 GROUP_ORDER + 本机 menu.yml group_order 覆盖）。"""
+    from services.menu_registry import extra_group_ids_from_items, normalize_group_order
+
+    raw = _read_user_menu_doc().get("group_order")
+    return normalize_group_order(raw, extra_allowed=extra_group_ids_from_items())
+
+
 def _group_labels_delta(group_labels: dict[str, str] | None) -> dict[str, str]:
-    from services.menu_registry import DOMAIN_TAB_LABELS, GROUP_ORDER
+    from services.menu_registry import DOMAIN_TAB_LABELS, GROUP_LABELS, is_custom_group_id
 
     if not group_labels:
         return {}
     out: dict[str, str] = {}
-    for gid in GROUP_ORDER:
-        name = str(group_labels.get(gid) or "").strip()
-        default = str(DOMAIN_TAB_LABELS.get(gid) or "").strip()
-        if name and name != default:
+    for raw_id, raw_name in group_labels.items():
+        gid = str(raw_id or "").strip().lower()
+        name = str(raw_name or "").strip()
+        if not gid or not name:
+            continue
+        default = str(
+            DOMAIN_TAB_LABELS.get(gid) or GROUP_LABELS.get(gid) or ""
+        ).strip()
+        if name != default or is_custom_group_id(gid):
             out[gid] = name
     return out
+
+
+def _group_order_delta(
+    group_order: list[str] | None,
+    *,
+    items: list[dict] | None = None,
+) -> list[str] | None:
+    """与出厂顺序相同则不落盘。"""
+    from services.menu_registry import GROUP_ORDER, extra_group_ids_from_items, normalize_group_order
+
+    if not group_order:
+        return None
+    extras = extra_group_ids_from_items(items)
+    normalized = normalize_group_order(group_order, extra_allowed=extras)
+    if not extras and normalized == list(GROUP_ORDER):
+        return None
+    return normalized
 
 
 def _write_menu_user_file(
     overrides_map: dict[str, dict],
     group_labels_map: dict[str, str],
+    group_order_list: list[str] | None = None,
 ) -> Path:
-    """写入本机菜单调整（模块 overrides + 子模块名）。"""
+    """写入本机菜单调整（模块 overrides + 子模块名 + 子模块顺序）。"""
     global _CONFIG_CACHE
     path = user_menu_path()
-    if not overrides_map and not group_labels_map:
+    if not overrides_map and not group_labels_map and not group_order_list:
         if path.is_file():
             path.unlink()
         _CONFIG_CACHE = None
@@ -378,6 +411,8 @@ def _write_menu_user_file(
         payload["overrides"] = overrides_map
     if group_labels_map:
         payload["group_labels"] = group_labels_map
+    if group_order_list:
+        payload["group_order"] = list(group_order_list)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(
         yaml.safe_dump(payload, allow_unicode=True, sort_keys=False, default_flow_style=False),
@@ -428,24 +463,47 @@ def get_menu_items() -> list[dict]:
     return visible
 
 
+def _merge_user_plugins(items: list[dict]) -> list[dict]:
+    """追加已登记的业务插件菜单项（不覆盖同 id 内置项）。"""
+    try:
+        from services.plugin_registry import plugin_menu_items
+    except Exception:
+        return items
+    try:
+        extras = plugin_menu_items()
+    except Exception:
+        return items
+    if not extras:
+        return items
+    seen = {str(i.get("id") or "").strip() for i in items}
+    out = list(items)
+    for extra in extras:
+        mid = str(extra.get("id") or "").strip()
+        if not mid or mid in seen:
+            continue
+        out.append(extra)
+        seen.add(mid)
+    out.sort(key=lambda x: int(x.get("order") or 0))
+    return out
+
+
 def get_all_menu_items() -> list[dict]:
-    """出厂菜单 app.yml + 本机 menu.yml 里的 overrides（有改动的项）。"""
+    """出厂菜单 app.yml + 本机 menu.yml overrides + 用户业务插件。"""
     base = _default_menu_items_from_app()
     doc = _read_user_menu_doc()
-    if not doc:
-        return base
-    try:
-        raw_overrides = doc.get("overrides")
-        if isinstance(raw_overrides, dict) and raw_overrides:
-            return _apply_overrides_map(base, raw_overrides)
-        migrated = _migrate_legacy_menu_file(base, doc)
-        if migrated is not None:
-            return migrated
-        if doc.get("group_labels"):
-            return base
-    except Exception:
-        pass
-    return base
+    merged = base
+    if doc:
+        try:
+            raw_overrides = doc.get("overrides")
+            if isinstance(raw_overrides, dict) and raw_overrides:
+                merged = _apply_overrides_map(base, raw_overrides)
+            else:
+                migrated = _migrate_legacy_menu_file(base, doc)
+                if migrated is not None:
+                    merged = migrated
+        except Exception:
+            merged = base
+    return _merge_user_plugins(merged)
 
 
 def get_menu_item_by_id(module_id: str) -> dict | None:
@@ -465,12 +523,14 @@ def save_menu_items(
     items: list[dict],
     *,
     group_labels: dict[str, str] | None = None,
+    group_order: list[str] | None = None,
 ) -> Path:
-    """保存本机菜单调整（模块差异 + 子模块名）。"""
+    """保存本机菜单调整（模块差异 + 子模块名 + 子模块顺序）。"""
     base = _default_menu_items_from_app()
     overrides_map = _merged_to_overrides_map(base, items)
     gl_delta = _group_labels_delta(group_labels)
-    return _write_menu_user_file(overrides_map, gl_delta)
+    go_delta = _group_order_delta(group_order, items=items)
+    return _write_menu_user_file(overrides_map, gl_delta, go_delta)
 
 
 def reset_user_menu() -> bool:
@@ -539,11 +599,31 @@ def save_hotkeys_config(patch: dict) -> None:
 
 def save_ui_theme(theme_id: str) -> None:
     """写入当前环境可编辑配置文件（不破坏 app.yml 全量结构）。"""
+    save_ui_values(theme=theme_id)
+
+
+def save_ui_values(**updates: Any) -> None:
+    """合并写入 ui / window 可维护偏好（如 theme、nav_default_collapsed）。"""
+    if not updates:
+        return
     path = writable_config_path()
     _ensure_user_config(path)
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    ui = dict(data.get("ui") or {})
     window = dict(data.get("window") or {})
-    window["theme"] = theme_id
+
+    theme = updates.get("theme")
+    if theme is not None:
+        tid = str(theme).strip()
+        if tid:
+            window["theme"] = tid
+            ui["theme"] = tid
+
+    if "nav_default_collapsed" in updates:
+        collapsed = bool(updates.get("nav_default_collapsed"))
+        ui["nav_default_collapsed"] = collapsed
+
+    data["ui"] = ui
     data["window"] = window
     path.write_text(
         yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
@@ -551,3 +631,8 @@ def save_ui_theme(theme_id: str) -> None:
     )
     global _CONFIG_CACHE
     _CONFIG_CACHE = None
+
+
+def nav_default_collapsed() -> bool:
+    """二级菜单（左侧功能侧栏）启动时是否默认折叠。"""
+    return bool(get_ui_config().get("nav_default_collapsed", False))

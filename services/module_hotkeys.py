@@ -15,7 +15,7 @@ _LEGACY_TOP_KEYS: dict[str, str] = {
     "home": "open_home",
 }
 
-# module_id -> 默认快捷键（未配置时首页卡片展示用）
+# module_id -> 默认快捷键（未配置时首页卡片 / 托盘展示用）
 _DEFAULT_SHORTCUTS: dict[str, str] = {
     "quick_notepad": "Alt+N",
     "pomodoro": "Alt+P",
@@ -23,6 +23,8 @@ _DEFAULT_SHORTCUTS: dict[str, str] = {
     "ocr_tool": "Alt+O",
     "clipboard_history": "Alt+Shift+C",
     "harness_agent": "Alt+Shift+H",
+    "quadrant_tasks": "Alt+T",
+    "deduction_note_formatter": "Alt+Shift+D",
     "home": "Ctrl+H",
 }
 
@@ -46,6 +48,16 @@ def _normalize_seq(seq: str) -> str:
     if not s or s.lower() == "none":
         return ""
     return s
+
+
+def normalize_module_id(raw: object) -> str:
+    """过滤 QAction.triggered 误传的 False、空值及手输 typo。"""
+    if raw is False or raw is None:
+        return ""
+    mid = str(raw).strip()
+    if not mid or mid.lower() in {"false", "none", "null", "undefined"}:
+        return ""
+    return mid
 
 
 def get_module_shortcut(module_id: str) -> str:

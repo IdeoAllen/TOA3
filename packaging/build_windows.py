@@ -24,6 +24,7 @@ from release_config_guard import (  # noqa: E402
     FORBIDDEN_RELEASE_NAMES,
     RELEASE_CONFIG_OVERRIDES,
     assert_release_tree_safe,
+    make_release_assets_ignore,
     scan_project_config_before_release,
     shipped_override_path,
 )
@@ -38,6 +39,60 @@ DEV_SETUP_BASENAME = f"{APP_NAME}-Dev-Setup-v{APP_VERSION}"
 
 def log(msg: str) -> None:
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}")
+
+
+def verify_release_artifacts(
+    release_dir: Path,
+    *,
+    setup_path: Path | None,
+    setup_basename: str,
+    profile: str,
+) -> bool:
+    """校验打包产物内版本与 app/version.py 一致，并写入发版记录。"""
+    marker_name = "BUILD_PROFILE.dev" if profile == "dev" else "BUILD_PROFILE.release"
+    marker = release_dir / "config" / marker_name
+    if marker.is_file():
+        for line in marker.read_text(encoding="utf-8").splitlines():
+            if line.startswith("version="):
+                found = line.split("=", 1)[1].strip()
+                if found != APP_VERSION:
+                    log(
+                        f"错误: {marker_name} 版本 {found} ≠ app/version.py {APP_VERSION}"
+                    )
+                    return False
+                break
+        else:
+            log(f"错误: {marker_name} 缺少 version= 行")
+            return False
+
+    readme = release_dir / "README.txt"
+    if not readme.is_file() or APP_VERSION not in readme.read_text(encoding="utf-8"):
+        log(f"错误: README.txt 未包含版本 {APP_VERSION}")
+        return False
+
+    if APP_VERSION not in release_dir.name:
+        log(f"错误: 发布目录名未含版本 {APP_VERSION}: {release_dir.name}")
+        return False
+
+    if setup_path is not None:
+        setup_name = Path(setup_path).name
+        if APP_VERSION not in setup_name:
+            log(f"错误: 安装包文件名未含版本 {APP_VERSION}: {setup_name}")
+            return False
+
+    record_path = PACKAGING_DIR / "dist" / "release_record.json"
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "app_version": APP_VERSION,
+        "profile": profile,
+        "release_dir": release_dir.name,
+        "setup_basename": setup_basename,
+        "setup_path": str(setup_path) if setup_path else None,
+        "built_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    record_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    log(f"发版记录: {record_path} (version={APP_VERSION})")
+    return True
 
 
 def collect_menu_hidden_imports() -> list[str]:
@@ -69,6 +124,8 @@ def collect_menu_hidden_imports() -> list[str]:
             "PySide6.QtSvg",
             "PySide6.QtWebEngineWidgets",
             "PySide6.QtWebEngineCore",
+            "PySide6.QtMultimedia",
+            "PySide6.QtMultimediaWidgets",
             "fitz",
             "pymupdf",
             "pdf2image",
@@ -144,6 +201,66 @@ def ensure_brand_assets() -> None:
         subprocess.run([sys.executable, str(script)], cwd=PROJECT_DIR, check=False)
 
 
+def _copy_release_config_tree(cfg_src: Path, cfg_dst: Path, *, is_dev: bool) -> None:
+    ignore = shutil.ignore_patterns(
+        "__pycache__",
+        "*.pyc",
+        "~$*",
+        ".DS_Store",
+        "Thumbs.db",
+        "admin_bootstrap_code.txt",
+        "license.json",
+    )
+    skip_names = set(FORBIDDEN_RELEASE_NAMES)
+    if is_dev:
+        skip_names.discard("app.dev.yml")
+    cfg_dst.mkdir(parents=True, exist_ok=True)
+    for item in cfg_src.iterdir():
+        if item.name in skip_names:
+            continue
+        if not is_dev and item.name in RELEASE_CONFIG_OVERRIDES:
+            override = shipped_override_path(PACKAGING_DIR, item.name)
+            if override is not None:
+                shutil.copy2(override, cfg_dst / item.name)
+                log(f"发版 config 使用模板: {item.name}")
+                continue
+            log(f"警告: 缺少发版模板 shipped_config/{item.name}")
+        if item.is_dir():
+            shutil.copytree(item, cfg_dst / item.name, ignore=ignore)
+        elif item.is_file():
+            shutil.copy2(item, cfg_dst / item.name)
+
+
+def prepare_release_staging(build_dir: Path, *, is_dev: bool) -> Path | None:
+    """正式版：PyInstaller 嵌入资源用干净 config/assets（不含模型清单与 Comfy 样例）。"""
+    if is_dev:
+        return None
+    staging = build_dir / "release_staging"
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True)
+    ignore = shutil.ignore_patterns(
+        "__pycache__",
+        "*.pyc",
+        "~$*",
+        ".DS_Store",
+        "Thumbs.db",
+    )
+    _copy_release_config_tree(PROJECT_DIR / "config", staging / "config", is_dev=False)
+    assets_src = PROJECT_DIR / "assets"
+    if assets_src.is_dir():
+        shutil.copytree(
+            assets_src,
+            staging / "assets",
+            ignore=make_release_assets_ignore(assets_src),
+        )
+    for folder in ("resources", "avatars", "ui", "vendor"):
+        src = PROJECT_DIR / folder
+        if src.is_dir():
+            shutil.copytree(src, staging / folder, ignore=ignore)
+    return staging
+
+
 def resolve_packaging_icon(*, is_dev: bool) -> Path | None:
     if is_dev:
         candidates = (
@@ -214,7 +331,7 @@ def preflight(profile: str = "release", *, skip_verify: bool = False) -> bool:
             for err in pre_errs:
                 log(f"发版门禁: {err}")
             return False
-        log("发版门禁: shipped_config 模板已就绪（integrations/harness 将用干净默认）")
+        log("发版门禁: shipped_config 模板已就绪（integrations/harness/模型清单用干净默认）")
     elif profile == "dev":
         dev_cfg = PROJECT_DIR / "config" / "app.dev.yml"
         if not dev_cfg.is_file():
@@ -305,6 +422,7 @@ def build(
     dist_dir = PACKAGING_DIR / "dist"
     build_dir = PACKAGING_DIR / "build"
     dist_dir.mkdir(parents=True, exist_ok=True)
+    release_staging = prepare_release_staging(build_dir, is_dev=is_dev)
 
     if clean:
         for path in (build_dir, dist_dir):
@@ -327,13 +445,12 @@ def build(
         "--distpath",
         str(dist_dir),
         "--workpath",
-        str(build_dir),
+        str(build_dir / "pyi_work"),
         "--specpath",
         str(PACKAGING_DIR),
         "--paths",
         str(PROJECT_DIR),
         "--noconfirm",
-        "--clean",
         "--windowed",
         "--collect-submodules",
         "PySide6",
@@ -377,6 +494,10 @@ def build(
     ]
     for src, dest in data_pairs:
         src_path = PROJECT_DIR / src
+        if release_staging is not None and (release_staging / dest).exists():
+            src_path = release_staging / dest
+        elif not src_path.exists():
+            continue
         if src_path.exists():
             cmd.extend(["--add-data", f"{src_path}{os.pathsep}{dest}"])
 
@@ -448,26 +569,11 @@ def build(
             "license.json",
         )
         if folder == "config":
-            dst.mkdir(parents=True, exist_ok=True)
-            skip_names = set(FORBIDDEN_RELEASE_NAMES)
-            if not is_dev:
-                skip_names.add("app.dev.yml")
-            for item in src.iterdir():
-                if item.name in skip_names:
-                    continue
-                if not is_dev and item.name in RELEASE_CONFIG_OVERRIDES:
-                    override = shipped_override_path(PACKAGING_DIR, item.name)
-                    if override is not None:
-                        shutil.copy2(override, dst / item.name)
-                        log(f"发版 config 使用模板: {item.name}")
-                        continue
-                    log(f"警告: 缺少发版模板 shipped_config/{item.name}")
-                if item.is_dir():
-                    shutil.copytree(item, dst / item.name, ignore=ignore)
-                elif item.is_file():
-                    shutil.copy2(item, dst / item.name)
+            _copy_release_config_tree(src, dst, is_dev=is_dev)
             marker = dst / ("BUILD_PROFILE.dev" if is_dev else "BUILD_PROFILE.release")
             marker.write_text(f"profile={profile}\nversion={APP_VERSION}\n", encoding="utf-8")
+        elif folder == "assets" and not is_dev:
+            shutil.copytree(src, dst, ignore=make_release_assets_ignore(src))
         else:
             shutil.copytree(src, dst, ignore=ignore)
 
@@ -533,6 +639,14 @@ def build(
 
     if msi and setup_path:
         log(f"正式安装包（请分发这个）: {setup_path}")
+
+    if not verify_release_artifacts(
+        release_dir,
+        setup_path=setup_path,
+        setup_basename=setup_basename,
+        profile=profile,
+    ):
+        return False
 
     return True
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 import urllib.error
 import urllib.request
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 _PROCESS: subprocess.Popen | None = None
 _OWNED: bool = False
 _LAST_START_LOG: Path | None = None
+_LOCK = threading.Lock()
 
 
 def _sidecar_log_path() -> Path:
@@ -56,16 +59,33 @@ def is_running(*, timeout: float = 1.5) -> bool:
         return False
 
 
+def sidecar_local_snapshot(*, http_ok: bool | None = None) -> dict[str, Any]:
+    """本进程 Sidecar 快照。http_ok 由调用方传入时可计算 external。"""
+    cfg = _cfg()
+    port = int(cfg.get("web_port") or 3081)
+    with _LOCK:
+        owned = _OWNED and _PROCESS is not None and _PROCESS.poll() is None
+    external = bool(http_ok) and not owned
+    return {
+        "owned": owned,
+        "external": external,
+        "url": web_url(),
+        "port": port,
+    }
+
+
 def health_status() -> dict[str, Any]:
     running = is_running()
     cfg = _cfg()
     port = int(cfg.get("web_port") or 3081)
     port_busy = _port_open(port)
-    external = running and not (_OWNED and _PROCESS is not None and _PROCESS.poll() is None)
+    with _LOCK:
+        owned = _OWNED and _PROCESS is not None and _PROCESS.poll() is None
+    external = running and not owned
     conflict = port_busy and not running
     return {
         "running": running,
-        "owned": _OWNED and _PROCESS is not None and _PROCESS.poll() is None,
+        "owned": owned,
         "external": external,
         "port_busy": port_busy,
         "port_conflict": conflict,
@@ -116,12 +136,11 @@ def _build_env() -> dict[str, str]:
     return env
 
 
-def start(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, str]:
-    """启动 dsh web；若端口已有实例则直接复用。"""
-    global _PROCESS, _OWNED
+def prepare_sidecar_start() -> tuple[bool, str, bool]:
+    """校验环境与 Web 组件；返回 (可继续, 提示, 是否已在运行)。"""
     ok_setup, setup_hint = validate_setup()
     if not ok_setup:
-        return False, setup_hint
+        return False, setup_hint, False
     if is_running():
         hint = "Harness 已在运行"
         st = health_status()
@@ -131,23 +150,43 @@ def start(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, 
             hint += "（外部实例，停止服务可结束或「接管并重启」）"
         if setup_hint:
             hint = f"{hint}\n{setup_hint}"
-        return True, hint
+        return True, hint, True
 
     node = node_exe_path()
     dsh = dsh_bin_path()
     if not node.is_file():
-        return False, f"未找到 Node：{node}"
+        return False, f"未找到 Node：{node}", False
     if not dsh.is_file():
-        return False, f"未找到 dsh：{dsh}"
+        return False, f"未找到 dsh：{dsh}", False
 
     from services.harness_plugins import ensure_web_profile_bundles
 
     home = dsh_home_path()
     ok_prof, prof_msg = ensure_web_profile_bundles(node, dsh, home)
     if not ok_prof:
-        return False, f"Web 组件未就绪：{prof_msg}\n请点「更多 → 修复运行环境」。"
+        return (
+            False,
+            f"Web 组件未就绪：{prof_msg}\n请点「更多 → 修复运行环境」。",
+            False,
+        )
+    return True, "", False
 
+
+def spawn_sidecar_process() -> tuple[bool, str]:
+    """拉起 dsh web 子进程。Windows + Qt 须在主线程调用。"""
+    global _PROCESS, _OWNED, _LAST_START_LOG
     port = int(_cfg().get("web_port") or 3081)
+    if is_running():
+        return True, "Harness 已在运行"
+    if _port_open(port):
+        return (
+            False,
+            f"端口 {port} 已被占用且 Harness 未响应 HTTP。"
+            "请先结束占用进程、改 Web 端口，或复用已有实例。",
+        )
+
+    node = node_exe_path()
+    dsh = dsh_bin_path()
     env = _build_env()
     args = [
         str(node),
@@ -158,22 +197,23 @@ def start(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, 
         str(port),
     ]
     log_path = _sidecar_log_path()
-    global _LAST_START_LOG
-    _LAST_START_LOG = log_path
     try:
         log_f = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
     except OSError:
         log_f = subprocess.DEVNULL
     try:
-        _PROCESS = subprocess.Popen(
-            args,
-            env=env,
-            cwd=str(dsh.parent),
-            stdout=log_f,
-            stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
-        _OWNED = True
+        with _LOCK:
+            proc = subprocess.Popen(
+                args,
+                env=env,
+                cwd=str(dsh.parent),
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            _PROCESS = proc
+            _OWNED = True
+            _LAST_START_LOG = log_path
     except OSError as exc:
         logger.exception("启动 Harness 失败")
         return False, str(exc)
@@ -183,31 +223,65 @@ def start(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, 
                 log_f.close()
             except OSError:
                 pass
-
-    if wait_ready:
-        import time
-
-        deadline = time.monotonic() + timeout_sec
-        while time.monotonic() < deadline:
-            if _PROCESS.poll() is not None:
-                tail = _read_log_tail(log_path)
-                hint = f"\n\n日志：{log_path}"
-                if tail:
-                    hint = f"\n\n{tail}"
-                return False, (
-                    "Harness 进程已退出。常见原因：API Key 未配置、"
-                    "Node/dsh 路径错误或 Web 组件未装全。"
-                    "请点「更多 → 修复运行环境」后重试。"
-                    f"{hint}"
-                )
-            if is_running():
-                return True, f"Harness 已启动：{web_url()}"
-            time.sleep(0.35)
-        tail = _read_log_tail(log_path)
-        extra = f"\n{tail}" if tail else ""
-        return False, f"Harness 启动超时（{timeout_sec}s），请检查端口 {port}{extra}"
-
     return True, "Harness 进程已拉起"
+
+
+def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
+    """轮询 Sidecar HTTP 就绪（可放后台线程）。"""
+    port = int(_cfg().get("web_port") or 3081)
+    log_path = _LAST_START_LOG or _sidecar_log_path()
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        with _LOCK:
+            proc = _PROCESS
+        if proc is not None and proc.poll() is not None:
+            tail = _read_log_tail(log_path)
+            hint = f"\n\n日志：{log_path}"
+            if tail:
+                hint = f"\n\n{tail}"
+            return False, (
+                "Harness 进程已退出。常见原因：API Key 未配置、"
+                "Node/dsh 路径错误或 Web 组件未装全。"
+                "请点「更多 → 修复运行环境」后重试。"
+                f"{hint}"
+            )
+        if is_running():
+            return True, f"Harness 已启动：{web_url()}"
+        time.sleep(0.35)
+    tail = _read_log_tail(log_path)
+    extra = f"\n{tail}" if tail else ""
+    return False, f"Harness 启动超时（{timeout_sec}s），请检查端口 {port}{extra}"
+
+
+def sidecar_start_progress() -> tuple[str, str]:
+    """单次检查 Sidecar 启动进度。phase: pending | ready | failed。"""
+    log_path = _LAST_START_LOG or _sidecar_log_path()
+    with _LOCK:
+        proc = _PROCESS
+    if proc is not None and proc.poll() is not None:
+        tail = _read_log_tail(log_path)
+        msg = "Harness 进程已退出。"
+        if tail:
+            msg = f"{msg}\n{tail[-400:]}"
+        return "failed", msg
+    if is_running(timeout=0.8):
+        return "ready", f"Harness 已启动：{web_url()}"
+    return "pending", ""
+
+
+def start(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, str]:
+    """启动 dsh web；若端口已有实例则直接复用。"""
+    ok, msg, already = prepare_sidecar_start()
+    if not ok:
+        return False, msg
+    if already:
+        return True, msg
+    ok_spawn, spawn_msg = spawn_sidecar_process()
+    if not ok_spawn:
+        return False, spawn_msg
+    if wait_ready:
+        return wait_sidecar_ready(timeout_sec=timeout_sec)
+    return True, spawn_msg
 
 
 def _find_listener_pids(port: int) -> list[int]:

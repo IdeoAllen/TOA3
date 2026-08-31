@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""登录对话框。"""
+"""登录对话框：授权码 或 免费版；购买/续费在软件内完成。"""
 from __future__ import annotations
 
 import logging
@@ -11,13 +11,13 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from app.app_state import AppState
 from app.dialog_chrome import add_dialog_hero, apply_dialog_root, make_info_form
-from app.version import version_caption
 from core.base_dialog import BaseDialog
 from core.exceptions import AuthError
-from services.auth_service import authenticate, authenticate_standalone, authenticate_trial
+from services.auth_service import authenticate, authenticate_standalone
 from services.config_service import get_auth_config
 from services.icon_registry import brand_logo_pixmap
-from widgets import DialogButtonRow, LineEdit, PasswordLineEdit, PrimaryButton, SemanticLabel
+from services.user_plan_presentation import TRIAL_TIER_LABEL, user_login_hint, user_login_subtitle
+from widgets import DialogButtonRow, LineEdit, PasswordLineEdit, PrimaryButton, SecondaryButton, SemanticLabel
 
 logger = logging.getLogger(__name__)
 
@@ -45,48 +45,41 @@ class LoginDialog(BaseDialog):
             layout,
             pixmap=logo,
             title=brand,
-            subtitle=version_caption(),
+            subtitle=user_login_subtitle(),
         )
 
         if self._skip:
             hint_text = "开发模式：auth.skip_login 已开启，输入任意用户名即可。"
             hint_kind = "warning"
-        elif self._allow_standalone:
-            hint_text = "体验版可离线使用；正式版粘贴 TOA 授权码。"
-            hint_kind = "info"
         else:
-            hint_text = "粘贴 TOA 运营台签发的授权码。"
+            hint_text = user_login_hint()
             hint_kind = "info"
         layout.addWidget(SemanticLabel(hint_text, kind=hint_kind))
 
-        form = make_info_form()
-        self._user = LineEdit()
-        self._user.setPlaceholderText("可选：台账姓名（以授权码为准）")
-        self._key = PasswordLineEdit()
-        self._key.setPlaceholderText("正式版：TOA 授权码")
-        self._phone = LineEdit()
-        self._phone.setPlaceholderText("正式版开通/续费用手机号（可选）")
-        self._phone.setMaxLength(11)
-        self._prefill_username()
-        self._prefill_license_key()
         if not self._skip:
+            form = make_info_form()
+            self._user = LineEdit()
+            self._user.setPlaceholderText("可选，以授权码登记为准")
+            self._key = PasswordLineEdit()
+            self._key.setPlaceholderText("TOA 授权码")
+            self._prefill_username()
+            self._prefill_license_key()
             form.addRow("显示名", self._user)
             form.addRow("授权码", self._key)
-            form.addRow("手机号", self._phone)
-        layout.addLayout(form)
+            layout.addLayout(form)
+
+            self._btn_login = PrimaryButton("授权码登录")
+            self._btn_login.clicked.connect(self._on_accept)
+            layout.addWidget(self._btn_login)
 
         self._status = SemanticLabel("", kind="info")
         self._status.hide()
         layout.addWidget(self._status)
 
-        self._btn_login = PrimaryButton("正式版登录")
-        self._btn_login.clicked.connect(self._on_accept)
-        layout.addWidget(self._btn_login)
-
         buttons = DialogButtonRow()
         buttons.add_secondary("取消", self.reject)
         if self._allow_standalone and not self._skip:
-            self._btn_standalone = buttons.add_secondary("体验版", self._on_standalone)
+            self._btn_standalone = buttons.add_secondary(TRIAL_TIER_LABEL, self._on_standalone)
         layout.addWidget(buttons)
 
         self._authenticated = False
@@ -122,22 +115,22 @@ class LoginDialog(BaseDialog):
 
     def _set_login_busy(self, busy: bool, *, status: str = "") -> None:
         self._login_busy = busy
-        self._btn_login.setEnabled(not busy)
-        self._btn_login.setText("登录中…" if busy else "授权码登录")
+        if hasattr(self, "_btn_login"):
+            self._btn_login.setEnabled(not busy)
+            self._btn_login.setText("登录中…" if busy else "授权码登录")
         if hasattr(self, "_btn_standalone"):
             self._btn_standalone.setEnabled(not busy)
-            self._btn_standalone.setText("进入体验版…" if busy else "体验版")
-        self._user.setEnabled(not busy)
-        self._key.setEnabled(not busy)
-        if hasattr(self, "_phone"):
-            self._phone.setEnabled(not busy)
+            self._btn_standalone.setText(f"进入{TRIAL_TIER_LABEL}…" if busy else TRIAL_TIER_LABEL)
+        if hasattr(self, "_user"):
+            self._user.setEnabled(not busy)
+        if hasattr(self, "_key"):
+            self._key.setEnabled(not busy)
         if busy:
             self._set_status(status or "正在联网激活，请稍候…", kind="info")
         elif not status:
             self._set_status("", visible=False)
 
     def _try_accept_local_license(self, license_key: str) -> bool:
-        """本机已激活且授权码一致 → 免再次联网，直接进主界面。"""
         key = str(license_key or "").strip()
         if not key:
             return False
@@ -168,22 +161,18 @@ class LoginDialog(BaseDialog):
         username: str,
         license_key: str,
         standalone: bool,
-        trial: bool = False,
-        phone: str = "",
     ) -> tuple[bool, dict, str]:
         try:
-            if trial:
-                session = authenticate_trial(phone, display_name=username)
-            elif standalone:
+            if standalone:
                 session = authenticate_standalone()
             else:
                 session = authenticate(username, license_key)
             return True, session, ""
         except AuthError as e:
             return False, {}, str(e)
-        except Exception as e:
+        except Exception:
             logger.exception("登录线程异常")
-            return False, {}, str(e)
+            return False, {}, "登录失败"
 
     def _start_worker(
         self,
@@ -191,19 +180,12 @@ class LoginDialog(BaseDialog):
         username: str,
         license_key: str,
         standalone: bool,
-        trial: bool = False,
-        phone: str = "",
     ) -> None:
         if self._login_busy:
             return
-        if not standalone and not trial and self._try_accept_local_license(license_key):
+        if not standalone and self._try_accept_local_license(license_key):
             return
-        if trial:
-            status = "正在申请试用…"
-        elif standalone:
-            status = "正在进入体验版…"
-        else:
-            status = "正在校验授权码…"
+        status = f"正在进入{TRIAL_TIER_LABEL}…" if standalone else "正在校验授权码…"
         self._set_login_busy(True, status=status)
         self._login_result = None
         self._login_deadline = time.monotonic() + _LOGIN_TIMEOUT_S
@@ -213,15 +195,8 @@ class LoginDialog(BaseDialog):
                 username=username,
                 license_key=license_key,
                 standalone=standalone,
-                trial=trial,
-                phone=phone,
             )
             self._login_result = result
-            logger.info(
-                "登录线程完成 ok=%s err=%s",
-                result[0],
-                (result[2][:80] if result[2] else ""),
-            )
 
         threading.Thread(target=_worker, name="toa3-login", daemon=True).start()
 
@@ -249,8 +224,7 @@ class LoginDialog(BaseDialog):
         if not self._login_busy:
             return
         self._set_login_busy(False)
-        msg = f"登录超时（{_LOGIN_TIMEOUT_S} 秒），请检查网络或稍后重试"
-        self._set_status(msg, kind="danger")
+        self._set_status(f"登录超时（{_LOGIN_TIMEOUT_S} 秒），请检查网络或稍后重试", kind="danger")
 
     def _on_worker_finished(self, ok: bool, session: dict, err: str) -> None:
         if self._login_poll is not None:
@@ -269,29 +243,15 @@ class LoginDialog(BaseDialog):
             self.accept()
             return
         self._set_login_busy(False)
-        detail = err or "登录失败"
-        self._set_status(detail, kind="danger")
+        self._set_status(err or "登录失败", kind="danger")
 
     def _on_standalone(self) -> None:
         self._start_worker(username="", license_key="", standalone=True)
 
-    def _on_trial(self) -> None:
-        phone = self._phone.text().strip() if hasattr(self, "_phone") else ""
-        if not phone or not (len(phone) == 11 and phone.isdigit()):
-            self._set_status("开始试用请填写 11 位手机号", kind="warning")
-            return
-        self._start_worker(
-            username=self._user.text(),
-            license_key="",
-            standalone=False,
-            trial=True,
-            phone=phone,
-        )
-
     def _on_accept(self) -> None:
         key = self._key.text().strip() if hasattr(self, "_key") else ""
         if not key and not self._skip:
-            self._set_status("请粘贴 TOA 运营台签发的完整 TOA 授权码", kind="warning")
+            self._set_status("请粘贴 TOA 运营台签发的完整授权码", kind="warning")
             return
         self._start_worker(username=self._user.text(), license_key=key, standalone=False)
 
@@ -345,10 +305,7 @@ def _read_license_snapshot() -> dict | None:
 
 
 def _local_restorable_session() -> tuple[bool, str]:
-    """读本机 license.json：完整授权或单机模式均可恢复。"""
     try:
-        import datetime
-
         from services.runtime_mode import is_standalone_record
 
         info = _read_license_snapshot()
@@ -359,19 +316,15 @@ def _local_restorable_session() -> tuple[bool, str]:
             name = str(info.get("user_name") or "").strip()
             return True, name or "体验用户"
 
-        if not info.get("is_licensed"):
-            return False, ""
         name = str(info.get("user_name") or "").strip()
         if not name:
             return False, ""
-        exp_raw = str(info.get("expire_date") or "")[:10]
-        if exp_raw:
-            try:
-                exp = datetime.datetime.strptime(exp_raw, "%Y-%m-%d").date()
-                if exp < datetime.date.today():
-                    return False, ""
-            except ValueError:
-                pass
+
+        if str(info.get("runtime_mode") or "") == "network" or str(info.get("activated_code_id") or "").strip():
+            return True, name
+
+        if not info.get("is_licensed"):
+            return False, ""
         return True, name
     except Exception:
         logger.debug("读取本机授权失败", exc_info=True)
@@ -379,7 +332,6 @@ def _local_restorable_session() -> tuple[bool, str]:
 
 
 def try_restore_licensed_session() -> bool:
-    """本机已激活 / 单机模式 → 直接进主界面（启动不联网）。"""
     ok, name = _local_restorable_session()
     if not ok:
         return False
@@ -396,7 +348,7 @@ def try_restore_licensed_session() -> bool:
             break
         info = global_license_manager.get_license_info()
         if is_standalone_record(info) and not info.get("is_licensed"):
-            logger.info("已恢复单机模式会话")
+            logger.info("已恢复%s会话", TRIAL_TIER_LABEL)
         else:
             logger.info("已恢复本机授权会话: %s", name)
     except Exception:
@@ -405,10 +357,10 @@ def try_restore_licensed_session() -> bool:
     return True
 
 
-def ensure_authenticated(parent=None) -> bool:
+def bootstrap_app_session() -> bool:
+    """安装即用：恢复本机会话或自动进入免费版（Release 默认不弹登录窗）。"""
     auth = get_auth_config()
-    # 优先恢复本机已激活会话（赵成全功能 / 关佳伟单机等）
-    if not auth.get("force_login_dialog") and try_restore_licensed_session():
+    if try_restore_licensed_session():
         return True
     if auth.get("skip_login"):
         try:
@@ -418,15 +370,33 @@ def ensure_authenticated(parent=None) -> bool:
                 session["display_name"],
                 role=str(session.get("role") or "user"),
             )
-            logger.info("跳过登录 (auth.skip_login)，用户: %s", session["username"])
             return True
         except Exception:
             pass
-
-    st = AppState.get()
-    if st.is_authenticated:
+    if auth.get("force_login_dialog"):
+        return False
+    try:
+        session = authenticate_standalone()
+        AppState.get().set_user(
+            session["username"],
+            session["display_name"],
+            role=str(session.get("role") or "user"),
+        )
+        logger.info("自动进入%s", TRIAL_TIER_LABEL)
         return True
+    except Exception:
+        logger.exception("自动进入免费版失败")
+        return False
 
+
+def ensure_authenticated(parent=None) -> bool:
+    if bootstrap_app_session():
+        return True
+    if AppState.get().is_authenticated:
+        return True
+    auth = get_auth_config()
+    if not auth.get("force_login_dialog"):
+        return bootstrap_app_session()
     dlg = LoginDialog(parent)
     if dlg.exec() == QDialog.DialogCode.Accepted and dlg.authenticated:
         return True

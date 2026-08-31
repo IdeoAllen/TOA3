@@ -26,6 +26,16 @@ modules:
     toa2_ref: modules/system_settings/
     note: 系统设置（进页性能已修；能力探测勿默认联网；任务/通知已拆到侧栏模块）
 
+  user_extensions:
+    status: mvp
+    priority: P1
+    toa2_ref: —
+    note: 扩展中心一站创造/上传/检索/下载/应用；无偿社区 + 运营台账号/插件/流水
+    gaps:
+      - 主理人点验扩展页五件事与运营台三模块（启用停用上下架）
+      - 生产 toa-cloud 部署后联调投稿/公示
+      - Top3/三独到处未做（增强前补 research）
+
   job_scheduler:
     status: mvp
     priority: P1
@@ -179,10 +189,12 @@ modules:
     priority: P1
     office_freq: medium
     toa2_ref: —
-    note: 文生图；model_catalog 多配置；本地 SD WebUI / 云端 OpenAI 兼容
+    note: 中控台布局；图片(文/图/融合)+视频(Seedance)；Seedream/本机/Comfy
     gaps:
-      - 图生图 / 参考图
-      - 视频音频能力
+      - 页内视频预览播放器（现用系统播放器）
+      - 交互坐标框选编辑（Seedream 高级）
+      - 首尾帧双图视频
+      - 在线自动下载本机权重（P1）
 
   image_creator:
     status: mvp
@@ -261,16 +273,15 @@ modules:
       后者见 deliverable_directory_check。
     gaps: []
 
-  # TOA2 原「目录检查工具」DirectoryCheckerApp：班级交付目录 → Word 大纲+贴图 / Excel 图片统计
+  # TOA2 DirectoryCheckerApp → TOA3 业务「生成交付报告」
   deliverable_directory_check:
-    status: missing
+    status: mvp
     priority: P1
     toa2_ref: modules/directory_inspector/directory_checker.py
-    note: 与 directory_inspector、enhanced_directory_inspector 并列，三者都要
+    note: 班级交付目录 → Word 封面大纲贴图 + Excel 层级图片统计
     gaps:
-      - 待迁 TOA2 DirectoryCheckerApp（Word 封面大纲贴图 + Excel 层级图片统计）
-      - 菜单业务侧「目录检查工具」；现 directory_inspector 建议改名「目录结构检查」
-      - Top3 research：docs/research/deliverable_directory_check-top3.md 待主理人确认三独到处
+      - Top3 research 待主理人确认三独到处（docs/research/deliverable_directory_check-top3.md）
+      - 主理人点验 Word 贴图 + Excel 层级统计后清 gaps
 
   column_preview:
     status: mvp

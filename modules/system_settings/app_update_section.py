@@ -26,12 +26,9 @@ class AppUpdateSection(QWidget):
         outer.setSpacing(12)
 
         info = get_system_info()
-        ver = FormSection("版本与更新")
+        ver = FormSection("检查更新")
         ver.add_widget(
-            HintLabel(
-                f"{info.get('brand_name') or 'TOA'} · {tagline()}\n"
-                f"当前 v{info.get('app_version') or '—'} · {info.get('build_profile') or '—'}"
-            )
+            HintLabel(f"{info.get('brand_name') or 'TOA'} · {tagline()}")
         )
         row = QHBoxLayout()
         self._btn_check = PrimaryButton("检查更新")
@@ -66,7 +63,7 @@ class AppUpdateSection(QWidget):
         outer.addWidget(
             HintLabel(
                 "账号与退出见顶栏人像；管理员切换身份见本页「身份」。"
-                "商业订单在 TOA 运营台。"
+                "商业订单与发版见「运营台与商业 → 运营台」。"
             )
         )
         outer.addStretch(1)

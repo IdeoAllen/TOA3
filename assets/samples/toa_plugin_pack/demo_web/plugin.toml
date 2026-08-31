@@ -1,0 +1,27 @@
+schema_version = 1
+
+[plugin]
+id = "demo_web"
+name = "网页扩展示例"
+group = "business"
+order = 90
+version = "0.1.0"
+requires_license = false
+feature_id = ""
+author = ""
+description = "网页扩展示例（用户业务插件）"
+
+[entry]
+surface = "webview"
+web_root = "ui/index.html"
+module_path = "modules.demo_web.demo_web_page"
+class_name = "WebExtensionHost"
+page_id = "demo_web"
+
+[storage]
+data_key = "demo_web"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

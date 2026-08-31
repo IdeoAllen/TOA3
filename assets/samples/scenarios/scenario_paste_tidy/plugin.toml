@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "scenario_paste_tidy"
+name = "场景 · 粘贴整理"
+group = "business"
+order = 92
+version = "0.1.0"
+requires_license = false
+feature_id = ""
+author = "TOA"
+description = "工作场景模板：粘贴杂乱文本 → 去空行/去序号噪音 → 复制结果"
+
+[entry]
+module_path = "modules.scenario_paste_tidy.scenario_paste_tidy_page"
+class_name = "ScenarioPasteTidyPage"
+page_id = "scenario_paste_tidy"
+
+[storage]
+data_key = "scenario_paste_tidy"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

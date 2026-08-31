@@ -22,6 +22,10 @@ class PrimaryButton(QPushButton):
         self.setMinimumHeight(BUTTON_MIN_HEIGHT)
         _no_focus_ring(self)
 
+    def setMenu(self, menu) -> None:  # noqa: N802
+        super().setMenu(menu)
+        _mark_has_menu(self, menu is not None)
+
 
 class SecondaryButton(QPushButton):
     """次要按钮（默认样式）。"""
@@ -30,6 +34,18 @@ class SecondaryButton(QPushButton):
         super().__init__(text, parent)
         self.setMinimumHeight(BUTTON_MIN_HEIGHT)
         _no_focus_ring(self)
+
+    def setMenu(self, menu) -> None:  # noqa: N802
+        super().setMenu(menu)
+        _mark_has_menu(self, menu is not None)
+
+
+class MenuButton(SecondaryButton):
+    """带下拉菜单的次按钮（三角垂直居中，见全局 QSS ``QPushButton::menu-indicator``）。"""
+
+    def __init__(self, text: str = "", parent=None) -> None:
+        super().__init__(text, parent)
+        self.setProperty("hasMenu", "true")
 
 
 class DangerButton(QPushButton):
@@ -40,6 +56,10 @@ class DangerButton(QPushButton):
         self.setProperty("class", "danger")
         self.setMinimumHeight(BUTTON_MIN_HEIGHT)
         _no_focus_ring(self)
+
+    def setMenu(self, menu) -> None:  # noqa: N802
+        super().setMenu(menu)
+        _mark_has_menu(self, menu is not None)
 
 
 class MessageKindButton(QPushButton):
@@ -62,3 +82,16 @@ class InlineButton(QPushButton):
         super().__init__(text, parent)
         self.setMinimumHeight(BUTTON_MIN_HEIGHT)
         _no_focus_ring(self)
+
+    def setMenu(self, menu) -> None:  # noqa: N802
+        super().setMenu(menu)
+        _mark_has_menu(self, menu is not None)
+
+
+def _mark_has_menu(btn: QPushButton, on: bool) -> None:
+    btn.setProperty("hasMenu", "true" if on else "false")
+    sty = btn.style()
+    if sty is not None:
+        sty.unpolish(btn)
+        sty.polish(btn)
+    btn.update()

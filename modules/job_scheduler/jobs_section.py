@@ -8,9 +8,11 @@ from PySide6.QtWidgets import QHBoxLayout, QTableWidgetItem
 from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.user_messages import show_info, show_warning
+from modules.job_scheduler.job_edit_dialog import JobEditDialog
 from services.job_scheduler import JobSpec, get_scheduler
+from services.job_task_catalog import interval_label, job_summary, task_type_label
 from widgets import DangerButton, DataTable, FormSection, HintLabel, PrimaryButton, SecondaryButton
-from widgets.list_edit import FormEditDialog, confirm_delete
+from widgets.list_edit import confirm_delete
 
 
 class JobsSection(FormSection):
@@ -20,10 +22,16 @@ class JobsSection(FormSection):
         self._sched = get_scheduler()
         self._jobs: list[JobSpec] = []
 
-        self.add_widget(HintLabel("任务在本机后台运行；双击行可编辑。"))
+        self.add_widget(
+            HintLabel(
+                "怎么用：① 点「新增」选类型/通道/时间 → ②「立即执行」试跑 "
+                "→ ③ 侧栏「通知」看留档（提示类仅当前会话）。"
+                "邮件收件人在 系统设置 → 能力接入 配置。"
+            )
+        )
 
         self._table = DataTable()
-        self._table.set_headers(["状态", "名称", "动作", "间隔", "上次运行", "结果"])
+        self._table.set_headers(["状态", "名称", "类型", "内容摘要", "间隔", "上次运行", "结果"])
         self._table.setMinimumHeight(300)
         self._table.itemDoubleClicked.connect(self._on_edit)
         self.add_widget(self._table, 1)
@@ -64,10 +72,12 @@ class JobsSection(FormSection):
         self._table.setRowCount(len(self._jobs))
         for row, job in enumerate(self._jobs):
             state = "启用" if job.enabled else "停用"
-            interval = f"{job.interval_seconds}s"
+            kind = task_type_label(job.action)
+            summary = job_summary(job.action, job.params)
+            interval = interval_label(job.interval_seconds)
             last = job.last_run or "—"
             result = job.last_result or "—"
-            values = (state, job.name, job.action, interval, last, result)
+            values = (state, job.name, kind, summary, interval, last, result)
             for col, text in enumerate(values):
                 item = QTableWidgetItem(str(text))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -85,45 +95,16 @@ class JobsSection(FormSection):
         return None
 
     def _on_add(self) -> None:
-        dlg = FormEditDialog(
-            self._page,
-            title="新增定时任务",
-            fields=[
-                ("名称", "name"),
-                ("动作", "action"),
-                ("间隔秒", "interval_seconds"),
-                ("参数 JSON 可选", "params"),
-            ],
-        )
-        dlg.set_values(
-            {
-                "name": "心跳",
-                "action": "status_ping",
-                "interval_seconds": "3600",
-                "params": "",
-            }
-        )
-        if dlg.exec() != dlg.DialogCode.Accepted:
+        dlg = JobEditDialog(self._page)
+        if dlg.exec() != dlg.DialogCode.Accepted or not dlg.payload:
             return
-        v = dlg.values()
-        params = {}
-        raw = (v.get("params") or "").strip()
-        if raw:
-            import json
-
-            try:
-                params = json.loads(raw)
-            except Exception:
-                params = {"message": raw}
-        try:
-            interval = int(v.get("interval_seconds") or "3600")
-        except ValueError:
-            interval = 3600
+        p = dlg.payload
         self._sched.add_job(
-            str(v.get("name") or "任务"),
-            str(v.get("action") or "status_ping"),
-            interval_seconds=interval,
-            params=params,
+            p["name"],
+            p["action"],
+            interval_seconds=int(p["interval_seconds"]),
+            enabled=bool(p.get("enabled", True)),
+            params=dict(p.get("params") or {}),
         )
         self._reload()
 
@@ -132,34 +113,17 @@ class JobsSection(FormSection):
         if not job:
             show_warning(self._page, "请先选择任务。")
             return
-        dlg = FormEditDialog(
-            self._page,
-            title="编辑定时任务",
-            fields=[
-                ("名称", "name"),
-                ("动作", "action"),
-                ("间隔秒", "interval_seconds"),
-            ],
-        )
-        dlg.set_values(
-            {
-                "name": job.name,
-                "action": job.action,
-                "interval_seconds": str(job.interval_seconds),
-            }
-        )
-        if dlg.exec() != dlg.DialogCode.Accepted:
+        dlg = JobEditDialog(self._page, job=job)
+        if dlg.exec() != dlg.DialogCode.Accepted or not dlg.payload:
             return
-        v = dlg.values()
-        try:
-            interval = int(v.get("interval_seconds") or job.interval_seconds)
-        except ValueError:
-            interval = job.interval_seconds
+        p = dlg.payload
         self._sched.update_job(
             job.id,
-            name=str(v.get("name") or job.name),
-            action=str(v.get("action") or job.action),
-            interval_seconds=interval,
+            name=p["name"],
+            action=p["action"],
+            interval_seconds=int(p["interval_seconds"]),
+            enabled=bool(p.get("enabled", True)),
+            params=dict(p.get("params") or {}),
         )
         self._reload()
 

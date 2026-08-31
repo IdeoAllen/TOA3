@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "scenario_namecard"
+name = "场景 · 简易台卡"
+group = "business"
+order = 93
+version = "0.1.0"
+requires_license = false
+feature_id = ""
+author = "TOA"
+description = "工作场景模板：姓名+职务生成台卡文案预览（复杂 PPT 请复制后开发或用官方桌卡）"
+
+[entry]
+module_path = "modules.scenario_namecard.scenario_namecard_page"
+class_name = "ScenarioNamecardPage"
+page_id = "scenario_namecard"
+
+[storage]
+data_key = "scenario_namecard"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

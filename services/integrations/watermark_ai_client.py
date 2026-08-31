@@ -18,11 +18,16 @@ class WatermarkAiClient(IntegrationClient):
         super().__init__(integration_config("watermark_ai"))
 
     def health_check(self) -> bool:
-        return self.enabled and bool(self._config.get("provider"))
+        try:
+            from services.local_inpaint_runtime import install_status
+
+            return bool(install_status().get("ready"))
+        except Exception:
+            return self.enabled and bool(self._config.get("provider"))
 
     def remove_watermark(self, image_path: str, mask: Any = None, **kwargs: Any) -> str:
         self.require_enabled()
         raise self.integration_error(
-            "去水印模型待接入",
-            user_message="AI 去水印尚未配置，当前可使用「去除图片水印」本地框选（迁移中）。",
+            "请使用「去除图片水印」页面",
+            user_message="去水印请在侧栏打开「去除图片水印」，已配置时自动使用 LaMa。",
         )

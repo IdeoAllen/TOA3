@@ -10,7 +10,7 @@ from modules.gallery.control_library_content import build_control_library_conten
 
 class ControlLibraryPage(BasePage):
     page_id = "theme_preview"
-    page_title = "控件库（主题预览）"
+    page_title = "控件库"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

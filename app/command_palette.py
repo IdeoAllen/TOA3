@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout
 from core.ui_spec import center_on_screen
 from services.harness_actions import palette_actions, run_palette_action
 from services.menu_registry import visible_menu_items, is_migrated
-from services.access_control import can_open
+from services.access_control import can_open, nav_clickable
 from widgets import HintLabel, LineEdit, ListWidget, PrimaryButton
 
 
@@ -18,7 +18,7 @@ class CommandPalette(QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("命令面板")
+        self.setWindowTitle("检索工作")
         self.setModal(True)
         self.setWindowFlag(Qt.WindowType.MSWindowsFixedSizeDialogHint, True)
         self.setFixedSize(480, 420)
@@ -28,7 +28,7 @@ class CommandPalette(QDialog):
         lay = QVBoxLayout(self)
         lay.addWidget(HintLabel("输入关键字过滤模块或 Harness 动作，回车或双击打开。"))
         self._query = LineEdit()
-        self._query.setPlaceholderText("搜索模块 / harness / 智能体…")
+        self._query.setPlaceholderText("搜索模块、动作、智能体…")
         self._query.textChanged.connect(self._filter)
         lay.addWidget(self._query)
         self._list = ListWidget()
@@ -99,7 +99,8 @@ class CommandPalette(QDialog):
                 self.accept()
                 return
             ok, reason = can_open(mid)
-            if not ok:
+            nav_ok, _ = nav_clickable(mid)
+            if not ok and not nav_ok:
                 from core.user_messages import show_warning
 
                 show_warning(self, reason or "无权限")

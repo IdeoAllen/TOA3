@@ -1,6 +1,6 @@
 brand:
   app_logo_path: avatars/logo.png
-  app_version: 3.0.0
+  app_version: 3.0.0  # 已废弃：运行时以 app/version.py APP_VERSION 为准，勿在此处发版
   author: 大成哥
   author_email: chengchengzhao@eautosh.com
   brand_abbreviation: TOA
@@ -11,7 +11,7 @@ brand:
   slogan_subtitle: 高效、稳定、易用的培训运营解决方案
 brand_and_system:
   app_logo_path: avatars/logo.png
-  app_version: 3.0.0
+  app_version: 3.0.0  # 已废弃：运行时以 app/version.py APP_VERSION 为准，勿在此处发版
   author: 大成哥
   author_email: chengchengzhao@eautosh.com
   brand_abbreviation: TOA
@@ -71,6 +71,7 @@ hotkeys:
     - ocr_tool
     - harness_agent
   enable_global_toggle: true
+  enable_global_toggle: true
   enable_screenshot: true
   exit_app: Ctrl+Q
   restart_app: Ctrl+Shift+R
@@ -91,9 +92,10 @@ hotkeys:
   screenshot_region: Alt+Shift+A
   summon_module_id: deduction_note_formatter
   toggle_fullscreen: F11
-  # Double+Ctrl 无法被 RegisterHotKey / QKeySequence 解析，保留作占位；生效请改成 Alt+… / Ctrl+…
-  toggle_window: none
-  module_shortcuts: {}
+  # 双击 Ctrl 唤起主窗（低级别键盘监听；托盘隐藏时仍可用）
+  toggle_window: Double+Ctrl
+  module_shortcuts:
+    quadrant_tasks: Alt+T
 license:
   check_cache_minutes: 10
   activate_timeout_seconds: 15
@@ -102,6 +104,9 @@ license:
   # 过渡：未部署 TOA 云服务前 fallback；迁移完成后删除
   dms_base_url: https://dms.yczh.tech
   offline_grace_days: 2
+  # 登录「体验版」离线免费体验时长（天）；到期后提示升级 upgrade_target_label
+  standalone_experience_days: 30
+  upgrade_target_label: 付费版
 update:
   enabled: true
   timeout_seconds: 3
@@ -214,7 +219,7 @@ menu:
     icon: harness_agent
     id: harness_agent
     module_path: modules.harness_agent.harness_agent_page
-    name: 编码智能体
+    name: DeepSeek Harness
     order: 1
     feature_id: harness_agent
     requires_license: false
@@ -231,7 +236,7 @@ menu:
     requires_license: false
     show: true
   - class_name: MediaStudioPage
-    desc: 文生图（本地 WebUI / 云端 OpenAI 兼容）
+    desc: 文生图（本机简易 / ComfyUI / 云端）
     group: ai
     icon: image_creator
     id: media_studio
@@ -505,6 +510,17 @@ menu:
     feature_id: enhanced_directory_inspector
     requires_license: true
     show: true
+  - class_name: DeliverableDirectoryCheckPage
+    desc: 选择班级交付目录，生成 Word 报告与 Excel 文件数量/路径统计
+    group: business
+    icon: deliverable_directory_check
+    id: deliverable_directory_check
+    module_path: modules.deliverable_directory_check.deliverable_directory_check_page
+    name: 生成交付报告
+    order: 45
+    feature_id: deliverable_directory_check
+    requires_license: true
+    show: true
   - class_name: DeductionNoteFormatterPage
     desc: Excel 粘贴整理；Ctrl+Shift+V 一键粘贴整理并复制
     group: business
@@ -516,17 +532,6 @@ menu:
     feature_id: deduction_note_formatter
     requires_license: true
     show: true
-  - class_name: ControlLibraryPage
-    desc: 全应用可视控件库：对照主题下各控件前景/背景/字号/状态；业务页只从本库选用
-    group: system
-    icon: theme_preview
-    id: theme_preview
-    module_path: modules.gallery.control_library_page
-    name: 控件库（主题预览）
-    order: 90
-    feature_id: theme_preview
-    requires_license: false
-    show: true
   - class_name: SystemSettingsPage
     desc: 系统配置与外观设置
     group: system
@@ -534,9 +539,20 @@ menu:
     id: system_settings
     module_path: modules.system_settings.settings_page
     name: 系统设置
-    order: 91
+    order: 90
     feature_id: system_settings
     requires_license: false
+    show: true
+  - class_name: UserExtensionsPage
+    desc: 添加、开发与移除本机个性化扩展；可进产品方案单独打包销售
+    group: system
+    icon: package
+    id: user_extensions
+    module_path: modules.user_extensions.user_extensions_page
+    name: 扩展
+    order: 91
+    feature_id: user_extensions
+    requires_license: true
     show: true
   - class_name: JobSchedulerPage
     desc: 定时任务：间隔执行、立即试跑、jobs.json 落盘
@@ -544,7 +560,7 @@ menu:
     icon: job_scheduler
     id: job_scheduler
     module_path: modules.job_scheduler.job_scheduler_page
-    name: 任务
+    name: 定时任务
     order: 92
     feature_id: job_scheduler
     requires_license: false
@@ -560,6 +576,17 @@ menu:
     feature_id: notifications
     requires_license: false
     show: true
+  - class_name: ControlLibraryPage
+    desc: 全应用可视控件库：对照主题下各控件前景/背景/字号/状态；业务页只从本库选用
+    group: system
+    icon: theme_preview
+    id: theme_preview
+    module_path: modules.gallery.control_library_page
+    name: 控件库
+    order: 94
+    feature_id: theme_preview
+    requires_license: false
+    show: true
   show_advanced_options: true
 settings_menu:
   groups:
@@ -567,9 +594,9 @@ settings_menu:
       label: 通用
       items:
         - key: system
-          title: 系统
+          title: 关于
           icon: system_settings
-          subtitle: 版本、检查更新、关于与运行
+          subtitle: 检查更新、关于与运行
         - key: preferences
           title: 偏好
           icon: theme
@@ -578,6 +605,28 @@ settings_menu:
           title: 模型管理
           icon: llm_assistant
           subtitle: 模型 Key 与能力配置
+    - id: ops
+      label: 运营台与商业
+      items:
+        - key: ops_console
+          title: 运营台
+          icon: package
+          subtitle: 打开云服务运营台 · 方案/订单/发版
+        - key: subscription
+          title: 开通与续费
+          icon: package
+          subtitle: 一键开通与粘贴授权码
+          unlicensed_only: true
+        - key: license
+          title: 授权
+          icon: user
+          subtitle: 本机用户、发卡与云服务连接
+          admin_only: true
+        - key: menu
+          title: 菜单
+          icon: list
+          subtitle: 侧栏可见性 · 同步目录到运营台
+          admin_only: true
     - id: admin
       label: 本机维护
       admin_only: true
@@ -586,14 +635,6 @@ settings_menu:
           title: 品牌
           icon: main_window
           subtitle: Logo、名称与关于页文案
-        - key: license
-          title: 授权
-          icon: user
-          subtitle: 本机用户、发卡与云服务连接
-        - key: menu
-          title: 菜单
-          icon: list
-          subtitle: 侧栏模块可见性与排序
         - key: integrations
           title: 能力接入
           icon: harness_agent
@@ -602,14 +643,6 @@ settings_menu:
           title: 诊断
           icon: file_text
           subtitle: 运行环境与本机日志
-    - id: commerce
-      label: 授权与开通
-      items:
-        - key: subscription
-          title: 开通与续费
-          icon: package
-          subtitle: 一键开通与粘贴授权码
-          unlicensed_only: true
 ocr:
   tesseract_path: C:\Program Files\Tesseract-OCR\tesseract.exe
 path:
@@ -656,7 +689,7 @@ system_info: &id001
   app_logo_path: avatars/logo.png
   app_name: 赋能培训运营助手（运营宝）
   app_name_en: Training Operations Assistant, TOA
-  app_version: 3.0.0
+  app_version: 3.0.0  # 已废弃：运行时以 app/version.py APP_VERSION 为准，勿在此处发版
   author: 大成哥
   author_contact: chengchengzhao@eautosh.com
   main_slogan: 让培训运营数字化变得简单而高效
@@ -682,6 +715,7 @@ template:
 theme_config_path: '{{base_dir}}/config/theme_config.json'
 ui:
   theme: dms_blue
+  nav_default_collapsed: false
 ui_component_config:
   button_width: '12'
   input_width: '30'

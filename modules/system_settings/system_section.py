@@ -36,7 +36,7 @@ class SystemSection(QWidget):
             outer.addWidget(admin)
 
         outer.addWidget(
-            HintLabel("账号查看与退出登录见顶栏人像；商业订单在 TOA 运营台。")
+            HintLabel("账号查看与退出登录见顶栏人像；商业与发版见「运营台与商业 → 运营台」。")
         )
 
     def _on_switch_user(self) -> None:

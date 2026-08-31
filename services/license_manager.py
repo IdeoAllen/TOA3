@@ -27,6 +27,21 @@ _CODE_PREFIX = "TOA2"
 _SCHEMA_VER = 2
 
 
+def is_full_license_code(license_key: str) -> bool:
+    """是否为可联网验签的完整授权码（非磁盘摘要）。"""
+    key = (license_key or "").strip().replace(" ", "")
+    if not key.startswith(f"{_CODE_PREFIX}-"):
+        return False
+    if "…" in key:
+        return False
+    try:
+        rest = key[len(_CODE_PREFIX) + 1 :]
+        body, sig = rest.rsplit(".", 1)
+    except Exception:
+        return False
+    return bool(body and sig and len(sig) >= 8)
+
+
 def _dev_grant_all_enabled() -> bool:
     """开发态默认全授权：仅 TOA_ENV=development 且未打包，且 license.dev_grant_all。"""
     try:
@@ -75,6 +90,38 @@ def _canonical_json(obj: Any) -> str:
 
 def _today() -> datetime.date:
     return datetime.datetime.now().date()
+
+
+def standalone_experience_days() -> int:
+    try:
+        from services.config_service import get_license_config
+
+        raw = get_license_config().get("standalone_experience_days", 30)
+        days = int(raw or 30)
+    except (TypeError, ValueError):
+        days = 30
+    return max(1, min(days, 3650))
+
+
+def upgrade_target_label() -> str:
+    try:
+        from services.config_service import get_license_config
+
+        label = str(get_license_config().get("upgrade_target_label") or "").strip()
+        if label:
+            return label
+    except Exception:
+        pass
+    try:
+        from services.feature_packs import list_packs
+
+        for pack in list_packs(sellable_only=True):
+            name = str(pack.get("name") or pack.get("id") or "").strip()
+            if name:
+                return name
+    except Exception:
+        pass
+    return "付费版"
 
 
 def _parse_date(value: Optional[str]) -> Optional[datetime.date]:
@@ -402,6 +449,43 @@ class LicenseManager:
         if len(key) < 12:
             return key
         return f"{key[:10]}…{key[-6:]}"
+
+    def resolve_cloud_license_key(self) -> Tuple[str, str]:
+        """解析可用于云服务 API 的完整授权码。返回 (code, error_hint)。"""
+        if not self.license_info:
+            self.load_license()
+        info = self.license_info
+        top = str(info.get("license_key") or "").strip()
+        if is_full_license_code(top):
+            return top, ""
+
+        name = str(info.get("user_name") or "").strip()
+        phone = str(info.get("phone") or "").strip()
+        user = self.find_authorized_user(name, phone) if name else None
+        if user:
+            ukey = str(user.get("license_key") or "").strip()
+            if is_full_license_code(ukey):
+                return ukey, ""
+
+        code_id = str(info.get("activated_code_id") or "").strip()
+        admin_keys: list[str] = []
+        for u in self.get_authorized_users():
+            if not isinstance(u, dict):
+                continue
+            ukey = str(u.get("license_key") or "").strip()
+            if not is_full_license_code(ukey):
+                continue
+            if code_id and str(u.get("code_id") or "") == code_id:
+                return ukey, ""
+            if str(u.get("role") or "").strip().lower() == "admin":
+                admin_keys.append(ukey)
+        if len(admin_keys) == 1:
+            return admin_keys[0], ""
+
+        return (
+            "",
+            "本机仅存授权码摘要。请粘贴管理员完整授权码后再同步目录。",
+        )
 
     def issue_license_code(
         self,
@@ -916,6 +1000,18 @@ class LicenseManager:
         except Exception as e:
             return False, f"联网激活异常：{e}", None
 
+        entitlement = ""
+        plan_id = ""
+        order_no = ""
+        if net_payload:
+            entitlement = str(net_payload.get("entitlement") or "").strip().lower()
+            plan_id = str(net_payload.get("plan_id") or "").strip()
+            order_no = str(net_payload.get("order_no") or "").strip()
+        if not entitlement:
+            entitlement = "trial"
+        if not plan_id:
+            plan_id = "all" if "all" in features else str(features[0] if features else "")
+
         # 2) 再写本地名单 + 激活态
         users = list(self.license_info.get("authorized_users") or [])
         replaced = False
@@ -932,6 +1028,7 @@ class LicenseManager:
                 u["expire_date"] = exp
                 u["code_id"] = code_id
                 u["code_fingerprint"] = self._code_fingerprint(license_key)
+                u["license_key"] = license_key
                 users[i] = u
                 replaced = True
                 break
@@ -949,6 +1046,7 @@ class LicenseManager:
                     "expire_date": exp,
                     "code_id": code_id,
                     "code_fingerprint": self._code_fingerprint(license_key),
+                    "license_key": license_key,
                 }
             )
             users.append(rec)
@@ -973,7 +1071,9 @@ class LicenseManager:
                 "last_online_ok_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "online_status": "active",
                 "runtime_mode": "network",
-                "plan_id": "all" if "all" in features else str(features[0] if features else ""),
+                "plan_id": plan_id,
+                "entitlement": entitlement,
+                "order_no": order_no,
             }
         )
         if not self.save_license():
@@ -1185,6 +1285,57 @@ class LicenseManager:
         ok, _ = self._activation_still_valid()
         return ok
 
+    def get_entitlement(self) -> str:
+        """trial | paid | admin | standalone | 空。"""
+        if not self.license_info:
+            self.load_license()
+        ent = str(self.license_info.get("entitlement") or "").strip().lower()
+        if ent:
+            return ent
+        if self.is_standalone_mode():
+            return "standalone"
+        if self.is_admin_user():
+            return "admin"
+        remark = str(self.license_info.get("remark") or "")
+        order_no = str(self.license_info.get("order_no") or "").strip()
+        if order_no or "订单" in remark:
+            return "paid"
+        if self.license_info.get("activated_code_id"):
+            return "trial"
+        return ""
+
+    def is_activation_expired(self) -> bool:
+        if not self.license_info:
+            self.load_license()
+        exp = _parse_date(self.license_info.get("expire_date"))
+        if exp is None:
+            return False
+        return exp < _today()
+
+    def had_network_activation(self) -> bool:
+        if not self.license_info:
+            self.load_license()
+        return bool(str(self.license_info.get("activated_code_id") or "").strip()) and str(
+            self.license_info.get("runtime_mode") or ""
+        ) == "network"
+
+    def is_expired_trial(self) -> bool:
+        return (
+            self.had_network_activation()
+            and self.get_entitlement() == "trial"
+            and self.is_activation_expired()
+        )
+
+    def is_expired_paid(self) -> bool:
+        return (
+            self.had_network_activation()
+            and self.get_entitlement() == "paid"
+            and self.is_activation_expired()
+        )
+
+    def is_expired_standalone(self) -> bool:
+        return self.is_standalone_mode() and self.is_activation_expired()
+
     def is_admin_user(self) -> bool:
         """当前会话是否为管理员（默认开放全部菜单与功能）。"""
         if _dev_grant_all_enabled():
@@ -1234,12 +1385,19 @@ class LicenseManager:
         return is_standalone_record(self.license_info)
 
     def enter_standalone_mode(self) -> bool:
-        """单机版：local_free 功能，不联网、不冒充完整授权。"""
+        """单机版：local_free 功能 + 本地免费体验期（见 license.standalone_experience_days）。"""
         from services.feature_packs import expand_features
-        from services.runtime_mode import LOCAL_FREE_PLAN, STANDALONE, standalone_display_name
+        from services.runtime_mode import LOCAL_FREE_PLAN, STANDALONE, is_standalone_record, standalone_display_name
 
         features = expand_features([LOCAL_FREE_PLAN])
         name = standalone_display_name()
+        existing_exp = ""
+        if is_standalone_record(self.license_info):
+            existing_exp = str(self.license_info.get("expire_date") or "").strip()[:10]
+        if existing_exp and _parse_date(existing_exp):
+            expire_date = existing_exp
+        else:
+            expire_date = (_today() + datetime.timedelta(days=standalone_experience_days())).strftime("%Y-%m-%d")
         self.license_info.update(
             {
                 "is_licensed": False,
@@ -1247,7 +1405,8 @@ class LicenseManager:
                 "plan_id": LOCAL_FREE_PLAN,
                 "license_type": STANDALONE,
                 "license_key": "",
-                "expire_date": None,
+                "expire_date": expire_date,
+                "entitlement": "standalone",
                 "features": features,
                 "user_name": name,
                 "phone": "",
@@ -1326,45 +1485,50 @@ class LicenseManager:
             self.load_license()
         return dict(self.license_info)
 
+    def prefers_commerce_over_code(self) -> bool:
+        """已开通/试用/付费过：默认走购买续费，不首屏展示授权码输入。"""
+        if self.is_standalone_mode() or self.is_admin_user():
+            return False
+        if self.is_licensed():
+            return True
+        ent = self.get_entitlement()
+        if ent in ("trial", "paid", "invited"):
+            return True
+        return self.had_network_activation()
+
     def get_validity_text(self) -> str:
-        """主页/状态栏展示用。"""
+        """主页/状态栏/账号展示用（用户口径：免费版/付费版）。"""
         if _dev_grant_all_enabled():
-            return "开发模式 · 已默认授权全部菜单"
-        if self.is_standalone_mode():
-            return "体验版 · 离线可用（正式版请粘贴授权码）"
-        ok, msg = self._activation_still_valid()
-        if not ok:
-            if msg and msg not in ("ok", "当前未授权"):
-                return msg
-            return "未授权 · 请输入授权码并联网激活"
-        exp = str(self.license_info.get("expire_date") or "")
-        days = self.get_remaining_days()
-        name = str(self.license_info.get("user_name") or "").strip()
-        who = f"{name} · " if name else ""
-        online = ""
+            return "开发构建 · 已默认授权全部菜单"
+        if self.is_standalone_mode() and not str(self.license_info.get("expire_date") or "").strip():
+            expire_date = (_today() + datetime.timedelta(days=standalone_experience_days())).strftime(
+                "%Y-%m-%d"
+            )
+            self.license_info["expire_date"] = expire_date
+            self.save_license()
         try:
-            if str(self.license_info.get("online_status") or "") == "active":
-                online = " · 云服务已确认"
+            from services.user_plan_presentation import user_validity_line
+
+            return user_validity_line()
         except Exception:
-            pass
-        if days == float("inf"):
-            return f"{who}产品有效期：永久{online}"
-        return f"{who}有效期至 {exp}（剩余 {int(days)} 天）{online}"
+            return "—"
 
     def get_remaining_days(self):
         if _dev_grant_all_enabled():
             return float("inf")
-        if not self.license_info.get("is_licensed"):
-            return 0
-        expire_date = self.license_info.get("expire_date")
-        if not expire_date:
-            return 0
-        try:
-            expire_dt = datetime.datetime.strptime(str(expire_date)[:10], "%Y-%m-%d")
-            remaining = (expire_dt.date() - _today()).days
-            return max(0, remaining)
-        except ValueError:
-            return 0
+        if self.is_standalone_mode() or self.license_info.get("is_licensed"):
+            expire_date = self.license_info.get("expire_date")
+            if not expire_date:
+                if self.is_standalone_mode():
+                    return 0
+                return 0
+            try:
+                expire_dt = datetime.datetime.strptime(str(expire_date)[:10], "%Y-%m-%d")
+                remaining = (expire_dt.date() - _today()).days
+                return max(0, remaining)
+            except ValueError:
+                return 0
+        return 0
 
     def deactivate_local(self) -> bool:
         """退出登录时清除本机激活态，保留名单。"""

@@ -1,0 +1,67 @@
+# 本机生图（L1）组件清单 · TOA 统一管理
+# 权重目录：data/models/image/z_image_turbo/
+# 运行时：~/.toa3/image-runtime/
+
+bundles:
+  low:
+    label: 低配（约 4GB 显存）
+    quant: Q3_K
+    diffusion:
+      filename: z_image_turbo-Q3_K.gguf
+      url: https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q3_K.gguf
+      min_bytes: 3000000000
+    text_encoder:
+      filename: Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      url: https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      min_bytes: 2300000000
+    vae:
+      filename: ae.safetensors
+      url: https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors
+      min_bytes: 300000000
+
+  balanced:
+    label: 均衡（约 6–8GB 显存 · 推荐）
+    quant: Q4_K
+    diffusion:
+      filename: z_image_turbo-Q4_K.gguf
+      url: https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_K.gguf
+      min_bytes: 3500000000
+    text_encoder:
+      filename: Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      url: https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      min_bytes: 2300000000
+    vae:
+      filename: ae.safetensors
+      url: https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors
+      min_bytes: 300000000
+
+runtime:
+  win_cuda12:
+    label: Windows · NVIDIA（推荐）
+    zips:
+      - url: https://github.com/leejet/stable-diffusion.cpp/releases/download/master-829-0a565f2/sd-master-0a565f2-bin-win-cuda12-x64.zip
+      - url: https://github.com/leejet/stable-diffusion.cpp/releases/download/master-829-0a565f2/cudart-sd-bin-win-cu12-x64.zip
+  win_cpu:
+    label: Windows · 纯 CPU（较慢）
+    zips:
+      - url: https://github.com/leejet/stable-diffusion.cpp/releases/download/master-829-0a565f2/sd-master-0a565f2-bin-win-cpu-x64.zip
+  win_vulkan:
+    label: Windows · Vulkan
+    zips:
+      - url: https://github.com/leejet/stable-diffusion.cpp/releases/download/master-829-0a565f2/sd-master-0a565f2-bin-win-vulkan-x64.zip
+
+comfyui_scan:
+  model_subdirs:
+    - models
+  diffusion_dirs: [unet, diffusion_models, checkpoints, clip_gguf]
+  vae_dirs: [vae]
+  text_dirs: [clip, clip_gguf, text_encoders, llm]
+
+# 去水印 · LaMa（与 Z-Image 同属 data/models 本地算力）
+inpaint_lama:
+  label: 去水印大模型（LaMa）
+  weights_dir: data/models/image/inpaint/lama
+  weights:
+    filename: big-lama.pt
+    url: https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt
+    min_bytes: 50000000

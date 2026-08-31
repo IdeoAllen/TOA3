@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""系统设置 · 关于产品（品牌、愿景、版本只读）。"""
+"""系统设置 · 关于产品（品牌、愿景；版本见关于弹窗与状态栏）。"""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -56,26 +56,7 @@ class AboutAppSection(QWidget):
             box.add_widget(wrap)
             outer.addWidget(box)
 
-        meta = FormSection("版本信息")
-        form = make_info_form()
-        form.addRow("版本", value_label(str(info.get("app_version") or "—")))
-        form.addRow("发行", value_label(str(info.get("build_profile") or "—")))
-        form.addRow("产品", value_label(str(info.get("app_name") or "—")))
-        form.addRow("作者", value_label(str(info.get("author") or "—")))
-        email = str(info.get("author_email") or "").strip()
-        form.addRow(
-            "联系",
-            value_label(email or "—", selectable=bool(email)),
-        )
-        wrap_meta = QWidget()
-        wrap_meta.setLayout(form)
-        meta.add_widget(wrap_meta)
-        outer.addWidget(meta)
-
         outer.addWidget(
-            HintLabel(
-                "检查更新、重启与退出见「应用与更新」页签；"
-                "顶栏 ℹ 可快速打开关于弹窗。"
-            )
+            HintLabel("检查更新、重启与退出见本页；版本号见状态栏与顶栏 ℹ「关于」。")
         )
         outer.addStretch(1)

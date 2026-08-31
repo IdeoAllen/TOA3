@@ -76,10 +76,10 @@ def _post_json(path: str, body: dict, *, timeout: float = 15.0) -> Tuple[bool, d
         return False, {}, _format_connect_error(e, url)
 
 
-def list_sellable_packs() -> Tuple[bool, list[dict], dict, str]:
-    ok, data, err = _get_json("plans", query={"sellable": "true"})
+def list_sellable_packs(*, timeout: float = 12.0) -> Tuple[bool, list[dict], dict, str]:
+    ok, data, err = _get_json("plans", query={"sellable": "true"}, timeout=timeout)
     if not ok:
-        ok, data, err = _get_json("packs", query={"sellable": "true"})
+        ok, data, err = _get_json("packs", query={"sellable": "true"}, timeout=timeout)
     if not ok:
         return False, [], {}, err
     packs = data.get("plans") or data.get("packs") or []

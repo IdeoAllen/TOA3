@@ -9,11 +9,9 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.user_messages import show_warning
+from services.compute_source import pick_effective_profile_id
 from services.model_ready_registry import list_ready
-from services.model_catalog import (
-    get_active_profile_id,
-    set_active_profile_id,
-)
+from services.model_catalog import set_active_profile_id
 from widgets import (
     ComboBox,
     FormSection,
@@ -50,6 +48,10 @@ class _LlmStreamWorker(QObject):
         self._prompt = prompt
         self._system = system
         self._profile_id = profile_id
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     def run(self) -> None:
         self.connecting.emit()
@@ -62,15 +64,26 @@ class _LlmStreamWorker(QObject):
                 self._prompt,
                 system=self._system,
                 profile_id=self._profile_id or None,
+                cancel_check=lambda: self._cancelled,
             ):
+                if self._cancelled:
+                    self.failed.emit("已取消生成。")
+                    return
                 if delta:
                     parts.append(delta)
                     self.chunk.emit(delta)
+            if self._cancelled:
+                self.failed.emit("已取消生成。")
+                return
             self.finished.emit("".join(parts))
         except Exception as exc:
             from core.exceptions import format_exception
 
-            self.failed.emit(format_exception(exc))
+            msg = getattr(exc, "user_message", None) or format_exception(exc)
+            if self._cancelled or "已取消" in str(msg):
+                self.failed.emit("已取消生成。")
+            else:
+                self.failed.emit(str(msg))
 
 
 class LlmAssistantPage(BasePage):
@@ -92,11 +105,13 @@ class LlmAssistantPage(BasePage):
             )
         )
 
-        model_box = FormSection("模型配置")
+        model_box = FormSection("默认写字算力")
         self._profile_combo = ComboBox()
         self._profile_combo.setMinimumWidth(280)
         self._profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        model_box.add_widget(HintLabel("仅显示「可用」模型；其余在 系统设置 → 能力接入 → 模型管理"))
+        model_box.add_widget(
+            HintLabel("平时直接用下方生成；此处可换默认卡。绑定在 系统设置 → 模型管理")
+        )
         self._empty_hint = HintLabel("")
         model_box.add_widget(self._empty_hint)
         model_box.add_widget(self._profile_combo)
@@ -109,7 +124,7 @@ class LlmAssistantPage(BasePage):
         self._prompt.setPlaceholderText("输入问题或指令…")
         prompt_box.add_widget(self._prompt)
         prompt_box.add_widget(
-            HintLabel("未配置时可点下方「打开能力接入」填写 API 地址、模型与 Key。")
+            HintLabel("未绑定时点下方「去绑定算力」填写 Key 或本机 Ollama。")
         )
         scroll.add_widget(prompt_box)
 
@@ -117,13 +132,17 @@ class LlmAssistantPage(BasePage):
         self._btn_gen = PrimaryButton("生成")
         self._btn_gen.clicked.connect(self._on_generate)
         actions.addWidget(self._btn_gen)
+        self._btn_cancel = SecondaryButton("取消")
+        self._btn_cancel.setVisible(False)
+        self._btn_cancel.clicked.connect(self._on_cancel)
+        actions.addWidget(self._btn_cancel)
         self._btn_polish = SecondaryButton("润色剪贴板")
         self._btn_polish.clicked.connect(self._on_polish_clipboard)
         actions.addWidget(self._btn_polish)
         btn_copy = SecondaryButton("复制结果")
         btn_copy.clicked.connect(self._on_copy)
         actions.addWidget(btn_copy)
-        btn_cfg = SecondaryButton("打开能力接入")
+        btn_cfg = SecondaryButton("去绑定算力")
         btn_cfg.clicked.connect(self._open_settings)
         actions.addWidget(btn_cfg)
         actions.addStretch(1)
@@ -169,15 +188,17 @@ class LlmAssistantPage(BasePage):
         self._profile_combo.blockSignals(False)
         if not self._profile_ids:
             self._empty_hint.setText(
-                "暂无可用模型 → 系统设置 → 能力接入 → 模型管理，配置网络 Key 或本地 Ollama 端点。"
+                "暂无可用写字算力 → 系统设置 → 模型管理，绑定云端 Key 或本机 Ollama。"
             )
             self._profile_combo.addItem("（无可用模型）", "")
         else:
             self._empty_hint.setText("")
         if select_active and self._profile_ids:
-            active = get_active_profile_id("text_llm")
-            idx = self._profile_ids.index(active) if active in self._profile_ids else 0
-            self._profile_combo.setCurrentIndex(idx)
+            effective = pick_effective_profile_id("text_llm", persist=True)
+            if effective in self._profile_ids:
+                self._profile_combo.setCurrentIndex(self._profile_ids.index(effective))
+            else:
+                self._profile_combo.setCurrentIndex(0)
 
     def _on_profile_changed(self, index: int) -> None:
         if index < 0 or index >= len(self._profile_ids):
@@ -193,6 +214,8 @@ class LlmAssistantPage(BasePage):
         self._btn_gen.setEnabled(not busy)
         self._btn_polish.setEnabled(not busy)
         self._btn_gen.setText("生成中…" if busy else "生成")
+        self._btn_cancel.setVisible(busy)
+        self._btn_cancel.setEnabled(busy)
         self._gen_progress.setVisible(busy)
         if busy:
             self._gen_progress.setRange(0, 0)
@@ -200,13 +223,22 @@ class LlmAssistantPage(BasePage):
             self._gen_progress.setRange(0, 100)
             self._gen_progress.setValue(0)
 
+    def _on_cancel(self) -> None:
+        if self._gen_worker is not None:
+            self._gen_worker.cancel()
+        self.report_status("正在取消…", level=StatusLevel.INFO)
+        self._btn_cancel.setEnabled(False)
+
     def _start_stream(self, prompt: str, *, system: str = "", status_connect: str = "正在连接模型…") -> None:
         if self._generation_running():
-            show_warning(self, "正在生成，请稍候，勿连点。")
+            show_warning(self, "正在生成，请稍候，勿连点。可点「取消」中止。")
             return
-        if not self._current_profile_id():
-            show_warning(self, "暂无可用模型，请先到「系统设置 → 能力接入 → 模型管理」配置。")
+        pid = self._current_profile_id() or pick_effective_profile_id("text_llm", persist=True)
+        if not pid:
+            show_warning(self, "暂无可用写字算力，请先到「系统设置 → 模型管理」绑定。")
             return
+        if pid in self._profile_ids:
+            self._profile_combo.setCurrentIndex(self._profile_ids.index(pid))
 
         self._stream_acc = ""
         self._result.setPlainText("")
@@ -217,7 +249,7 @@ class LlmAssistantPage(BasePage):
         self._gen_worker = _LlmStreamWorker(
             prompt,
             system=system,
-            profile_id=self._current_profile_id(),
+            profile_id=pid,
         )
         self._gen_worker.moveToThread(self._gen_thread)
         self._gen_thread.started.connect(self._gen_worker.run)
@@ -242,8 +274,9 @@ class LlmAssistantPage(BasePage):
         cursor.insertText(delta)
         self._result.setTextCursor(cursor)
         self._result.ensureCursorVisible()
-        if len(self._stream_acc) < 8:
-            self.report_status("正在生成…", level=StatusLevel.INFO)
+        n = len(self._stream_acc)
+        if n < 8 or n % 80 < len(delta):
+            self.report_status(f"正在生成…已输出 {n} 字", level=StatusLevel.INFO)
 
     def _on_stream_finished(self, full: str) -> None:
         if full and not self._stream_acc:
@@ -253,11 +286,16 @@ class LlmAssistantPage(BasePage):
 
     def _on_stream_failed(self, message: str) -> None:
         self._set_generating(False)
+        msg = (message or "").strip()
+        if "已取消" in msg:
+            self.report_status("已取消生成", level=StatusLevel.INFO)
+            return
         from core.error_handler import report_error
 
-        report_error(self, Exception(message), title="大模型调用失败", context=self.page_id)
+        report_error(self, Exception(msg or "大模型调用失败"), title="大模型调用失败", context=self.page_id)
 
     def _cleanup_stream_worker(self) -> None:
+        self._set_generating(False)
         if self._gen_worker is not None:
             self._gen_worker.deleteLater()
             self._gen_worker = None
@@ -296,16 +334,18 @@ class LlmAssistantPage(BasePage):
         if shell is not None and hasattr(shell, "navigate"):
             shell.navigate("system_settings")
             page = getattr(shell, "_pages", {}).get("system_settings")
-            if page is not None and hasattr(page, "open_model_hub_tab"):
+            if page is not None and hasattr(page, "open_models_tab"):
+                page.open_models_tab()
+            elif page is not None and hasattr(page, "open_model_hub_tab"):
                 page.open_model_hub_tab()
-            elif page is not None and hasattr(page, "open_capability_tab"):
-                page.open_capability_tab()
 
     def on_enter(self) -> None:
         self._reload_profiles(select_active=True)
-        self.report_status("大模型助手")
+        if not self._generation_running():
+            self._set_generating(False)
+            self.report_status("大模型助手")
 
     def on_leave(self) -> None:
-        if self._generation_running():
-            self._gen_thread.requestInterruption()
-            self._gen_thread.quit()
+        if self._generation_running() and self._gen_worker is not None:
+            self._gen_worker.cancel()
+            self.report_status("离开页面，已取消生成", level=StatusLevel.INFO)

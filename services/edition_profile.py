@@ -112,7 +112,8 @@ def filter_menu_by_edition(items: list[dict]) -> list[dict]:
     out: list[dict] = []
     for item in items:
         mid = str(item.get("id") or "").strip()
-        if mid in allowed:
+        # 用户业务插件不受体验版白名单裁剪（本机自研扩展）
+        if mid in allowed or str(item.get("source") or "") == "user_plugin":
             out.append(item)
     return out
 

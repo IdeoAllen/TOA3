@@ -1,72 +1,97 @@
-# 20 · 模型库与 ComfyUI 式就绪列表
+# 20 · 模型库与图像能力三级阶梯
 
-> 主理人裁定：**不对齐「安装包一次带全模型」**；对齐 **ComfyUI** 的「模型管理 + 节点选模型 + 缺了再去下/配」。
+> **模型库 = 算力卡包**（对用户：绑定来源、设默认、解绑）。详见 [30-算力来源与支付卡隐喻](30-算力来源与支付卡隐喻.md)。  
+> 主理人裁定：**不对齐「安装包一次带全模型」**；对齐「模型管理 + 任务页只选可用 + 缺了再下/配」。  
+> 图像轨面向**终端小白**：默认零工作流；有条件再上 ComfyUI / 云端。  
+> 关联：`19` · `29`（办公 Ready 列表；Harness Key 不在本表）。
 
-## 1. ComfyUI 要对齐什么
+## 1. 图像三级阶梯（小白优先）
 
-| ComfyUI 做法 | TOA3 对应 |
-|--------------|-----------|
-| 权重在 `models/checkpoints` 等目录，不进程序本体 | `data/models/**` + 用户 ComfyUI 目录；**安装包不含权重** |
-| 节点下拉只列**当前环境已有**的 checkpoint | 任务页 Combo 只列 `status=ready` |
-| Manager / 手动下载补模型 | `scripts/model_hub_comfyui.py` 指引；P1 可做 HF 下载助手 |
-| 工作流节点选不同模型 | `model_catalog.yml` 多 profile；能力内切换 |
-| 缺模型时节点报错、可感知 | `model_ready_registry`：`needs_download` / `needs_key` / `needs_endpoint` |
+| 档 | 用户看见 | 底层 | 适合 |
+|----|----------|------|------|
+| **L1 本机简易（推荐）** | 本机生图 | TOA 托管 **stable-diffusion.cpp** + Z-Image Turbo GGUF | 无外网 / 低配 / 不会工作流 |
+| **L2 本机专业** | ComfyUI 专业 | 本机 ComfyUI + 固化 API 工作流 | 愿装 Comfy、要自定义 |
+| **L3 云端** | 云端生图 | OpenAI 兼容等 API | 有网 + Key |
 
-**不学**：把 ComfyUI 整棵 UI 嵌进 TOA；TOA 只做 **办公套件内的模型库 + 任务页选 Ready**。
+任务页只列 `status=ready`；空列表 → 引导「安装本机生图」或「导入离线包」。  
+**不学**：把 ComfyUI 整棵 UI 嵌进 TOA；默认路径不出现节点/工作流黑话。
 
-## 2. 目标 UX
-
-```
-系统设置 → 能力接入 → 【模型库】
-  ├─ 文本大模型：Moonshot ✓ / DeepSeek ○待密钥 / Ollama ○待端点
-  ├─ 图像生成：ComfyUI ○待启动 / 本机 xxx.safetensors ✓
-  └─ [刷新] [去配置大模型] [去配置图像] [ComfyUI 指引]
-
-任务页（大模型助手 / 媒体工坊）
-  └─ 下拉仅「可用」；空 → 提示去模型库
-```
-
-配置细节仍在 **能力接入 → 大模型 / 图像生成**；模型库是 **总览 + 分流**，不是第二套表单。
-
-## 3. 架构
+### L1 目录约定
 
 ```
-config/model_catalog.yml          # 能力 → profiles（网络/本地端点）
-data/user/model_catalog.yml       # 用户 active + 自定义 profile
-data/models/**                    # 可选：本机已下载权重（扫描展示）
-data/user/integrations_secrets.json  # 按 profile 存 Key
+~/.toa3/image-runtime/          # sd / sd-cli 可执行文件（离线包可导入）
+data/models/image/z_image_turbo/
+  *.gguf                        # diffusion（如 Q3/Q4/Q5）
+  ae.safetensors                # VAE
+  Qwen*.gguf | *.safetensors    # 文本编码器
+  install.json                  # 可选：量化档与来源记录
+```
 
-services/model_catalog.py         # 目录合并
-services/model_ready_registry.py  # list_ready() → ready | needs_*
+离线包契约见 `scripts/setup_local_image_gen.py`。
+
+## 2. ComfyUI 式就绪（通用）
+
+| 做法 | TOA3 对应 |
+|------|-----------|
+| 权重不进程序本体 | `data/models/**`；**安装包不含权重** |
+| 下拉只列已有 | 任务页 Combo 只列 `ready` |
+| 缺了再补 | 在线指引 / 离线包导入；`needs_download` / `needs_key` / `needs_endpoint` |
+
+## 3. 目标 UX
+
+```
+系统设置 → 模型管理 / 模型库
+  图像生成
+    · 本机生图（推荐）  [安装…] [导入离线包]  ✓可用 / ○待安装
+    · ComfyUI 专业      [查看指引]
+    · 云端生图          [填 Key]
+  [刷新]
+
+媒体工坊
+  └─ 下拉仅「可用」；写提示词 → 生成 → show_saved
+```
+
+## 4. 架构
+
+```
+config/model_catalog.yml
+data/user/model_catalog.yml
+data/models/image/**              # L1 权重
+~/.toa3/image-runtime/            # L1 运行时
+
+services/model_catalog.py
+services/model_ready_registry.py
+services/local_image_runtime.py   # L1 探测 / 导入 / 调 sd-cli
 services/integrations/
-  llm_client.py                   # 按 profile 调用
-  image_gen_client.py             # sd_webui | comfyui | openai_images
-  comfyui_client.py               # ComfyUI /prompt 工作流
+  image_gen_client.py             # sdcpp | comfyui | sd_webui | openai_images
+  sdcpp_client.py
+  comfyui_client.py
 ```
 
-## 4. 阶段
+## 5. 阶段
 
 | 阶段 | 交付 |
 |------|------|
-| **P0（当前）** | `model_ready_registry` + 设置页「模型库」只读列表；任务页 Ready 下拉；`comfyui_local` profile；`model_hub_comfyui.py` |
-| **P1** | ComfyUI 连通探测（进页不探测，模型库点刷新可探测）；HF 下载脚本；profile 向导 |
-| **P2** | 视频/音频 capability + 同一套 Ready 列表 |
+| **P0** | L1 sdcpp + Z-Image 目录/离线导入；L2 Comfy Z-Image 工作流；L3 API；媒体工坊白话下拉 |
+| **P1** | 在线下载助手（HF）；显存自动探测推荐量化 |
+| **P2** | 视频/音频 capability |
 
-## 5. 铁律
+## 6. 铁律
 
-1. **安装包不 ship 权重**；脚本只指引或可选下载到 `data/models`。
-2. 业务页 **禁止** 散落 API 表单；只选 Ready + 做任务。
-3. 三方调用 **只经** `services/integrations`。
-4. Harness 编码智能体 **不走** 模型库（DSH 自有模型配置）。
+1. 安装包不 ship 权重；可提供离线包契约。  
+2. 业务页禁止散落 API 表单；只选 Ready + 做任务。  
+3. 三方调用只经 `services/integrations`。  
+4. Harness 不走模型库。  
+5. 进页禁止同步联网探测；刷新/测试才探测。
 
-## 6. 代码落点
+## 7. 代码落点
 
 | 层 | 路径 |
 |----|------|
-| 就绪注册 | `services/model_ready_registry.py` |
+| 就绪 | `services/model_ready_registry.py` |
+| L1 运行时 | `services/local_image_runtime.py` |
 | 模型库 UI | `modules/system_settings/model_hub_section.py` |
-| ComfyUI | `services/integrations/comfyui_client.py` |
-| 指引脚本 | `scripts/model_hub_comfyui.py` |
-| 任务页 | `modules/llm_assistant/` · `modules/media_studio/` |
+| 指引 | `scripts/setup_local_image_gen.py` · `scripts/model_hub_comfyui.py` |
+| 任务页 | `modules/media_studio/` |
 
 详见 [19-AI子模块与多模态模型中枢](19-AI子模块与多模态模型中枢.md)。

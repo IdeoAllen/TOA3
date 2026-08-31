@@ -2,7 +2,7 @@
 """系统设置 · 授权与云服务联动。"""
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QObject, QThread, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
@@ -12,6 +12,11 @@ from core.user_messages import show_error, show_info, show_warning
 from services.license_client import license_service_summary
 from services.license_manager import global_license_manager
 from services.notify_bus import emit_license_changed
+from services.user_plan_presentation import (
+    dev_build_tag,
+    is_dev_build,
+    user_account_subtitle,
+)
 from widgets import (
     DataTable,
     DangerButton,
@@ -48,7 +53,18 @@ class _CloudSyncWorker(QObject):
 
 _USER_COLS = ("姓名", "手机", "角色", "有效期", "状态", "功能权限")
 
-_CLOUD_HINT = "云服务地址与机器 ID 只读；产品方案与订单在 TOA 运营台维护。"
+_CLOUD_HINT = (
+    "云服务地址与机器 ID 只读；产品方案与订单见「运营台与商业 → 运营台」。"
+)
+
+
+def _join_dev_status(tag: str, detail: str) -> str:
+    detail = str(detail or "").strip()
+    if not detail:
+        return tag
+    if detail.startswith(tag):
+        return detail
+    return f"{tag} · {detail}"
 
 
 class LicenseSection(QWidget):
@@ -157,7 +173,16 @@ class LicenseSection(QWidget):
         self._refresh_status()
 
     def _refresh_status(self) -> None:
-        text = self._lm.get_validity_text()
+        # 正式版不在授权页重复顶栏/账号档位摘要；开发构建保留便于联调
+        if not is_dev_build():
+            self._status.setVisible(False)
+            self._status.clear()
+            return
+        self._status.setVisible(True)
+        text = user_account_subtitle()
+        tag = dev_build_tag()
+        if tag:
+            text = _join_dev_status(tag, text)
         licensed = self._lm.is_licensed()
         kind = "success" if licensed else "danger"
         self._status.setProperty("class", f"semantic-{kind}")
@@ -165,7 +190,7 @@ class LicenseSection(QWidget):
         self._status.style().polish(self._status)
         self._status.setText(text)
 
-    def _reload_list(self) -> None:
+    def _reload_list(self, *, report_count: bool = True) -> None:
         self._users = self._lm.search_authorized_users("")
         table_rows: list[tuple[str, ...]] = []
         for user in self._users:
@@ -191,7 +216,8 @@ class LicenseSection(QWidget):
         if self._users:
             self._user_table.selectRow(0)
         self._refresh_status()
-        self._page.report_status(f"授权用户 {len(self._users)} 人")
+        if report_count:
+            self._page.report_status(f"授权用户 {len(self._users)} 人")
 
     def _user_at_row(self) -> dict | None:
         r = self._user_table.currentRow()
@@ -293,15 +319,17 @@ class LicenseSection(QWidget):
         self._page.report_status("已删除授权用户", level=StatusLevel.SUCCESS)
         self._emit_nav()
 
+    def _emit_nav_deferred(self) -> None:
+        """授权变更通知延后到事件循环下一拍，避免与云操作回调同栈重建壳层。"""
+        QTimer.singleShot(0, emit_license_changed)
+
     def _set_cloud_busy(self, busy: bool, label: str = "") -> None:
         self._cloud_busy = busy
         for btn in (getattr(self, "_btn_sync", None), getattr(self, "_btn_check", None)):
             if btn is not None:
                 btn.setEnabled(not busy)
         if busy:
-            self._page.report_status(label or "云服务操作中…")
-        elif label:
-            self._page.report_status(label)
+            self._page.report_status(label or "云服务操作中…", level=StatusLevel.INFO)
 
     def _cleanup_worker(self) -> None:
         if self._worker is not None:
@@ -322,14 +350,14 @@ class LicenseSection(QWidget):
         self._thread.started.connect(self._worker.run)
 
         def _finished(*args) -> None:
-            self._set_cloud_busy(False)
             try:
                 on_done(*args)
             finally:
+                self._set_cloud_busy(False)
                 if self._thread is not None:
                     self._thread.quit()
 
-        worker.finished.connect(_finished)
+        worker.finished.connect(_finished, Qt.ConnectionType.QueuedConnection)
         self._thread.finished.connect(self._cleanup_worker)
         self._thread.start()
 
@@ -338,12 +366,22 @@ class LicenseSection(QWidget):
 
         def _done(result) -> None:
             if isinstance(result, Exception):
-                show_error(self._page, f"同步失败：{result}")
+                self._page.report_status(f"同步失败：{result}", level=StatusLevel.ERROR)
                 return
             ok_n, fail_n, summary = result
-            show_info(self._page, f"同步完成：成功 {ok_n}，失败 {fail_n}\n{summary}")
-            self._emit_nav()
-            self._page.report_status("云服务同步完成", level=StatusLevel.SUCCESS)
+            self._reload_list(report_count=False)
+            if fail_n:
+                detail = summary.replace("\n", " · ") if summary else ""
+                self._page.report_status(
+                    f"同步完成：成功 {ok_n}，失败 {fail_n} · {detail}",
+                    level=StatusLevel.WARNING,
+                )
+            else:
+                self._page.report_status(
+                    f"同步完成：成功 {ok_n} 条",
+                    level=StatusLevel.SUCCESS,
+                )
+            self._emit_nav_deferred()
 
         self._start_worker(worker, busy_label="正在同步到云服务…", on_done=_done)
 
@@ -352,16 +390,10 @@ class LicenseSection(QWidget):
 
         def _done(ok: bool, msg: str) -> None:
             self._refresh_status()
-            self._emit_nav()
             if ok:
-                show_info(self._page, msg or self._lm.get_validity_text())
-                self._page.report_status("联网校验完成", level=StatusLevel.SUCCESS)
+                self._page.report_status(msg or "联网校验完成", level=StatusLevel.SUCCESS)
             else:
-                show_error(
-                    self._page,
-                    msg or "联网校验未通过",
-                    title="联网校验失败",
-                )
-                self._page.report_status("联网校验失败", level=StatusLevel.WARNING)
+                self._page.report_status(msg or "联网校验未通过", level=StatusLevel.WARNING)
+            self._emit_nav_deferred()
 
         self._start_worker(worker, busy_label="正在联网校验…", on_done=_done)

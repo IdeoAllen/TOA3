@@ -89,11 +89,17 @@ def main() -> int:
     bootstrap_runtime()
     _configure_webengine_env()
 
+    # 须在 QApplication 之前：否则任务栏仍归到 python.exe「Python」
+    from services.windows_app_identity import apply_windows_app_identity
+
+    apply_windows_app_identity(display_name="运营宝 TOA3")
+
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
     app.setApplicationName("TOA3")
+    app.setApplicationDisplayName("运营宝 TOA3")
     app.setOrganizationName("YCZH")
     app.setApplicationVersion(APP_VERSION)
     _set_app_icon(app)
@@ -118,10 +124,9 @@ def main() -> int:
 
     def _activate_existing() -> None:
         if shell_holder:
-            w = shell_holder[0]
-            w.showNormal()
-            w.raise_()
-            w.activateWindow()
+            from services.win_foreground import force_widget_foreground
+
+            force_widget_foreground(shell_holder[0])
 
     from services.single_instance import try_acquire_single_instance
 
@@ -136,9 +141,8 @@ def main() -> int:
     try:
         shell = MainShell(defer_startup=True)
         shell_holder.append(shell)
-        shell.show()
-        app.processEvents()
         shell.complete_startup()
+        shell.show()
     except Exception:
         logger.exception("主壳启动失败")
         from services.single_instance import release_single_instance
@@ -147,20 +151,21 @@ def main() -> int:
         return 1
 
     try:
+        from services.access_control import requires_purchase_redirect
         from services.license_manager import global_license_manager
         from services.notify_bus import NotifyLevel, notify
 
-        if global_license_manager.is_licensed():
-            msg = global_license_manager.get_validity_text()
-            if "即将" in msg or "剩余" in msg:
-                notify(NotifyLevel.WARNING, title="授权提醒", body=msg, channel="status")
-        else:
+        if requires_purchase_redirect():
+            from services.user_plan_presentation import user_access_block_message
+
             notify(
-                NotifyLevel.INFO,
-                title="授权",
-                body="当前未授权：办公小工具可用，业务模块需授权后开放。",
+                NotifyLevel.WARNING,
+                title="续费提醒",
+                body=f"{user_access_block_message()}。",
                 channel="status",
             )
+        elif not global_license_manager.is_licensed() and not global_license_manager.is_standalone_mode():
+            pass
     except Exception:
         pass
 

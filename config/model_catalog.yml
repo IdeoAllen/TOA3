@@ -7,6 +7,8 @@ capabilities:
     profiles:
       moonshot_kimi:
         label: Moonshot · Kimi K2.6
+        region: cn
+        vendor: Moonshot
         provider: openai_compatible
         api_base: https://api.moonshot.cn/v1
         model: kimi-k2.6
@@ -14,6 +16,8 @@ capabilities:
         model_fallbacks: []
       deepseek:
         label: DeepSeek · Chat
+        region: cn
+        vendor: DeepSeek
         provider: openai_compatible
         api_base: https://api.deepseek.com/v1
         model: deepseek-chat
@@ -21,6 +25,9 @@ capabilities:
         model_fallbacks: []
       ollama_local:
         label: 本地 Ollama（OpenAI 协议）
+        region: local
+        vendor: Ollama
+        origin: local
         provider: openai_compatible
         api_base: http://127.0.0.1:11434/v1
         model: llama3.2
@@ -28,18 +35,131 @@ capabilities:
         model_fallbacks: []
   image_gen:
     label: 图像生成
-    default_profile: openai_images
+    # 小白默认：本机简易（装好权重后可用）；未装时任务页引导安装
+    default_profile: local_z_image_simple
     profiles:
+      local_z_image_simple:
+        label: 本机生图（推荐）
+        region: local
+        vendor: 本机 SDCPP
+        origin: local
+        tier: simple
+        provider: sdcpp
+        model: z_image_turbo
+        steps: 8
+        cfg_scale: 1.0
+        offload_to_cpu: true
+        note: 零工作流；导入离线包或按指引安装后可用
+      comfyui_z_image_turbo:
+        label: ComfyUI 专业 · Z-Image
+        region: local
+        vendor: ComfyUI
+        origin: local
+        tier: advanced
+        provider: comfyui
+        api_base: http://127.0.0.1:8188
+        # 默认走本机常见 safetensors；无对应文件时自动探测 / 回落 GGUF
+        workflow: z_image_unet
+        unet: z_image_turbo_bf16.safetensors
+        text_encoder: qwen_3_4b.safetensors
+        vae: ae.safetensors
+        steps: 8
+        cfg_scale: 1.0
+        note: 对接本机 ComfyUI 的 Z-Image（自动匹配已安装模型文件名）
+      comfyui_local:
+        label: ComfyUI 专业 · 自动匹配
+        region: local
+        vendor: ComfyUI
+        origin: local
+        tier: advanced
+        provider: comfyui
+        api_base: http://127.0.0.1:8188
+        workflow: auto
+        model: ""
+        steps: 20
+        note: 自动选用本机 checkpoint 或 Z-Image；与 ComfyUI 界面已能出图的模型一致
       local_sd_webui:
         label: 本地 SD WebUI / Forge
+        region: local
+        vendor: SD WebUI
+        origin: local
+        tier: advanced
         provider: sd_webui
         api_base: http://127.0.0.1:7860
         model: ""
         steps: 20
         note: 需先启动 WebUI/Forge 并开启 API（--api）
       openai_images:
-        label: OpenAI 兼容生图
+        label: 云端生图 · OpenAI
+        region: intl
+        vendor: OpenAI
+        origin: cloud
+        tier: cloud
         provider: openai_images
         api_base: https://api.openai.com/v1
         model: dall-e-3
         size: 1024x1024
+        note: 需联网与 API Key
+      doubao_seedream:
+        label: 豆包 · Seedream 5.0 Pro
+        region: cn
+        vendor: 火山方舟
+        origin: cloud
+        tier: cloud
+        provider: openai_images
+        api_base: https://ark.cn-beijing.volces.com/api/v3
+        model: doubao-seedream-5-0-pro-260628
+        size: 2K
+        response_format: url
+        watermark: false
+        supports_edit: true
+        note: 火山方舟文生图 / 参考图编辑；Key 存本机，勿写入仓库
+      evolink_grok_imagine:
+        label: Grok Imagine 2.0 · Evolink
+        region: intl
+        vendor: Evolink
+        origin: cloud
+        tier: cloud
+        provider: evolink_images
+        api_base: https://api.evolink.ai/v1
+        model: grok-imagine-image-2.0
+        resolution: 2K
+        quality: medium
+        supports_edit: true
+        note: 约 $0.03/张起；文生图与 1～3 张参考图编辑同模型 ID；可与 Seedance 共用 Evolink Key
+  video_gen:
+    label: 视频生成
+    default_profile: evolink_seedance_2
+    profiles:
+      evolink_seedance_2:
+        label: Seedance 2.0 · Evolink
+        region: intl
+        vendor: Evolink
+        origin: cloud
+        tier: cloud
+        provider: evolink_seedance
+        api_base: https://api.evolink.ai/v1
+        model: seedance-2.0-text-to-video
+        model_txt: seedance-2.0-text-to-video
+        model_img: seedance-2.0-image-to-video
+        aspect_ratio: adaptive
+        quality: 720p
+        duration: 5
+        generate_audio: true
+        content_filter: true
+        note: Evolink 统一 Key；生成链接 24h 有效，请及时保存到本机 output
+      doubao_seedance:
+        label: 豆包 · Seedance 1.5 Pro
+        region: cn
+        vendor: 火山方舟
+        origin: cloud
+        tier: cloud
+        provider: volcengine_seedance
+        api_base: https://ark.cn-beijing.volces.com/api/v3
+        model: doubao-seedance-1-5-pro-251215
+        ratio: "16:9"
+        resolution: 720p
+        duration: 5
+        watermark: false
+        generate_audio: false
+        note: 文生视频 / 首帧图生视频；可与 Seedream 共用 Ark Key

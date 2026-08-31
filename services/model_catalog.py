@@ -137,6 +137,10 @@ def resolve_image_gen_profile(profile_id: str | None = None) -> dict[str, Any]:
     return resolve_profile(_IMAGE_GEN, profile_id)
 
 
+def resolve_video_gen_profile(profile_id: str | None = None) -> dict[str, Any]:
+    return resolve_profile("video_gen", profile_id)
+
+
 def _cap_block(capability: str) -> dict[str, Any]:
     caps = load_model_catalog().get("capabilities") or {}
     block = caps.get(capability) or {}

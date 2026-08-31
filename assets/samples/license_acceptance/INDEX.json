@@ -1,0 +1,50 @@
+[
+  {
+    "id": "01_trial_standalone_active",
+    "title": "试用版 · 单机体验中",
+    "chip": "试用版",
+    "pack": "基础功能"
+  },
+  {
+    "id": "02_trial_standalone_expired",
+    "title": "试用版 · 单机体验已到期",
+    "chip": "续费",
+    "pack": "基础功能"
+  },
+  {
+    "id": "03_unlicensed_fresh",
+    "title": "试用版 · 未激活（出厂空授权）",
+    "chip": "试用版",
+    "pack": "基础功能"
+  },
+  {
+    "id": "04_auth_trial_active",
+    "title": "授权版 · 体验码有效",
+    "chip": "授权版",
+    "pack": "体验版 / 体验授权"
+  },
+  {
+    "id": "05_auth_trial_expired",
+    "title": "授权版 · 体验码已到期",
+    "chip": "续费",
+    "pack": "体验授权"
+  },
+  {
+    "id": "06_auth_admin",
+    "title": "授权版 · 管理员授权",
+    "chip": "授权版",
+    "pack": "管理员授权"
+  },
+  {
+    "id": "07_official_paid_active",
+    "title": "正式版 · 套餐有效",
+    "chip": "正式版",
+    "pack": "体验版（订单履约）"
+  },
+  {
+    "id": "08_official_paid_expired",
+    "title": "正式版 · 套餐已到期",
+    "chip": "续费",
+    "pack": "体验版（已到期）"
+  }
+]

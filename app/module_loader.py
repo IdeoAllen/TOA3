@@ -67,4 +67,26 @@ def create_page(module_id: str, menu_item: dict[str, Any] | None = None) -> Base
                 load_error=f"{type(e).__name__}: {e}",
             )
 
+    # 用户业务插件包（data/user/plugins.yml）
+    try:
+        from services.plugin_registry import get_plugin_record
+
+        if get_plugin_record(module_id) or str(item.get("source") or "") == "user_plugin":
+            from services.plugin_loader import create_plugin_page
+
+            page = create_plugin_page(module_id, item)
+            logger.info("加载用户插件页: %s", module_id)
+            return page
+    except ModuleLoadError as e:
+        logger.warning("用户插件加载失败: %s (%s)", module_id, e)
+        return StubPage(module_id, name, desc, load_error=str(e))
+    except Exception as e:
+        logger.exception("用户插件实例化失败 %s: %s", module_id, e)
+        return StubPage(
+            module_id,
+            name,
+            desc,
+            load_error=f"{type(e).__name__}: {e}",
+        )
+
     return StubPage(module_id, name, desc)

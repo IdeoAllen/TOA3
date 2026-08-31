@@ -111,7 +111,7 @@ FUTURE_TASKS: list[dict[str, str]] = [
     ("Wave★", "watermark_remover", "去水印 AI", "LaMa/IOPaint", "mvp gaps 体验版不修"),
     ("Wave★", "directory_generator", "建文件夹做强", "模板 DSL 点验标 done", "mvp gaps 体验版不修"),
     ("Wave★", "screenshot_translate", "截图翻译独立链", "挂工具栏已有一部分", "missing"),
-    ("业务", "deliverable_directory_check", "TOA2 目录检查迁入", "Word贴图+Excel统计", "Top3 未 approved"),
+    ("业务", "deliverable_directory_check", "TOA2 生成交付报告迁入", "Word贴图+Excel统计", "Top3 未 approved"),
     ("业务", "schedule_reminder", "日程提醒增强", "钉钉/邮件联动", "mvp"),
     ("业务", "column_preview", "MACOS桌面做强", "三模式点验", "mvp"),
     ("平台", "llm_assistant", "大模型 Wave", "八件套 done 后", "P1"),

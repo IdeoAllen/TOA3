@@ -12,6 +12,7 @@ from services.settings_access import (
     TAB_LICENSE,
     TAB_MENU,
     TAB_MODELS,
+    TAB_OPS_CONSOLE,
     TAB_PREFERENCES,
     TAB_SUBSCRIPTION,
     TAB_SYSTEM,
@@ -29,9 +30,9 @@ _DEFAULT_GROUPS: list[dict[str, Any]] = [
         "items": [
             {
                 "key": TAB_SYSTEM,
-                "title": "系统",
+                "title": "关于",
                 "icon": "system_settings",
-                "subtitle": "版本、检查更新、关于与运行",
+                "subtitle": "检查更新、关于与运行",
             },
             {
                 "key": TAB_PREFERENCES,
@@ -43,7 +44,40 @@ _DEFAULT_GROUPS: list[dict[str, Any]] = [
                 "key": TAB_MODELS,
                 "title": "模型管理",
                 "icon": "llm_assistant",
-                "subtitle": "模型 Key 与能力配置",
+                "subtitle": "算力来源 · 绑定 · 设默认 · 解绑",
+            },
+        ],
+    },
+    {
+        "id": "ops",
+        "label": "运营台与商业",
+        "items": [
+            {
+                "key": TAB_OPS_CONSOLE,
+                "title": "运营台",
+                "icon": "package",
+                "subtitle": "打开云服务运营台 · 方案/订单/发版",
+            },
+            {
+                "key": TAB_SUBSCRIPTION,
+                "title": "开通与续费",
+                "icon": "package",
+                "subtitle": "一键开通与粘贴授权码",
+                "unlicensed_only": True,
+            },
+            {
+                "key": TAB_LICENSE,
+                "title": "授权",
+                "icon": "user",
+                "subtitle": "本机用户、发卡与云服务连接",
+                "admin_only": True,
+            },
+            {
+                "key": TAB_MENU,
+                "title": "菜单",
+                "icon": "list",
+                "subtitle": "侧栏可见性 · 同步目录到运营台",
+                "admin_only": True,
             },
         ],
     },
@@ -59,18 +93,6 @@ _DEFAULT_GROUPS: list[dict[str, Any]] = [
                 "subtitle": "Logo、名称与关于页文案",
             },
             {
-                "key": TAB_LICENSE,
-                "title": "授权",
-                "icon": "user",
-                "subtitle": "本机用户、发卡与云服务连接",
-            },
-            {
-                "key": TAB_MENU,
-                "title": "菜单",
-                "icon": "list",
-                "subtitle": "侧栏模块可见性与排序",
-            },
-            {
                 "key": TAB_INTEGRATIONS,
                 "title": "能力接入",
                 "icon": "harness_agent",
@@ -81,19 +103,6 @@ _DEFAULT_GROUPS: list[dict[str, Any]] = [
                 "title": "诊断",
                 "icon": "file_text",
                 "subtitle": "运行环境与本机日志",
-            },
-        ],
-    },
-    {
-        "id": "commerce",
-        "label": "授权与开通",
-        "items": [
-            {
-                "key": TAB_SUBSCRIPTION,
-                "title": "开通与续费",
-                "icon": "package",
-                "subtitle": "一键开通与粘贴授权码",
-                "unlicensed_only": True,
             },
         ],
     },

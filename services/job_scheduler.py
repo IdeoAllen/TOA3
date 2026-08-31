@@ -48,6 +48,9 @@ class JobScheduler(QObject):
     def _register_builtin_actions(self) -> None:
         self.register_action("log_cleanup", self._action_log_cleanup)
         self.register_action("status_ping", self._action_status_ping)
+        self.register_action("send_notify", self._action_send_notify)
+        self.register_action("open_web", self._action_open_web)
+        self.register_action("open_app", self._action_open_app)
         self.register_action("open_module", self._action_open_module)
         self.register_action("schedule_reminder_scan", self._action_schedule_scan)
 
@@ -175,11 +178,14 @@ class JobScheduler(QObject):
     def _execute(self, spec: JobSpec) -> str:
         fn = self._actions.get(spec.action)
         result = "ok"
+        payload = dict(spec.params or {})
+        payload["_job_id"] = spec.id
+        payload["_job_name"] = spec.name
         try:
             if fn is None:
                 result = f"未知动作: {spec.action}"
             else:
-                fn(dict(spec.params or {}))
+                fn(payload)
                 result = "ok"
         except Exception as e:
             logger.exception("任务执行失败 %s", spec.id)
@@ -187,6 +193,20 @@ class JobScheduler(QObject):
         spec.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         spec.last_result = result
         self.save()
+        try:
+            from services.notify_archive import append_record
+
+            append_record(
+                notice_kind="record",
+                channel="task",
+                title=spec.name,
+                body=result,
+                level="success" if result == "ok" else "error",
+                source=f"job:{spec.id}",
+                extra={"action": spec.action},
+            )
+        except Exception:
+            pass
         try:
             from services.notify_bus import get_bus
 
@@ -211,9 +231,66 @@ class JobScheduler(QObject):
                 pass
 
     def _action_status_ping(self, params: dict) -> None:
+        self._action_send_notify(
+            {
+                "channel": params.get("channel") or "status",
+                "title": params.get("title") or "",
+                "body": params.get("message") or params.get("body") or "定时心跳",
+                "level": params.get("level") or "info",
+                "notice_kind": params.get("notice_kind") or "prompt",
+                "_job_id": params.get("_job_id"),
+                "_job_name": params.get("_job_name"),
+            }
+        )
+
+    def _action_send_notify(self, params: dict) -> None:
         from services.notify_bus import NotifyLevel, notify
 
-        notify(NotifyLevel.INFO, body=str(params.get("message") or "定时心跳"))
+        level_raw = str(params.get("level") or "info").strip().lower()
+        level_map = {
+            "info": NotifyLevel.INFO,
+            "warning": NotifyLevel.WARNING,
+            "error": NotifyLevel.ERROR,
+        }
+        level = level_map.get(level_raw, NotifyLevel.INFO)
+        channel = str(params.get("channel") or "status").strip().lower()
+        notice_kind = str(params.get("notice_kind") or "prompt").strip().lower()
+        title = str(params.get("title") or "定时任务").strip()
+        body = str(params.get("body") or params.get("message") or "").strip()
+        job_id = str(params.get("_job_id") or "").strip()
+        job_name = str(params.get("_job_name") or "").strip()
+        source = f"job:{job_id}" if job_id else ""
+        if job_name and not title:
+            title = job_name
+        notify(
+            level,
+            title=title,
+            body=body or title,
+            channel=channel,
+            notice_kind=notice_kind,
+            source=source,
+        )
+
+    def _action_open_web(self, params: dict) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        url = str(params.get("url") or "").strip()
+        if not url:
+            raise ValueError("未配置网页地址")
+        if "://" not in url:
+            url = f"https://{url}"
+        if not QDesktopServices.openUrl(QUrl(url)):
+            raise RuntimeError(f"无法打开：{url}")
+
+    def _action_open_app(self, params: dict) -> None:
+        from services.os_open import open_path
+
+        path = str(params.get("path") or "").strip()
+        if not path:
+            raise ValueError("未配置应用路径")
+        if not open_path(path):
+            raise RuntimeError(f"无法打开：{path}")
 
     def _action_open_module(self, params: dict) -> None:
         mid = str(params.get("module_id") or "").strip()

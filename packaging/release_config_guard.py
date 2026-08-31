@@ -6,12 +6,20 @@ import json
 import re
 from pathlib import Path
 
-# 正式版打包时用 shipped_config 覆盖（勿带开发者本机 integrations/harness 脏改）
+# 正式版打包时用 shipped_config 覆盖（勿带开发者本机 integrations/harness/模型清单）
 RELEASE_CONFIG_OVERRIDES: frozenset[str] = frozenset(
     {
         "harness.yml",
         "integrations.yml",
+        "model_catalog.yml",
+        "local_image_bundle.yml",
     }
+)
+
+# 发版 assets 下不打包的路径（相对 assets/）
+RELEASE_ASSET_SKIP_PREFIXES: tuple[str, ...] = (
+    "samples/comfyui",
+    "samples/license_acceptance",
 )
 
 # 永不进入发布目录的文件名（任意层级）
@@ -53,6 +61,60 @@ def shipped_config_dir(packaging_dir: Path) -> Path:
 def shipped_override_path(packaging_dir: Path, filename: str) -> Path | None:
     path = shipped_config_dir(packaging_dir) / filename
     return path if path.is_file() else None
+
+
+def release_asset_rel_should_skip(rel_posix: str) -> bool:
+    """rel_posix 相对 assets/ 根，如 samples/comfyui/foo.json。"""
+    rel = rel_posix.replace("\\", "/").strip().lstrip("/")
+    for prefix in RELEASE_ASSET_SKIP_PREFIXES:
+        p = prefix.strip("/")
+        if rel == p or rel.startswith(p + "/"):
+            return True
+    return False
+
+
+def release_assets_ignore(_dir: str, names: list[str]) -> set[str]:
+    """shutil.copytree ignore：跳过发版不含的 samples 子目录。"""
+    ignored: set[str] = set()
+    base = Path(_dir)
+    try:
+        rel_base = base.relative_to(base.anchor)
+    except ValueError:
+        rel_base = Path(_dir)
+    for name in names:
+        child = Path(_dir) / name
+        if child.is_dir():
+            try:
+                # 相对 PROJECT/assets 的路径在 copytree 回调里用 name 拼接
+                rel = str(Path(name))
+                if release_asset_rel_should_skip(rel):
+                    ignored.add(name)
+                    continue
+            except Exception:
+                pass
+        rel_name = name.replace("\\", "/")
+        if release_asset_rel_should_skip(rel_name):
+            ignored.add(name)
+    return ignored
+
+
+def make_release_assets_ignore(src_assets: Path):
+    """返回 copytree ignore 回调，rel 相对 src_assets。"""
+
+    def _ignore(dir_path: str, names: list[str]) -> set[str]:
+        ignored: set[str] = set()
+        dir_p = Path(dir_path)
+        try:
+            rel_dir = dir_p.relative_to(src_assets).as_posix()
+        except ValueError:
+            rel_dir = ""
+        for name in names:
+            rel = f"{rel_dir}/{name}".strip("/") if rel_dir else name.replace("\\", "/")
+            if release_asset_rel_should_skip(rel):
+                ignored.add(name)
+        return ignored
+
+    return _ignore
 
 
 def _scan_text(path: Path, text: str) -> list[str]:
@@ -104,6 +166,15 @@ def scan_release_tree(root: Path) -> list[str]:
         except OSError as exc:
             errors.append(f"无法读取 {path.as_posix()}: {exc}")
             continue
+        if name == "model_catalog.yml" and "profiles:" in text:
+            if "api_base:" in text or "huggingface.co" in text:
+                errors.append(
+                    f"发版禁止预置模型 catalog（请用 shipped_config/model_catalog.yml）: {path.as_posix()}"
+                )
+        if name == "local_image_bundle.yml" and "huggingface.co" in text:
+            errors.append(
+                f"发版禁止打包本机模型下载清单: {path.as_posix()}"
+            )
         errors.extend(_scan_text(path, text))
     return errors
 

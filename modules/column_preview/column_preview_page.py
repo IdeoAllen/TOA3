@@ -756,15 +756,22 @@ class ColumnPreviewPage(BasePage):
         btn_row.addWidget(self._btn_reveal)
         btn_row.addStretch(1)
         pl.addLayout(btn_row)
+        self._preview_pane = preview
         split.addWidget(preview)
 
         split.setStretchFactor(0, 5)
         split.setStretchFactor(1, 2)
         split.setSizes([820, 320])
+        self._main_split = split
         outer.addWidget(split, 1)
 
         self._scroll.viewport().installEventFilter(self)
         self._image_scroll.viewport().installEventFilter(self)
+        self._preview_pane.installEventFilter(self)
+        self._stack.installEventFilter(self)
+        self._preview_text.viewport().installEventFilter(self)
+        self._preview_pane.setToolTip("滚轮调节预览区宽度")
+        self._image_scroll.setToolTip("滚轮调节预览区宽度")
 
         QShortcut(QKeySequence(Qt.Key.Key_F2), self, activated=self._rename_current)
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self, activated=self._delete_current)
@@ -859,12 +866,59 @@ class ColumnPreviewPage(BasePage):
         )
 
     def eventFilter(self, obj, event):  # noqa: N802
+        if event.type() == QEvent.Type.Wheel and self._is_under_preview(obj):
+            self._resize_preview_by_wheel(event)
+            return True
         if event.type() == QEvent.Type.Resize:
             if obj is self._scroll.viewport():
                 self._sync_column_heights()
             elif obj is self._image_scroll.viewport() and not self._raw_preview_pm.isNull():
                 self._relayout_image()
         return super().eventFilter(obj, event)
+
+    def _is_under_preview(self, obj) -> bool:
+        pane = getattr(self, "_preview_pane", None)
+        if pane is None:
+            return False
+        w = obj if isinstance(obj, QWidget) else None
+        while w is not None:
+            if w is pane:
+                return True
+            w = w.parentWidget()
+        return False
+
+    def _resize_preview_by_wheel(self, event) -> None:
+        """预览区滚轮：放大/缩小右侧预览窗宽度（上滚加宽，下滚收窄）。"""
+        split = getattr(self, "_main_split", None)
+        if split is None:
+            return
+        delta = int(event.angleDelta().y())
+        if delta == 0:
+            delta = int(event.pixelDelta().y())
+        if delta == 0:
+            return
+        notches = max(1, abs(delta) // 120)
+        step = 56 * notches
+        change = step if delta > 0 else -step
+        sizes = split.sizes()
+        if len(sizes) < 2:
+            return
+        total = sizes[0] + sizes[1]
+        if total <= 0:
+            return
+        min_preview = 280
+        min_browse = 240
+        max_preview = max(min_preview, total - min_browse, int(total * 0.75))
+        new_preview = max(min_preview, min(max_preview, sizes[1] + change))
+        new_browse = total - new_preview
+        if new_browse < min_browse:
+            new_browse = min_browse
+            new_preview = total - new_browse
+        if new_preview == sizes[1]:
+            return
+        split.setSizes([new_browse, new_preview])
+        if not self._raw_preview_pm.isNull():
+            QTimer.singleShot(0, self._relayout_image)
 
     def _sync_column_heights(self) -> None:
         h = max(200, self._scroll.viewport().height())

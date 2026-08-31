@@ -8,6 +8,8 @@ from app.theme_loader import DEFAULT_THEME, theme_json_path, theme_display_name
 HIDDEN_THEMES: tuple[str, ...] = (
     "toa_complete",  # 控件库完整色板，主色与 dms_blue 同源
     "pure_black",  # OLED 纯黑，与 dms_black 同属暗色蓝系
+    "office_2019_colorful",  # 与商务蓝重叠，产品下架
+    "vs2019_blue",  # 与商务蓝重叠，产品下架
 )
 
 # id → 展示名（顺序即系统设置下拉顺序：默认 → 浅色办公 → 浅色个性 → 深色）
@@ -16,13 +18,11 @@ OFFICIAL_THEMES: tuple[tuple[str, str], ...] = (
     ("dms_blue", "商务蓝"),
     # 浅色 · 办公
     ("dms_white", "素白"),
-    ("office_2019_colorful", "Office 2019 彩色"),
-    ("vs2019_blue", "VS2019 经典蓝"),
     # 浅色 · 个性
     ("dms_green", "青碧"),
     ("dms_copper", "古铜"),
     # 深色
-    ("dms_black", "墨黑·霓虹蓝"),
+    ("dms_black", "墨黑"),
     ("wxi_dark", "WXI 紫暗"),
     ("deep_dark", "深棕·暖暗"),
 )
@@ -55,6 +55,8 @@ def selectable_themes() -> list[tuple[str, str]]:
 def canonicalize_theme(theme_id: str | None) -> str:
     raw = str(theme_id or "").strip()
     if not raw:
+        return DEFAULT_THEME
+    if raw in HIDDEN_THEMES:
         return DEFAULT_THEME
     if theme_json_path(raw).is_file():
         return raw

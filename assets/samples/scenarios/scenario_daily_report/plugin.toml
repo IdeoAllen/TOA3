@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "scenario_daily_report"
+name = "场景 · 日报助手"
+group = "business"
+order = 91
+version = "0.1.0"
+requires_license = false
+feature_id = ""
+author = "TOA"
+description = "工作场景模板：按日期整理今日工作要点并预览（复制后可继续用智能体加深）"
+
+[entry]
+module_path = "modules.scenario_daily_report.scenario_daily_report_page"
+class_name = "ScenarioDailyReportPage"
+page_id = "scenario_daily_report"
+
+[storage]
+data_key = "scenario_daily_report"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

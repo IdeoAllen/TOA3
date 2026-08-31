@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Tuple
 
-from services.runtime_mode import SHELL_MODULE_IDS, local_free_module_ids
+from services.runtime_mode import SHELL_MODULE_IDS
 
 _CAN_OPEN_CACHE: Dict[str, Tuple[bool, str]] = {}
 
@@ -45,6 +45,62 @@ def has_full_menu_session() -> bool:
         return bool(global_license_manager.has_full_menu_access())
     except Exception:
         return False
+
+
+def _menu_requires_license(item: dict | None) -> bool:
+    if isinstance(item, dict) and "requires_license" in item:
+        return bool(item.get("requires_license"))
+    return True
+
+
+def _is_basic_module(item: dict | None) -> bool:
+    """app.yml requires_license:false → 全版本永久免费（与 SKU/到期无关）。"""
+    return not _menu_requires_license(item)
+
+
+def requires_purchase_redirect() -> bool:
+    """体验/试用/付费方案已到期，需统一引导至购买页。"""
+    try:
+        from services.license_manager import global_license_manager as lm
+
+        if not lm.license_info:
+            lm.load_license()
+        return bool(
+            lm.is_expired_standalone()
+            or lm.is_expired_trial()
+            or lm.is_expired_paid()
+        )
+    except Exception:
+        return False
+
+
+def nav_clickable(
+    module_id: Optional[str] = None,
+    *,
+    module_name: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """侧栏/首页是否可点：到期后付费模块仍可点，由 navigate 统一拦截至购买页。"""
+    ok, reason = can_open(module_id, module_name=module_name)
+    if ok:
+        return True, ""
+    if not requires_purchase_redirect():
+        return False, reason
+    mid = (module_id or "").strip()
+    item = None
+    if mid:
+        from services.config_service import get_menu_item_by_id
+
+        item = get_menu_item_by_id(mid)
+    if item is None and module_name:
+        from services.menu_registry import all_menu_items
+
+        for it in all_menu_items():
+            if str(it.get("name") or "").strip() == str(module_name or "").strip():
+                item = it
+                break
+    if _is_basic_module(item):
+        return ok, reason
+    return True, reason
 
 
 def can_open(
@@ -101,34 +157,45 @@ def _can_open_uncached(
         mid = mid or str(item.get("id") or "")
         name = name or str(item.get("name") or "")
 
-    if _is_standalone_session():
-        if mid in local_free_module_ids():
-            return True, ""
-        return False, f"正式版功能「{name or mid}」"
+    # 基础板块：开发/体验/试用/付费/到期 — 一律永久可用
+    if _is_basic_module(item):
+        return True, ""
 
     try:
         from services.license_manager import global_license_manager
+        from services.user_plan_presentation import user_access_block_message, user_plan_expired
 
-        licensed = bool(global_license_manager.is_licensed())
+        lm = global_license_manager
+        if not lm.license_info:
+            lm.load_license()
+    except Exception:
+        lm = None  # type: ignore
+
+    if lm is not None:
+        if user_plan_expired() or _is_standalone_session():
+            return False, user_access_block_message()
+
+    try:
+        licensed = bool(lm.is_licensed()) if lm is not None else False
     except Exception:
         licensed = False
-        global_license_manager = None  # type: ignore
+        lm = None  # type: ignore
 
-    requires_license = True
-    if isinstance(item, dict) and "requires_license" in item:
-        requires_license = bool(item.get("requires_license"))
+    if lm is not None and (lm.is_expired_trial() or lm.is_expired_paid()):
+        return False, user_access_block_message()
 
-    if requires_license and not licensed:
+    if not licensed:
+        if lm is not None and lm.is_expired_paid():
+            return False, user_access_block_message()
         try:
-            reason = global_license_manager.get_license_status_message()
+            reason = lm.get_license_status_message() if lm is not None else "当前未授权"
         except Exception:
             reason = "当前未授权"
+        if lm is not None and lm.had_network_activation() and lm.is_activation_expired():
+            return False, user_access_block_message()
         if "到期" in str(reason):
-            return False, str(reason)
-        return False, "未授权"
-
-    if not requires_license and not licensed:
-        return True, ""
+            return False, user_access_block_message()
+        return False, user_access_block_message()
 
     feature_key = mid
     if isinstance(item, dict) and item.get("requires_feature"):
@@ -138,10 +205,13 @@ def _can_open_uncached(
 
     if licensed and feature_key:
         try:
-            if global_license_manager is not None and not global_license_manager.has_feature_access(
-                feature_key
-            ):
-                return False, f"未包含功能「{name or feature_key}」"
+            if lm is not None and not lm.has_feature_access(feature_key):
+                from services.plan_tiers import upgrade_hint
+
+                hint = upgrade_hint(module_id=feature_key)
+                if hint:
+                    return False, hint
+                return False, f"未包含功能「{name or feature_key}」· 请升级产品方案"
         except Exception:
             pass
 

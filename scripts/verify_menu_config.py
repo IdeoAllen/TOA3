@@ -69,10 +69,11 @@ def main() -> int:
                 items_by_id["ocr_tool"]["show"] = False
             gl = dict(get_group_labels())
             gl["ai"] = "测试智能体"
-            save_menu_items(items, group_labels=gl)
+            custom_order = ["home", "system", "office", "ai", "image", "directory", "file", "business"]
+            save_menu_items(items, group_labels=gl, group_order=custom_order)
 
             doc = _read_user_menu_doc()
-            if not doc.get("overrides") and not doc.get("group_labels"):
+            if not doc.get("overrides") and not doc.get("group_labels") and not doc.get("group_order"):
                 errors.append("save wrote empty doc")
 
             cs._CONFIG_CACHE = None
@@ -84,6 +85,12 @@ def main() -> int:
             gl2 = get_group_labels()
             if gl2.get("ai") != "测试智能体":
                 errors.append(f"group label ai expected 测试智能体 got {gl2.get('ai')}")
+
+            from services.config_service import get_group_order as cfg_group_order
+
+            go = cfg_group_order()
+            if go[:2] != ["home", "system"]:
+                errors.append(f"group_order not applied: {go[:3]}")
 
             reset_user_menu()
             if fake.is_file():

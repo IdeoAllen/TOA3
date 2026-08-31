@@ -345,6 +345,8 @@ class WebWorkspacePage(BasePage):
             show_warning(self, str(exc))
             return
         qurl = QUrl(url)
+        if self._placeholder is not None:
+            self._placeholder.hide()
         if self._view.url().toString() != qurl.toString():
             self._view.setUrl(qurl)
         else:

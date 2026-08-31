@@ -8,8 +8,10 @@ from typing import Final
 TAB_SYSTEM: Final = "system"
 TAB_PREFERENCES: Final = "preferences"
 TAB_MODELS: Final = "models"
+TAB_EXTENSIONS: Final = "extensions"
 TAB_LOCAL_ADMIN: Final = "local_admin"
 TAB_SUBSCRIPTION: Final = "subscription"
+TAB_OPS_CONSOLE: Final = "ops_console"
 
 # 兼容旧 key
 TAB_APP: Final = "app"
@@ -28,8 +30,10 @@ _TAB_TITLES: dict[str, str] = {
     TAB_SYSTEM: "系统",
     TAB_PREFERENCES: "偏好",
     TAB_MODELS: "模型管理",
+    TAB_EXTENSIONS: "扩展",
     TAB_LOCAL_ADMIN: "本机管理",
     TAB_SUBSCRIPTION: "开通与续费",
+    TAB_OPS_CONSOLE: "运营台",
     TAB_APP: "系统",
     TAB_APPEARANCE: "外观与主题",
     TAB_BRAND: "品牌定制",
@@ -119,10 +123,20 @@ def resolve_settings_tab(key: str) -> tuple[str, str | None]:
     k = str(key or "").strip()
     if k in (TAB_SYSTEM, TAB_APP, TAB_APP_UPDATE, TAB_ABOUT_APP):
         return TAB_SYSTEM, None
-    if k in (TAB_PREFERENCES, TAB_LOCAL_ADMIN, TAB_SUBSCRIPTION, TAB_MODELS, TAB_MODELS_AI):
+    if k in (
+        TAB_PREFERENCES,
+        TAB_LOCAL_ADMIN,
+        TAB_SUBSCRIPTION,
+        TAB_MODELS,
+        TAB_MODELS_AI,
+        TAB_OPS_CONSOLE,
+    ):
         if k == TAB_MODELS_AI:
             return TAB_MODELS, None
         return k, None
+    # 旧「设置·扩展」页签已迁到系统侧栏模块 user_extensions
+    if k == TAB_EXTENSIONS:
+        return TAB_SYSTEM, None
     if k in (TAB_BRAND, TAB_LICENSE, TAB_MENU, TAB_INTEGRATIONS, TAB_DIAGNOSTICS):
         return TAB_LOCAL_ADMIN, k
     if k in (TAB_APPEARANCE, TAB_HOTKEYS):

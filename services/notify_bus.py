@@ -70,16 +70,29 @@ def notify(
     body: str = "",
     *,
     channel: str = "status",
+    notice_kind: str = "prompt",
+    source: str = "",
     parent=None,
 ) -> None:
     """
     统一入口。
     channel: status | dialog | tray | email | all
+    notice_kind: prompt（提示，仅本会话）| record（留档，写入通知记录）
     """
     lvl = level.value if isinstance(level, NotifyLevel) else str(level or "info")
     text = body or title
     bus = get_bus()
-    _record(lvl, title, body, channel)
+    kind = str(notice_kind or "prompt").strip().lower()
+    if kind not in ("prompt", "record"):
+        kind = "record" if kind in ("info", "information", "archive") else "prompt"
+    ch = str(channel or "status").strip().lower()
+    if ch in ("email", "all"):
+        kind = "record"
+
+    _record(lvl, title, body, ch if kind == "prompt" else f"{ch}|{kind}")
+
+    email_to = ""
+    email_ok: bool | None = None
 
     if channel in ("status", "all"):
         bus.status.emit(text or title, lvl)
@@ -124,9 +137,27 @@ def notify(
 
             # all：仅 warning/error 发邮件；channel=email：始终尝试
             if channel == "email" or lvl in ("error", "warning"):
-                send_email_notification(title or "TOA", body or title)
+                email_ok, email_to = send_email_notification(title or "TOA", body or title)
         except Exception:
             logger.debug("email channel failed", exc_info=True)
+            email_ok = False
+
+    if kind == "record" or ch in ("email", "all") or source:
+        try:
+            from services.notify_archive import append_record
+
+            append_record(
+                notice_kind="record",
+                channel=ch,
+                title=title,
+                body=body or title,
+                level=lvl,
+                source=source,
+                email_to=email_to,
+                email_ok=email_ok,
+            )
+        except Exception:
+            logger.debug("notify archive failed", exc_info=True)
 
 
 def register_tray_handler(fn: Callable[..., Any]) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -13,8 +14,21 @@ from services.model_catalog import list_capabilities, list_profiles
 
 _LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _WEIGHT_SUFFIXES = (".safetensors", ".ckpt", ".gguf", ".bin", ".pt")
-_CLOUD_PROVIDERS = frozenset({"openai_compatible", "openai_images"})
-_LOCAL_PROVIDERS = frozenset({"sd_webui", "comfyui", "ollama"})
+_CLOUD_PROVIDERS = frozenset(
+    {
+        "openai_compatible",
+        "openai_images",
+        "evolink_images",
+        "volcengine_seedance",
+        "evolink_seedance",
+    }
+)
+_LOCAL_PROVIDERS = frozenset({"sd_webui", "comfyui", "ollama", "sdcpp"})
+
+# 本地服务探测缓存（仅模型库「刷新」写入；进页不探测）
+_endpoint_probe_cache: dict[str, bool] = {}
+_last_probe_at: float = 0.0
+_PROBE_MIN_INTERVAL_S = 45.0
 
 
 class ReadyStatus(StrEnum):
@@ -27,13 +41,98 @@ class ReadyStatus(StrEnum):
 _STATUS_LABELS = {
     ReadyStatus.READY: "可用",
     ReadyStatus.NEEDS_KEY: "待配置密钥",
-    ReadyStatus.NEEDS_DOWNLOAD: "待下载权重",
-    ReadyStatus.NEEDS_ENDPOINT: "待配置端点",
+    ReadyStatus.NEEDS_DOWNLOAD: "待安装本机组件",
+    ReadyStatus.NEEDS_ENDPOINT: "待启动或配置",
 }
 
 
 def models_data_root() -> Path:
     return project_root() / "data" / "models"
+
+
+def _probe_local_endpoint(
+    provider: str,
+    api_base: str,
+    prof: dict[str, Any],
+    *,
+    deep: bool,
+) -> bool:
+    base = api_base.strip().rstrip("/")
+    ok = False
+    try:
+        if provider == "comfyui":
+            if deep:
+                from services.integrations.comfyui_client import workflow_ready
+
+                wf = str(prof.get("workflow") or "sd15_ckpt")
+                ok = bool(workflow_ready(base, wf, timeout=2.5))
+            else:
+                from services.integrations.comfyui_client import health_check
+
+                ok = bool(health_check(base, timeout=0.45))
+        elif provider == "sd_webui":
+            import httpx
+
+            with httpx.Client(timeout=0.45) as client:
+                resp = client.get(base + "/")
+                ok = resp.status_code < 500
+    except Exception:
+        ok = False
+    return ok
+
+
+def refresh_local_endpoint_probes(*, deep: bool = False, force: bool = False) -> None:
+    """探测本机 ComfyUI / WebUI。
+
+    - ``deep=False``：仅 ping 是否在线（轻量，切换筛选时可用）
+    - ``deep=True``：校验工作流节点与模型目录（仅用户点「刷新」时用）
+    """
+    global _endpoint_probe_cache, _last_probe_at
+    now = time.time()
+    if not force and now - _last_probe_at < _PROBE_MIN_INTERVAL_S:
+        return
+    _last_probe_at = now
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from services.model_catalog import list_profiles
+
+    profiles: list[dict[str, Any]] = []
+    for prof in list_profiles("image_gen"):
+        provider = str(prof.get("provider") or "").strip()
+        base = str(prof.get("api_base") or "").strip().rstrip("/")
+        if not base or provider not in ("comfyui", "sd_webui"):
+            continue
+        profiles.append(prof)
+    if not profiles:
+        return
+
+    def _run_one(prof: dict[str, Any]) -> list[tuple[str, bool]]:
+        provider = str(prof.get("provider") or "").strip()
+        pid = str(prof.get("id") or "")
+        base = str(prof.get("api_base") or "").strip().rstrip("/")
+        ok = _probe_local_endpoint(provider, base, prof, deep=deep)
+        keys = [(f"{provider}|{base}", ok)]
+        if provider == "comfyui" and pid:
+            keys.append((f"comfyui_wf|{pid}|{base}", ok))
+        return keys
+
+    workers = min(4, len(profiles))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_run_one, prof) for prof in profiles]
+        for fut in as_completed(futures):
+            try:
+                for key, ok in fut.result():
+                    _endpoint_probe_cache[key] = ok
+            except Exception:
+                pass
+
+
+def _local_endpoint_ready(provider: str, api_base: str) -> bool | None:
+    """None=尚未刷新探测；True/False=最近一次结果。"""
+    key = f"{provider}|{api_base.strip().rstrip('/')}"
+    if key not in _endpoint_probe_cache:
+        return None
+    return bool(_endpoint_probe_cache[key])
 
 
 def scan_local_weight_files() -> list[dict[str, Any]]:
@@ -79,6 +178,12 @@ def _is_local_endpoint(api_base: str) -> bool:
 def _needs_cloud_key(capability: str, profile_id: str, prof: dict[str, Any]) -> bool:
     if get_profile_secret(capability, profile_id, "api_key"):
         return False
+    if capability == "image_gen" and profile_id == "evolink_grok_imagine":
+        if get_profile_secret("video_gen", "evolink_seedance_2", "api_key"):
+            return False
+    if capability == "video_gen" and profile_id == "evolink_seedance_2":
+        if get_profile_secret("image_gen", "evolink_grok_imagine", "api_key"):
+            return False
     if capability == "text_llm" and profile_id == "moonshot_kimi":
         from services.integrations.secrets import get_secret
 
@@ -105,32 +210,97 @@ def evaluate_profile(capability: str, profile_id: str, prof: dict[str, Any]) -> 
     status = ReadyStatus.READY
     hint = ""
 
-    if _local_weight_missing(prof):
+    if provider == "sdcpp":
+        from services.local_image_runtime import install_status
+
+        st = install_status()
+        if st.get("ready"):
+            status = ReadyStatus.READY
+            hint = str(st.get("user_hint") or "")
+        else:
+            status = ReadyStatus.NEEDS_DOWNLOAD
+            miss = "、".join(st.get("missing") or []) or "运行时或模型"
+            hint = f"缺{miss} → 点「安装本机生图」一键下载"
+    elif _local_weight_missing(prof):
         status = ReadyStatus.NEEDS_DOWNLOAD
-        hint = "运行 scripts/model_hub_comfyui.py 查看下载指引，或放入 data/models/"
+        hint = "放入 data/models/，或运行 scripts/setup_local_image_gen.py"
     elif provider in _CLOUD_PROVIDERS or (
         provider == "openai_compatible" and api_base and not _is_local_endpoint(api_base)
     ):
         if not api_base:
             status = ReadyStatus.NEEDS_ENDPOINT
-            hint = "系统设置 → 能力接入 → 填写 API 地址"
+            hint = "系统设置 → 模型管理 → 填写 API 地址"
         elif _needs_cloud_key(capability, profile_id, prof):
             status = ReadyStatus.NEEDS_KEY
-            hint = "系统设置 → 能力接入 → 保存 API Key"
+            hint = "系统设置 → 模型管理 → 保存 API Key"
     elif provider in _LOCAL_PROVIDERS or (
         provider == "openai_compatible" and _is_local_endpoint(api_base)
     ):
-        if not api_base:
+        if provider == "sdcpp":
+            pass  # 已在上方处理
+        elif not api_base:
             status = ReadyStatus.NEEDS_ENDPOINT
             if provider == "comfyui":
-                hint = "启动 ComfyUI（默认 http://127.0.0.1:8188），见 scripts/model_hub_comfyui.py"
+                hint = "填写 ComfyUI 地址（默认 http://127.0.0.1:8188）"
             elif provider == "sd_webui":
                 hint = "启动 SD WebUI/Forge 并加 --api"
             else:
                 hint = "填写本地服务地址（如 Ollama http://127.0.0.1:11434/v1）"
-    elif not api_base and provider not in ("local_weight",):
+        elif provider in ("comfyui", "sd_webui"):
+            probed = _local_endpoint_ready(provider, api_base)
+            if provider == "comfyui":
+                wf_key = f"comfyui_wf|{profile_id}|{api_base.strip().rstrip('/')}"
+                wf_ok = _endpoint_probe_cache.get(wf_key)
+                probed = _local_endpoint_ready(provider, api_base)
+                if wf_ok is True:
+                    status = ReadyStatus.READY
+                    hint = ""
+                elif probed is True:
+                    # 仅 ping 通过：列表/进页不阻塞 UI，运行时再校验工作流
+                    status = ReadyStatus.READY
+                    hint = ""
+                elif probed is False:
+                    status = ReadyStatus.NEEDS_ENDPOINT
+                    wf = str(prof.get("workflow") or "sd15_ckpt").strip().lower()
+                    if wf in ("z_image_turbo_gguf", "z_image_gguf"):
+                        hint = (
+                            "ComfyUI 已启动，但缺少 GGUF 模型/节点。"
+                            "若本机是 safetensors 版 Z-Image，请改用「Z-Image / 自动匹配」；"
+                            "普通用户也可点「安装本机生图」。"
+                        )
+                    elif wf in ("z_image_turbo", "z_image", "zimage", "z_image_unet", "auto"):
+                        hint = (
+                            "ComfyUI 已启动，但未找到 Z-Image 模型文件"
+                            "（diffusion_models / text_encoders / vae）。"
+                            "请确认 ComfyUI 界面能出图后再到模型库点「刷新」。"
+                        )
+                    else:
+                        hint = (
+                            "ComfyUI 未就绪或缺少工作流节点/模型。"
+                            "请先启动服务并确认界面能出图，再到模型库点「刷新」。"
+                            "普通用户请优先「安装本机生图」。"
+                        )
+                else:
+                    status = ReadyStatus.NEEDS_ENDPOINT
+                    hint = "ComfyUI 尚未检测 → 模型库点「刷新」"
+            elif probed is True:
+                status = ReadyStatus.READY
+                hint = ""
+            else:
+                status = ReadyStatus.NEEDS_ENDPOINT
+                hint = (
+                    "请先启动服务，再到模型库点「刷新」。"
+                    "普通用户请优先「安装本机生图」。"
+                    if probed is False or probed is None
+                    else ""
+                )
+        elif provider == "ollama" or (
+            provider == "openai_compatible" and _is_local_endpoint(api_base)
+        ):
+            status = ReadyStatus.READY
+    elif not api_base and provider not in ("local_weight", "sdcpp"):
         status = ReadyStatus.NEEDS_ENDPOINT
-        hint = "系统设置 → 模型库 / 能力接入"
+        hint = "系统设置 → 模型库 / 模型管理"
 
     return {
         "id": profile_id,
@@ -139,9 +309,11 @@ def evaluate_profile(capability: str, profile_id: str, prof: dict[str, Any]) -> 
         "provider": provider,
         "api_base": api_base,
         "model": str(prof.get("model") or ""),
+        "tier": str(prof.get("tier") or ""),
         "status": status,
         "status_label": _STATUS_LABELS[status],
         "hint": hint,
+        "note": str(prof.get("note") or ""),
         "source": "catalog",
     }
 

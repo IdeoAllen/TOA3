@@ -19,6 +19,7 @@ from widgets import (
     InlineButton,
     LineEdit,
     ListWidget,
+    MenuButton,
     MessageKindButton,
     PageTitle,
     PrimaryButton,
@@ -43,6 +44,7 @@ def build_control_library_content(parent: QWidget | None = None) -> ScrollPage:
 
     _section_labels(scroll)
     _section_buttons(scroll)
+    _section_layouts(scroll)
     _section_tool_cards(scroll)
     _section_messages(scroll)
     _section_inputs(scroll)
@@ -57,6 +59,42 @@ def build_control_library_content(parent: QWidget | None = None) -> ScrollPage:
     _section_list_edit(scroll)
     scroll.add_stretch(1)
     return scroll
+
+
+def _section_layouts(scroll: ScrollPage) -> None:
+    from widgets import FormRow, GridBox, HBox, PathRow, PrimaryButton, SecondaryButton, SplitPane, VBox
+    from widgets.tool_cards import ToolLaunchCard
+
+    box = FormSection("布局")
+    box.add_widget(HintLabel("业务页主结构用 HBox / VBox / FormRow / PathRow / GridBox / SplitPane，少裸 Q*Layout。"))
+
+    row = HBox(spacing=8)
+    row.add_widget(PrimaryButton("主"))
+    row.add_widget(SecondaryButton("次"))
+    row.add_stretch(1)
+    box.add_widget(FormRow("按钮行", row))
+
+    box.add_widget(FormRow("名称", LineEdit("示例")))
+    box.add_widget(PathRow(placeholder="输出目录…", directory=True))
+
+    grid = GridBox(columns=2, spacing=8)
+    for title, sub in (("卡片 A", "宫格示例"), ("卡片 B", "两列排布")):
+        grid.add_widget(ToolLaunchCard(title, subtitle=sub, shortcut="", icon="file-text"))
+    box.add_widget(grid)
+
+    split = SplitPane()
+    left = VBox(spacing=4)
+    left.add_widget(HintLabel("左栏"))
+    left.add_widget(LineEdit("左"))
+    right = VBox(spacing=4)
+    right.add_widget(HintLabel("右栏"))
+    right.add_widget(LineEdit("右"))
+    split.addWidget(left)
+    split.addWidget(right)
+    split.setSizes([200, 200])
+    split.setMinimumHeight(100)
+    box.add_widget(split)
+    scroll.add_widget(box)
 
 
 def _section_labels(scroll: ScrollPage) -> None:
@@ -78,13 +116,22 @@ def _section_labels(scroll: ScrollPage) -> None:
 
 
 def _section_buttons(scroll: ScrollPage) -> None:
+    from PySide6.QtWidgets import QMenu
+
     box = FormSection("按钮")
     row = QHBoxLayout()
     row.addWidget(PrimaryButton("主按钮"))
     row.addWidget(SecondaryButton("次按钮"))
     row.addWidget(DangerButton("危险"))
     row.addWidget(InlineButton("行内"))
+    menu_btn = MenuButton("更多")
+    menu = QMenu(menu_btn)
+    menu.addAction("示例项 A")
+    menu.addAction("示例项 B")
+    menu_btn.setMenu(menu)
+    row.addWidget(menu_btn)
     box.add_layout(row)
+    box.add_widget(HintLabel("MenuButton：带下拉；右侧三角须垂直居中（全局 QSS）。"))
 
     dis = QHBoxLayout()
     b1 = PrimaryButton("主按钮 · 禁用")
@@ -202,13 +249,78 @@ def _section_text_areas(scroll: ScrollPage) -> None:
 
 
 def _section_list_edit(scroll: ScrollPage) -> None:
-    from widgets.list_edit import ListPanel
+    from core.user_messages import show_info, show_success
+    from widgets import FormEditDialog, ListPanel, ManageTablePanel, confirm_delete
 
-    box = FormSection("List + Edit 套件")
-    panel = ListPanel(hint="标准增删改查操作栏；业务页继承或组合使用。")
-    panel.set_items(["示例条目 A", "示例条目 B", "示例条目 C"])
+    box = FormSection("管理功能模板 · ManageTablePanel（推荐）")
+    box.add_widget(
+        HintLabel(
+            "标准模式：筛选 + 新增 + 表格 + 行操作（编辑 / 删除 / 详情）。"
+            "后续管理页或按表字段搭功能，优先用本组件 + FormEditDialog。"
+        )
+    )
+    fields = [
+        ("名称", "name"),
+        ("编码", "code"),
+        ("状态", "status"),
+        ("备注", "note"),
+    ]
+    panel = ManageTablePanel(
+        title="示例台账",
+        hint="选中一行后可编辑 / 删除 / 详情；双击等同编辑。",
+        filter_options=[("状态", ["全部", "启用", "停用"])],
+        filter_keys=["status"],
+    )
+    panel.set_columns(fields)
+    sample = [
+        {"name": "办公电脑", "code": "EQ-001", "status": "启用", "note": "财务室"},
+        {"name": "投影仪", "code": "EQ-002", "status": "停用", "note": "待维修"},
+        {"name": "会议桌", "code": "EQ-003", "status": "启用", "note": "大会议室"},
+    ]
+    panel.set_rows(sample)
+
+    def _add() -> None:
+        dlg = FormEditDialog(panel, title="新增", fields=fields, ok_text="保存")
+        if dlg.exec():
+            row = dlg.values()
+            if not row.get("status"):
+                row["status"] = "启用"
+            sample.append(row)
+            panel.set_rows(sample)
+            show_success(panel, "已新增（演示，未落盘）")
+
+    def _edit(row: dict) -> None:
+        dlg = FormEditDialog(panel, title="编辑", fields=fields, ok_text="保存")
+        dlg.set_values(row)
+        if dlg.exec():
+            row.update(dlg.values())
+            panel.set_rows(sample)
+            show_success(panel, "已保存（演示）")
+
+    def _detail(row: dict) -> None:
+        dlg = FormEditDialog(panel, title="详情", fields=fields, read_only=True)
+        dlg.set_values(row)
+        dlg.exec()
+
+    def _delete(row: dict) -> None:
+        if confirm_delete(panel, f"「{row.get('name') or '该项'}」"):
+            sample[:] = [r for r in sample if r is not row]
+            panel.set_rows(sample)
+            show_success(panel, "已删除（演示）")
+
+    panel.bind_add(_add)
+    panel.bind_edit(_edit)
+    panel.bind_detail(_detail)
+    panel.bind_delete(_delete)
     box.add_widget(panel)
     scroll.add_widget(box)
+
+    box2 = FormSection("简易 ListPanel")
+    simple = ListPanel(hint="轻量列表增删改；复杂台账请用上方 ManageTablePanel。")
+    simple.set_items(["示例条目 A", "示例条目 B", "示例条目 C"])
+    simple.bind_add(lambda: show_info(simple, "演示：新增"))
+    box2.add_widget(simple)
+    scroll.add_widget(box2)
 
 
 def _section_lists(scroll: ScrollPage) -> None:

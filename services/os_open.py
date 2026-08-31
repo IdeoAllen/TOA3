@@ -11,6 +11,25 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def open_path(path: str | Path) -> bool:
+    """用系统默认程序打开文件（如视频播放器）。"""
+    p = Path(path)
+    if not p.exists():
+        logger.warning("路径不存在: %s", p)
+        return False
+    try:
+        if sys.platform == "win32":
+            os.startfile(str(p.resolve()))  # noqa: S606
+        elif sys.platform == "darwin":
+            subprocess.run(["open", str(p.resolve())], check=False)
+        else:
+            subprocess.run(["xdg-open", str(p.resolve())], check=False)
+        return True
+    except Exception as e:
+        logger.warning("打开文件失败: %s", e)
+        return False
+
+
 def open_in_file_manager(path: str | Path, *, select: bool = False) -> bool:
     """打开目录，或打开所在目录并选中文件（Windows explorer /select）。"""
     p = Path(path)

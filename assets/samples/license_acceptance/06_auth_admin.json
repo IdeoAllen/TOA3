@@ -1,0 +1,50 @@
+{
+    "is_licensed": true,
+    "license_key": "",
+    "expire_date": "2036-08-27",
+    "features": [
+        "all"
+    ],
+    "user_name": "验收员·管理员",
+    "company": "",
+    "phone": "13800000006",
+    "role": "admin",
+    "bound_machine_id": "",
+    "issue_date": "2026-08-30",
+    "license_type": "admin",
+    "authorized_users": [
+        {
+            "name": "验收员·管理员",
+            "phone": "13800000006",
+            "role": "admin",
+            "company": "",
+            "expire_date": "2036-08-27",
+            "issue_date": "2026-08-30",
+            "added_date": "2026-08-30 10:05:10",
+            "updated_date": "2026-08-30 10:05:10",
+            "code_id": "acceptance_admin",
+            "code_fingerprint": "ACCEPT-acceptan",
+            "license_key": "",
+            "revoked": false,
+            "bind_machine": false,
+            "features": [
+                "all"
+            ],
+            "menus": [
+                "all"
+            ],
+            "activated_at": "2026-08-30 10:05:10"
+        }
+    ],
+    "activated_code_id": "acceptance_admin",
+    "runtime_mode": "network",
+    "plan_id": "all",
+    "online_status": "active",
+    "last_online_ok_at": "2026-08-30 10:05:10",
+    "activated_at": "2026-08-30 10:05:10",
+    "entitlement": "admin",
+    "order_no": "",
+    "machine_id": "b5a72b9818ed3f67f700bf3e8372d010",
+    "schema_ver": 2,
+    "_integrity": "b4402a72d797e4509e2cef8625e86c83706e36c047195dd85027b225d7728159"
+}

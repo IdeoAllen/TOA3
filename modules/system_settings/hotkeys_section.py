@@ -7,16 +7,29 @@ from PySide6.QtWidgets import QFormLayout, QHBoxLayout
 from core.base_page import BasePage
 from core.user_messages import show_info, show_warning
 from services.config_service import get_hotkeys_config, save_hotkeys_config
-from services.hotkey_service import get_hotkey_service
+from services.menu_registry import is_migrated
 from services.module_hotkeys import (
     _GLOBAL_EXCLUDE_MODULES,
     get_configured_module_shortcuts,
     get_module_shortcut,
     list_hotkey_editor_modules,
     list_hotkey_picker_modules,
+    normalize_module_id,
 )
 from services.screenshot_service import run_screenshot_hotkey
-from widgets import CheckBox, ComboBox, FormSection, HintLabel, LineEdit, PrimaryButton, SecondaryButton
+from widgets import (
+    CheckBox,
+    ComboBox,
+    FormSection,
+    HintLabel,
+    HotkeyCaptureEdit,
+    PrimaryButton,
+    SecondaryButton,
+)
+
+
+def _resolve_summon_module_id(raw: object) -> str:
+    return normalize_module_id(raw)
 
 
 class HotkeysSection(FormSection):
@@ -24,15 +37,41 @@ class HotkeysSection(FormSection):
         super().__init__("热键与截图")
         self._page = parent
         hk = get_hotkeys_config()
-        self._module_fields: dict[str, LineEdit] = {}
+        self._module_fields: dict[str, HotkeyCaptureEdit] = {}
         self._mod_form: QFormLayout | None = None
 
         self.add_widget(
-            HintLabel("全局键须带 Alt/Ctrl；模块热键按需添加，其它入口用侧栏或 Ctrl+K。")
+            HintLabel(
+                "录制方式：点输入框 → 按下快捷键（自动填入）→ 点「保存热键」。"
+                "全局键须带 Alt/Ctrl；双击 Ctrl 可唤起主窗，并可选跳进指定模块。"
+            )
         )
 
         app_sec = FormSection("全局 · 应用 · 页内")
         form = QFormLayout()
+        self._enable_toggle = CheckBox("启用双击 Ctrl 唤起主窗")
+        self._enable_toggle.setChecked(bool(hk.get("enable_global_toggle", True)))
+        form.addRow("唤起", self._enable_toggle)
+
+        self._toggle_window = HotkeyCaptureEdit("")
+        self._toggle_window.setPlaceholderText("可选，如 Alt+`（与双击 Ctrl 并存）")
+        form.addRow("备用唤起键", self._toggle_window)
+        alt_tw = str(hk.get("toggle_window") or "").strip()
+        if alt_tw and alt_tw.lower() != "none" and not self._is_alt_toggle_spec(alt_tw):
+            self._toggle_window.setText(alt_tw)
+
+        self._summon = ComboBox()
+        self._summon.setMinimumWidth(260)
+        self._summon.addItem("无（仅显示主窗）", None)
+        summon_id = _resolve_summon_module_id(hk.get("summon_module_id"))
+        pick_index = 0
+        for idx, (mid, name) in enumerate(list_hotkey_picker_modules(), start=1):
+            self._summon.addItem(f"{name}（{mid}）", mid)
+            if mid == summon_id:
+                pick_index = idx
+        self._summon.setCurrentIndex(pick_index)
+        form.addRow("唤起后打开", self._summon)
+
         self._enable_screenshot = CheckBox("启用截图全局热键")
         self._enable_screenshot.setChecked(bool(hk.get("enable_screenshot", True)))
         form.addRow("截图", self._enable_screenshot)
@@ -41,19 +80,25 @@ class HotkeysSection(FormSection):
         self._close_to_tray.setChecked(bool(hk.get("close_to_background", True)))
         form.addRow("托盘", self._close_to_tray)
 
-        self._shot = LineEdit(str(hk.get("screenshot") or "Alt+A"))
-        self._shot_region = LineEdit(str(hk.get("screenshot_region") or "Alt+Shift+A"))
-        self._fullscreen = LineEdit(str(hk.get("toggle_fullscreen") or "F11"))
-        self._summon = LineEdit(str(hk.get("summon_module_id") or "deduction_note_formatter"))
-        self._exit = LineEdit(str(hk.get("exit_app") or "Ctrl+Q"))
-        self._restart = LineEdit(str(hk.get("restart_app") or "Ctrl+Shift+R"))
-        self._home_k = LineEdit(str(hk.get("home_jump_office") or "K"))
-        self._home_i = LineEdit(str(hk.get("home_jump_image") or "I"))
+        self._shot = HotkeyCaptureEdit(str(hk.get("screenshot") or "Alt+A"))
+        self._shot_region = HotkeyCaptureEdit(str(hk.get("screenshot_region") or "Alt+Shift+A"))
+        self._fullscreen = HotkeyCaptureEdit(str(hk.get("toggle_fullscreen") or "F11"))
+        self._exit = HotkeyCaptureEdit(str(hk.get("exit_app") or "Ctrl+Q"), require_modifier=True)
+        self._restart = HotkeyCaptureEdit(str(hk.get("restart_app") or "Ctrl+Shift+R"))
+        self._home_k = HotkeyCaptureEdit(
+            str(hk.get("home_jump_office") or "K"),
+            allow_page_keys=True,
+            require_modifier=False,
+        )
+        self._home_i = HotkeyCaptureEdit(
+            str(hk.get("home_jump_image") or "I"),
+            allow_page_keys=True,
+            require_modifier=False,
+        )
 
         form.addRow("区域截图", self._shot)
         form.addRow("全屏截图", self._shot_region)
         form.addRow("沉浸全屏", self._fullscreen)
-        form.addRow("呼出模块 ID", self._summon)
         form.addRow("完全退出", self._exit)
         form.addRow("重启应用", self._restart)
         form.addRow("首页跳办公", self._home_k)
@@ -62,6 +107,9 @@ class HotkeysSection(FormSection):
         self.add_widget(app_sec)
 
         mod_sec = FormSection("常用模块唤起")
+        mod_sec.add_widget(
+            HintLabel("下方为各模块全局快捷键；留空表示不绑定。保存后托盘隐藏时也可唤起。")
+        )
         self._mod_form = QFormLayout()
         configured = get_configured_module_shortcuts()
         for mid, name, effective in list_hotkey_editor_modules():
@@ -75,8 +123,7 @@ class HotkeysSection(FormSection):
         for mid, name in list_hotkey_picker_modules():
             if mid not in self._module_fields:
                 self._module_picker.addItem(name, mid)
-        self._new_seq = LineEdit()
-        self._new_seq.setPlaceholderText("如 Alt+Shift+T")
+        self._new_seq = HotkeyCaptureEdit()
         btn_add = SecondaryButton("添加模块快捷键")
         btn_add.clicked.connect(self._add_picked_module)
         add_row.addWidget(self._module_picker)
@@ -98,6 +145,12 @@ class HotkeysSection(FormSection):
         row.addStretch(1)
         self.add_layout(row)
 
+    @staticmethod
+    def _is_alt_toggle_spec(spec: str) -> bool:
+        from services.double_ctrl_summon import is_double_ctrl_spec
+
+        return is_double_ctrl_spec(spec)
+
     def _module_row_label(self, mid: str, name: str) -> str:
         if mid == "screenshot_tool":
             return f"{name}（与上方区域截图同键，勿改打开页）"
@@ -113,8 +166,9 @@ class HotkeysSection(FormSection):
         configured: str,
         effective: str,
     ) -> None:
-        field = LineEdit(configured)
-        hint = effective or "留空或 none"
+        initial: str = configured
+        field = HotkeyCaptureEdit(initial)
+        hint = effective or "留空表示不绑定"
         if mid in _GLOBAL_EXCLUDE_MODULES and effective:
             hint = f"默认 {effective}（仅前台）"
         field.setPlaceholderText(hint)
@@ -129,7 +183,7 @@ class HotkeysSection(FormSection):
             show_warning(self._page, "请选择模块。")
             return
         if mid in self._module_fields:
-            show_info(self._page, "该模块已在列表中，直接改右侧输入框即可。")
+            show_info(self._page, "该模块已在列表中，直接点右侧输入框录制即可。")
             return
         name = self._module_picker.currentText()
         seq = self._new_seq.text().strip()
@@ -140,19 +194,34 @@ class HotkeysSection(FormSection):
         self._page.report_status(f"已添加：{name}")
 
     def _save(self) -> None:
+        summon_id = normalize_module_id(self._summon.currentData())
+        if summon_id and not is_migrated(summon_id):
+            show_warning(
+                self._page,
+                f"「唤起后打开」模块无效：{summon_id}\n请从下拉列表选择，勿手输 ID。",
+            )
+            return
+
         module_shortcuts: dict[str, str] = {}
         for mid, field in self._module_fields.items():
             val = field.text().strip()
             if val and val.lower() != "none":
                 module_shortcuts[mid] = val
 
+        toggle_alt = self._toggle_window.text().strip()
+        if self._enable_toggle.isChecked():
+            toggle_saved = toggle_alt or "Double+Ctrl"
+        else:
+            toggle_saved = toggle_alt or "none"
         data = {
+            "enable_global_toggle": self._enable_toggle.isChecked(),
+            "toggle_window": toggle_saved,
             "enable_screenshot": self._enable_screenshot.isChecked(),
             "close_to_background": self._close_to_tray.isChecked(),
             "screenshot": self._shot.text().strip(),
             "screenshot_region": self._shot_region.text().strip(),
             "toggle_fullscreen": self._fullscreen.text().strip(),
-            "summon_module_id": self._summon.text().strip(),
+            "summon_module_id": summon_id,
             "exit_app": self._exit.text().strip(),
             "restart_app": self._restart.text().strip(),
             "home_jump_office": self._home_k.text().strip(),
@@ -173,44 +242,31 @@ class HotkeysSection(FormSection):
             from services.platform_experience import get_platform_experience
 
             get_platform_experience().apply_close_to_tray()
+            get_platform_experience()._rebuild_tray_menu()
         except Exception:
             pass
 
         shell = self._page.window()
-        if shell is not None:
-            if hasattr(shell, "reload_window_hotkeys"):
-                shell.reload_window_hotkeys()
-            if hasattr(shell, "_wire_platform"):
-                try:
-                    self._reapply_global_hotkeys(shell)
-                    self._page.report_status("热键已保存并重注册")
+        if shell is not None and hasattr(shell, "reload_window_hotkeys"):
+            try:
+                errs = shell.reload_window_hotkeys()
+                if errs:
+                    self._page.report_status(
+                        f"已保存；部分全局键被占用：{', '.join(sorted(errs.keys()))}"
+                    )
                     return
-                except Exception:
-                    pass
+                from services.edition_isolation import should_register_global_hotkeys
+
+                ok, reason = should_register_global_hotkeys()
+                if not ok:
+                    self._page.report_status(f"已保存；{reason}")
+                    return
+                tip = "热键已保存并重注册"
+                if summon_id:
+                    name = self._summon.currentText()
+                    tip += f"；双击 Ctrl 将打开「{name.split('（', 1)[0]}」"
+                self._page.report_status(tip)
+                return
+            except Exception:
+                pass
         self._page.report_status("热键配置已保存")
-
-    def _reapply_global_hotkeys(self, shell) -> None:
-        from services.module_hotkeys import global_module_bindings
-        from services.screenshot_service import run_screenshot_hotkey
-
-        hk = get_hotkeys_config()
-        bindings = {}
-        if hk.get("enable_screenshot", True):
-            if hk.get("screenshot"):
-                bindings[str(hk["screenshot"])] = lambda: run_screenshot_hotkey(shell, full=False)
-            if hk.get("screenshot_region"):
-                bindings[str(hk["screenshot_region"])] = lambda: run_screenshot_hotkey(
-                    shell, full=True
-                )
-        for seq, mid in global_module_bindings().items():
-            if seq in bindings:
-                continue
-            if mid == "ocr_tool":
-                bindings[seq] = shell._run_ocr_hotkey
-            elif mid == "clipboard_history":
-                bindings[seq] = shell._open_clipboard_quick
-            else:
-                bindings[seq] = lambda m=mid: shell._summon_module(m)
-        errs = get_hotkey_service().apply(bindings)
-        if errs:
-            self._page.report_status(f"已保存；部分全局键占用：{errs}")

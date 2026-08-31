@@ -38,11 +38,17 @@ llm:
 image_gen:
   enabled: true
   provider: catalog
-  note: 文生图；模型在 model_catalog · 图像生成；本地推荐 SD WebUI/Forge + API
+  timeout_seconds: 180
+  note: 文生图；模型在 model_catalog · 图像生成；含豆包 Seedream 云端与本机/ComfyUI
+video_gen:
+  enabled: true
+  provider: catalog
+  timeout_seconds: 600
+  note: 视频生成；火山方舟 Seedance；异步任务轮询
 watermark_ai:
-  enabled: false
-  provider: local
-  note: AI 去水印/修复；与 modules/watermark_remover 本地算法互补
+  enabled: true
+  provider: local_lama
+  note: 本地 LaMa 去水印；权重 data/models/image/inpaint/lama · 与算力来源一并安装
 tencent_docs:
   enabled: false
   provider: tencent

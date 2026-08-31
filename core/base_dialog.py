@@ -24,6 +24,12 @@ class BaseDialog(QDialog):
         apply_dialog_spec(self, self.dialog_kind)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        try:
+            from services.screenshot_overlay import cancel_active_screenshot
+
+            cancel_active_screenshot(reason="modal_dialog")
+        except Exception:
+            pass
         super().showEvent(event)
         finalize_dialog_geometry(self, self.dialog_kind)
 

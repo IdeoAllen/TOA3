@@ -14,9 +14,21 @@ from core.ui_spec import message_title
 logger = logging.getLogger("TOA3.ui")
 
 
+def _dismiss_screenshot_before_modal(reason: str) -> None:
+    """弹窗前终止截图层，避免 grabKeyboard 与模态窗抢焦点导致放大镜卡死。"""
+    try:
+        from services.screenshot_overlay import cancel_active_screenshot, is_screenshot_session_active
+
+        if is_screenshot_session_active():
+            cancel_active_screenshot(reason=reason)
+    except Exception:
+        logger.debug("dismiss screenshot before modal failed", exc_info=True)
+
+
 def show_info(parent: QWidget | None, text: str, *, title: str | None = None) -> None:
     title = title or message_title("info")
     logger.info("提示窗 [%s]: %s", title, text.replace("\n", " "))
+    _dismiss_screenshot_before_modal("modal_info")
     MessageDialog.run(parent, "info", text, title=title)
 
 
@@ -37,18 +49,21 @@ def show_saved(
     if not open_path:
         logger.warning("show_saved 未传 path，将无「打开所在目录」按钮")
     logger.info("完成提示 [%s]: %s", title, text.replace("\n", " "))
+    _dismiss_screenshot_before_modal("modal_success")
     MessageDialog.run(parent, "success", text, title=title, open_path=open_path)
 
 
 def show_warning(parent: QWidget | None, text: str, *, title: str | None = None) -> None:
     title = title or message_title("warning")
     logger.warning("警告窗 [%s]: %s", title, text.replace("\n", " "))
+    _dismiss_screenshot_before_modal("modal_warning")
     MessageDialog.run(parent, "warning", text, title=title)
 
 
 def show_error(parent: QWidget | None, text: str, *, title: str | None = None) -> None:
     title = title or message_title("error")
     logger.error("错误窗 [%s]: %s", title, text.replace("\n", " "))
+    _dismiss_screenshot_before_modal("modal_error")
     MessageDialog.run(parent, "error", text, title=title)
 
 
@@ -65,10 +80,12 @@ def show_success(
         return
     title = title or message_title("success")
     logger.info("成功窗 [%s]: %s", title, text.replace("\n", " "))
+    _dismiss_screenshot_before_modal("modal_success")
     MessageDialog.run(parent, "success", text, title=title)
 
 
 def ask_confirm(parent: QWidget | None, text: str, *, title: str | None = None) -> bool:
     title = title or message_title("confirm")
     logger.info("确认窗 [%s]: %s", title, text.replace("\n", " "))
+    _dismiss_screenshot_before_modal("modal_confirm")
     return MessageDialog.run(parent, "confirm", text, title=title)

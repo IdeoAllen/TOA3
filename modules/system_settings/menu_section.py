@@ -7,6 +7,7 @@ from copy import deepcopy
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QDialog,
     QFormLayout,
     QHBoxLayout,
     QSizePolicy,
@@ -21,14 +22,22 @@ from core.user_messages import ask_confirm, show_info, show_warning
 from services.config_service import (
     get_all_menu_items,
     get_group_labels,
+    get_group_order,
     load_config,
     reset_user_menu,
     save_menu_items,
     user_menu_path,
 )
-from services.menu_registry import GROUP_ORDER, MIGRATED_MODULES, group_label
+from services.menu_registry import (
+    GROUP_ORDER,
+    MIGRATED_MODULES,
+    group_label,
+    is_custom_group_id,
+    normalize_group_order,
+)
 from services.migration_manifest import status_label
 from services.access_control import is_admin_session
+from services.license_manager import global_license_manager, is_full_license_code
 from services.notify_bus import request_nav_rebuild
 from services.toa_catalog_client import publish_menu_catalog_to_cloud
 from widgets import (
@@ -37,6 +46,7 @@ from widgets import (
     FormSection,
     HintLabel,
     LineEdit,
+    PasswordLineEdit,
     PrimaryButton,
     SecondaryButton,
     TreeWidget,
@@ -44,6 +54,18 @@ from widgets import (
 from widgets.dialog_actions import DialogButtonRow
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
+_PROMOTE_BLOCK_IDS = frozenset(
+    {
+        "home",
+        "system_settings",
+        "theme_preview",
+        "user_extensions",
+        "job_scheduler",
+        "notifications",
+        "__about__",
+    }
+)
+_DEMOTE_BLOCK_GROUPS = frozenset({"home", "system"})
 
 
 def _default_menu_templates() -> list[dict]:
@@ -109,6 +131,9 @@ class _AddMenuItemDialog(BaseDialog):
         self._show = CheckBox("在菜单中显示")
         self._show.setChecked(True)
         form.addRow("", self._show)
+        self._basic = CheckBox("基础功能（全版本免费，requires_license: false）")
+        self._basic.setChecked(False)
+        form.addRow("", self._basic)
         lay.addLayout(form)
 
         buttons = DialogButtonRow()
@@ -132,6 +157,7 @@ class _AddMenuItemDialog(BaseDialog):
         gidx = self._group.findData(gid)
         self._group.setCurrentIndex(gidx if gidx >= 0 else 0)
         self._show.setChecked(bool(tpl.get("show", True)))
+        self._basic.setChecked(not bool(tpl.get("requires_license", True)))
 
     def _accept(self) -> None:
         mid = self._mid.text().strip().lower()
@@ -174,7 +200,87 @@ class _AddMenuItemDialog(BaseDialog):
         item["icon"] = self._icon.text().strip() or mid
         item["group"] = self._group.currentData() or "business"
         item["show"] = self._show.isChecked()
+        item["requires_license"] = not self._basic.isChecked()
+        if not item.get("feature_id"):
+            item["feature_id"] = mid
         return item
+
+
+class _AdminLicensePromptDialog(BaseDialog):
+    dialog_kind = "medium"
+
+    def __init__(self, parent: BasePage, *, hint: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle("管理员授权码")
+        lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+        lay.addWidget(
+            HintLabel(
+                hint
+                or "本机仅存授权码摘要，同步目录需粘贴运营台签发的完整管理员授权码。"
+            )
+        )
+        form = QFormLayout()
+        self._key = PasswordLineEdit()
+        self._key.setPlaceholderText("TOA2-…")
+        form.addRow("授权码", self._key)
+        lay.addLayout(form)
+        buttons = DialogButtonRow()
+        buttons.add_secondary("取消", self.reject)
+        buttons.add_primary("继续同步", self._accept)
+        lay.addWidget(buttons)
+        self._key.returnPressed.connect(self._accept)
+
+    def _accept(self) -> None:
+        key = self._key.text().strip().replace(" ", "")
+        if not is_full_license_code(key):
+            show_warning(self, "请粘贴完整的 TOA2 管理员授权码。")
+            return
+        self.accept()
+
+    def license_key(self) -> str:
+        return self._key.text().strip().replace(" ", "")
+
+
+class _PickTargetGroupDialog(BaseDialog):
+    """降为侧栏：选择并入哪个顶栏子模块。"""
+
+    dialog_kind = "medium"
+
+    def __init__(
+        self,
+        parent: BasePage,
+        group_labels: dict[str, str],
+        *,
+        exclude_gid: str,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("降为侧栏功能")
+        lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+        lay.addWidget(
+            HintLabel(
+                "所选顶栏子模块下的功能模块将移入目标子模块，"
+                "在目标子模块的侧栏中展示（2 项及以上才显示侧栏）。"
+            )
+        )
+        form = QFormLayout()
+        self._target = ComboBox()
+        exclude = str(exclude_gid or "").strip().lower()
+        for gid in GROUP_ORDER:
+            if gid == exclude:
+                continue
+            label = group_labels.get(gid) or group_label(gid)
+            self._target.addItem(label, gid)
+        form.addRow("并入子模块", self._target)
+        lay.addLayout(form)
+        buttons = DialogButtonRow()
+        buttons.add_secondary("取消", self.reject)
+        buttons.add_primary("确定", self.accept)
+        lay.addWidget(buttons)
+
+    def selected_group(self) -> str:
+        return str(self._target.currentData() or GROUP_ORDER[0])
 
 
 class MenuSection(QWidget):
@@ -183,6 +289,7 @@ class MenuSection(QWidget):
         self._page = parent
         self._items: list[dict] = []
         self._group_labels: dict[str, str] = {}
+        self._group_order: list[str] = list(GROUP_ORDER)
         self._last_module_id: str | None = None
         self._last_group_id: str | None = None
         self._suppress = False
@@ -197,9 +304,10 @@ class MenuSection(QWidget):
         box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         box.add_widget(
             HintLabel(
-                "在此调整侧栏显示、分组与排序，点「保存菜单」立即生效。\n"
-                "「同步目录到运营台」仅上传 module 池供运营台组包；侧栏 IA 不在运营台修改。\n"
-                "点选左侧子模块行可改顶栏名；点选具体功能可改功能名。"
+                "在此调整侧栏显示、分组、基础/付费属性与排序，点「保存菜单」立即生效。\n"
+                "点选「功能模块」上移/下移 = 组内顺序；点选「子模块」行上移/下移 = 顶栏目录顺序。\n"
+                "「升为顶栏子模块」= 二级变一级 Tab；「降为侧栏功能」= 一级 Tab 并入其它子模块。\n"
+                "「同步目录到运营台」上传 module 池（含 order / requires_license）供运营台组包。"
             )
         )
 
@@ -229,6 +337,8 @@ class MenuSection(QWidget):
             self._group.addItem(group_label(gid), gid)
         self._show = CheckBox("在菜单中显示")
         self._show.setChecked(True)
+        self._basic = CheckBox("基础功能（全版本免费）")
+        self._basic.setToolTip("勾选 = requires_license: false，体验/到期后仍可用")
         self._show_hidden = CheckBox("显示已隐藏项")
         self._show_hidden.setChecked(False)
 
@@ -240,12 +350,14 @@ class MenuSection(QWidget):
         form.addRow("图标", self._icon)
         form.addRow("分组", self._group)
         form.addRow("", self._show)
+        form.addRow("", self._basic)
         edit.add_layout(form)
 
         for w in (self._name, self._desc, self._icon, self._group_title):
             w.textChanged.connect(self._apply_fields)
         self._group.currentIndexChanged.connect(self._apply_fields)
         self._show.toggled.connect(self._apply_fields)
+        self._basic.toggled.connect(self._apply_fields)
 
         mid.addWidget(edit, 1)
         box.add_widget(mid_host, 1)
@@ -270,6 +382,18 @@ class MenuSection(QWidget):
         btn_down.setDefault(False)
         btn_down.clicked.connect(lambda: self._move(1))
         row.addWidget(btn_down)
+        btn_promote = SecondaryButton("升为顶栏子模块")
+        btn_promote.setAutoDefault(False)
+        btn_promote.setDefault(False)
+        btn_promote.setToolTip("将选中的功能模块提升为独立顶栏 Tab（二级 → 一级）")
+        btn_promote.clicked.connect(self._promote_to_domain)
+        row.addWidget(btn_promote)
+        btn_demote = SecondaryButton("降为侧栏功能")
+        btn_demote.setAutoDefault(False)
+        btn_demote.setDefault(False)
+        btn_demote.setToolTip("将选中的顶栏子模块并入其它子模块（一级 → 二级）")
+        btn_demote.clicked.connect(self._demote_to_sidebar)
+        row.addWidget(btn_demote)
         btn_save = PrimaryButton("保存菜单")
         btn_save.clicked.connect(self._save)
         row.addWidget(btn_save)
@@ -295,6 +419,12 @@ class MenuSection(QWidget):
         self._btn_sync_cloud.setVisible(is_admin_session())
         self.reload(quiet=True)
 
+    def _prompt_admin_license_key(self, hint: str = "") -> str:
+        dlg = _AdminLicensePromptDialog(self._page, hint=hint)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        return dlg.license_key()
+
     def _sync_catalog_to_cloud(self) -> None:
         if not is_admin_session():
             show_warning(self._page, "仅终端管理员（admin 授权）可同步菜单目录。")
@@ -306,7 +436,12 @@ class MenuSection(QWidget):
             "运营台将据此组功能包；建议先点「保存菜单」。",
         ):
             return
-        ok, msg = publish_menu_catalog_to_cloud()
+        license_key, hint = global_license_manager.resolve_cloud_license_key()
+        if not license_key:
+            license_key = self._prompt_admin_license_key(hint)
+            if not license_key:
+                return
+        ok, msg = publish_menu_catalog_to_cloud(license_key=license_key)
         if ok:
             show_info(self._page, msg)
             self._page.report_status(msg)
@@ -323,6 +458,10 @@ class MenuSection(QWidget):
         keep_group = self._current_group_id() or self._last_group_id
         self._items = deepcopy(get_all_menu_items())
         self._group_labels = dict(get_group_labels())
+        self._group_order = normalize_group_order(
+            list(get_group_order()),
+            extra_allowed=[str(it.get("group") or "") for it in self._items],
+        )
         self._rebuild_group_combo()
         self._refresh_tree(keep_id=keep_id, keep_group=keep_group)
         self._sync_form_from_selection()
@@ -335,16 +474,49 @@ class MenuSection(QWidget):
 
     def _rebuild_group_combo(self) -> None:
         self._group.blockSignals(True)
-        cur_gid = self._group.currentData(Qt.ItemDataRole.UserRole)
+        cur_gid: str | None = None
+        row = self._resolve_item_index()
+        if row is not None:
+            cur_gid = str(self._items[row].get("group") or "")
+        else:
+            raw = self._group.currentData(Qt.ItemDataRole.UserRole)
+            if raw:
+                cur_gid = str(raw)
         self._group.clear()
-        for gid in GROUP_ORDER:
+        seen: set[str] = set()
+        for gid in self._group_order:
+            gid = str(gid or "").strip().lower()
+            if not gid or gid in seen:
+                continue
+            seen.add(gid)
             label = self._group_labels.get(gid) or group_label(gid)
             self._group.addItem(label, gid)
+        for it in self._items:
+            gid = str(it.get("group") or "").strip().lower()
+            if not gid or gid in seen:
+                continue
+            if is_custom_group_id(gid):
+                seen.add(gid)
+                label = self._group_labels.get(gid) or group_label(gid)
+                self._group.addItem(label, gid)
         if cur_gid:
             idx = self._group.findData(cur_gid, Qt.ItemDataRole.UserRole)
             if idx >= 0:
                 self._group.setCurrentIndex(idx)
         self._group.blockSignals(False)
+
+    def _ensure_group_combo_entry(self, gid: str) -> None:
+        gid = str(gid or "").strip().lower()
+        if not gid or self._group.findData(gid, Qt.ItemDataRole.UserRole) >= 0:
+            return
+        label = self._group_labels.get(gid) or group_label(gid)
+        self._group.addItem(label, gid)
+
+    def _read_group_from_combo(self, *, fallback: str) -> str:
+        raw = self._group.currentData(Qt.ItemDataRole.UserRole)
+        if raw:
+            return str(raw)
+        return fallback
 
     def _existing_ids(self) -> set[str]:
         return {str(it.get("id") or "") for it in self._items if str(it.get("id") or "")}
@@ -396,8 +568,9 @@ class MenuSection(QWidget):
         mid = str(it.get("id") or "")
         name = str(it.get("name") or mid)
         show = "显示" if it.get("show", True) else "隐藏"
+        lic = "基础" if not it.get("requires_license", False) else "付费"
         st = status_label(mid) if mid else ""
-        return f"{name}  [{mid}]  · {show} · {st}"
+        return f"{name}  [{mid}]  · {lic} · {show} · {st}"
 
     def _current_group_id(self) -> str | None:
         item = self._tree.currentItem()
@@ -446,18 +619,27 @@ class MenuSection(QWidget):
         keep_group = keep_group or self._current_group_id()
         self._tree.clear()
 
-        buckets: dict[str, list[tuple[int, dict]]] = {g: [] for g in GROUP_ORDER}
+        buckets: dict[str, list[tuple[int, dict]]] = {g: [] for g in self._group_order}
         other: list[tuple[int, dict]] = []
         for idx, it in enumerate(self._items):
             if not it.get("show", True) and not self._show_hidden.isChecked():
                 continue
             gid = str(it.get("group") or "business").lower()
+            if gid not in buckets:
+                buckets[gid] = []
+                if is_custom_group_id(gid) and gid not in self._group_order:
+                    self._group_order.append(gid)
             if gid in buckets:
                 buckets[gid].append((idx, it))
             else:
                 other.append((idx, it))
 
-        for gid in GROUP_ORDER:
+        ordered_gids = list(self._group_order)
+        for gid in buckets:
+            if gid not in ordered_gids and buckets[gid]:
+                ordered_gids.append(gid)
+
+        for gid in ordered_gids:
             entries = buckets[gid]
             if not entries:
                 continue
@@ -510,12 +692,14 @@ class MenuSection(QWidget):
             self._icon.clear()
             self._group.setCurrentIndex(0)
             self._show.setChecked(False)
+            self._basic.setChecked(False)
             self._group_title.setEnabled(True)
             self._name.setEnabled(False)
             self._desc.setEnabled(False)
             self._icon.setEnabled(False)
             self._group.setEnabled(False)
             self._show.setEnabled(False)
+            self._basic.setEnabled(False)
             self._suppress = False
             self._page.report_status(f"编辑子模块名：{gid}")
             return
@@ -529,12 +713,14 @@ class MenuSection(QWidget):
             self._icon.clear()
             self._group.setCurrentIndex(0)
             self._show.setChecked(False)
+            self._basic.setChecked(False)
             self._group_title.setEnabled(False)
             self._name.setEnabled(False)
             self._desc.setEnabled(False)
             self._icon.setEnabled(False)
             self._group.setEnabled(False)
             self._show.setEnabled(False)
+            self._basic.setEnabled(False)
             self._suppress = False
             return
         self._suppress = True
@@ -553,14 +739,16 @@ class MenuSection(QWidget):
         self._desc.setText(str(it.get("desc") or ""))
         self._icon.setText(str(it.get("icon") or ""))
         gid = str(it.get("group") or "business")
+        self._ensure_group_combo_entry(gid)
         gidx = self._group.findData(gid, Qt.ItemDataRole.UserRole)
-        if gidx < 0:
-            gidx = self._group.findText(group_label(gid))
-        self._group.setCurrentIndex(gidx if gidx >= 0 else 0)
+        if gidx >= 0:
+            self._group.setCurrentIndex(gidx)
         self._show.setChecked(bool(it.get("show", True)))
+        self._basic.setChecked(not bool(it.get("requires_license", True)))
         locked = mid in ("home", "system_settings", "theme_preview")
         self._group.setEnabled(not locked)
         self._show.setEnabled(mid != "home")
+        self._basic.setEnabled(is_admin_session())
         self._suppress = False
 
     def _flush_edits(self) -> None:
@@ -578,11 +766,11 @@ class MenuSection(QWidget):
         it["name"] = self._name.text().strip() or str(it.get("id") or "")
         it["desc"] = self._desc.text().strip()
         it["icon"] = self._icon.text().strip() or str(it.get("id") or "")
-        raw_gid = self._group.currentData(Qt.ItemDataRole.UserRole)
-        if raw_gid is None and 0 <= self._group.currentIndex() < len(GROUP_ORDER):
-            raw_gid = GROUP_ORDER[self._group.currentIndex()]
-        it["group"] = str(raw_gid or "business")
+        if self._group.isEnabled():
+            it["group"] = self._read_group_from_combo(fallback=old_group)
         it["show"] = self._show.isChecked()
+        if is_admin_session():
+            it["requires_license"] = not self._basic.isChecked()
         if str(it.get("group") or "business") != old_group:
             self._refresh_tree(keep_id=str(it.get("id") or ""))
 
@@ -609,11 +797,11 @@ class MenuSection(QWidget):
         it["name"] = self._name.text().strip() or str(it.get("id") or "")
         it["desc"] = self._desc.text().strip()
         it["icon"] = self._icon.text().strip() or str(it.get("id") or "")
-        raw_gid = self._group.currentData(Qt.ItemDataRole.UserRole)
-        if raw_gid is None and 0 <= self._group.currentIndex() < len(GROUP_ORDER):
-            raw_gid = GROUP_ORDER[self._group.currentIndex()]
-        it["group"] = str(raw_gid or "business")
+        if self._group.isEnabled():
+            it["group"] = self._read_group_from_combo(fallback=old_group)
         it["show"] = self._show.isChecked()
+        if is_admin_session():
+            it["requires_license"] = not self._basic.isChecked()
         new_group = str(it.get("group") or "business")
         keep_id = str(it.get("id") or "")
         if new_group != old_group:
@@ -626,9 +814,9 @@ class MenuSection(QWidget):
             current.setText(0, self._item_label(it))
 
     def _normalize_orders(self) -> None:
-        """按顶栏分组顺序 + 组内顺序写入 order（与侧栏一致）。"""
+        """按顶栏子模块顺序 + 组内顺序写入 order（与侧栏一致）。"""
         order = 1
-        for gid in GROUP_ORDER:
+        for gid in self._group_order:
             group_items = [
                 it
                 for it in self._items
@@ -638,10 +826,11 @@ class MenuSection(QWidget):
             for it in group_items:
                 it["order"] = order
                 order += 1
+        known = set(self._group_order)
         other = [
             it
             for it in self._items
-            if str(it.get("group") or "business").lower() not in GROUP_ORDER
+            if str(it.get("group") or "business").lower() not in known
         ]
         other.sort(key=lambda x: int(x.get("order") or 0))
         for it in other:
@@ -669,18 +858,19 @@ class MenuSection(QWidget):
         return [i for i, _ in pairs]
 
     def _move(self, delta: int) -> None:
-        if self._current_group_id():
-            show_warning(self._page, "上移/下移请点选具体功能模块，不是子模块行。")
+        gid = self._current_group_id()
+        if gid:
+            self._move_group(gid, delta)
             return
         row = self._resolve_item_index()
         if row is None:
-            show_warning(self._page, "请先点选一个功能模块。")
+            show_warning(self._page, "请先点选一个功能模块，或点选子模块行调整顶栏目录顺序。")
             return
-        gid = str(self._items[row].get("group") or "business").lower()
+        item_gid = str(self._items[row].get("group") or "business").lower()
         if self._show_hidden.isChecked():
-            indices = self._group_member_indices(gid)
+            indices = self._group_member_indices(item_gid)
         else:
-            indices = self._visible_group_member_indices(gid)
+            indices = self._visible_group_member_indices(item_gid)
         if row not in indices:
             show_warning(self._page, "当前项不在可排序列表中，可勾选「显示已隐藏项」后再试。")
             return
@@ -692,10 +882,8 @@ class MenuSection(QWidget):
         if new_pos >= len(indices):
             self._page.report_status("已在本组底部")
             return
-        other_row = indices[new_pos]
         keep_id = str(self._items[row].get("id") or "")
         self._last_module_id = keep_id
-        # 须改 order 字段；仅交换 _items 下标无效，刷新树仍按 order 排序
         indices[pos], indices[new_pos] = indices[new_pos], indices[pos]
         orders_sorted = sorted(int(self._items[i].get("order") or 0) for i in indices)
         for rank, idx in enumerate(indices):
@@ -703,6 +891,127 @@ class MenuSection(QWidget):
         self._normalize_orders()
         self._refresh_tree(keep_id=keep_id)
         self._page.report_status("已调整组内顺序 · 记得点保存菜单")
+
+    def _move_group(self, gid: str, delta: int) -> None:
+        if gid == "other":
+            show_warning(self._page, "「其它」分组不可调整顶栏顺序。")
+            return
+        order = list(self._group_order)
+        if gid not in order:
+            show_warning(self._page, "未知子模块，无法调整顺序。")
+            return
+        pos = order.index(gid)
+        new_pos = pos + delta
+        if new_pos < 0:
+            self._page.report_status("已在顶栏最左")
+            return
+        if new_pos >= len(order):
+            self._page.report_status("已在顶栏最右")
+            return
+        # home 建议保持首位，但不强制锁死——仅提示
+        order[pos], order[new_pos] = order[new_pos], order[pos]
+        self._group_order = normalize_group_order(
+            order,
+            extra_allowed=[str(it.get("group") or "") for it in self._items],
+        )
+        self._last_group_id = gid
+        self._last_module_id = None
+        self._normalize_orders()
+        self._refresh_tree(keep_group=gid)
+        self._page.report_status("已调整顶栏目录顺序 · 记得点保存菜单")
+
+    def _promote_to_domain(self) -> None:
+        """二级功能模块 → 独立顶栏子模块 Tab。"""
+        row = self._resolve_item_index()
+        if row is None:
+            show_warning(self._page, "请先点选要提升为顶栏子模块的功能模块（二级项）。")
+            return
+        it = self._items[row]
+        mid = str(it.get("id") or "")
+        if mid in _PROMOTE_BLOCK_IDS:
+            show_warning(self._page, "此项为系统入口，不可提升为顶栏子模块。")
+            return
+        if str(it.get("group") or "").lower() == mid:
+            show_warning(self._page, "该功能已是独立顶栏子模块。")
+            return
+        name = str(it.get("name") or mid)
+        if not ask_confirm(
+            self._page,
+            f"将「{name}」提升为独立顶栏子模块？\n"
+            f"保存后顶栏将出现「{name}」Tab；若该 Tab 下仅 1 个功能，侧栏会自动隐藏。",
+            title="升为顶栏子模块",
+        ):
+            return
+        old_gid = str(it.get("group") or "business").lower()
+        it["group"] = mid
+        self._group_labels[mid] = name
+        order = list(self._group_order)
+        if mid not in order:
+            try:
+                pos = order.index(old_gid)
+                order.insert(pos + 1, mid)
+            except ValueError:
+                order.append(mid)
+        self._group_order = normalize_group_order(
+            order,
+            extra_allowed=[mid, *(str(x.get("group") or "") for x in self._items)],
+        )
+        self._last_module_id = mid
+        self._last_group_id = None
+        self._normalize_orders()
+        self._rebuild_group_combo()
+        self._refresh_tree(keep_id=mid)
+        self._sync_form_from_selection()
+        self._page.report_status(f"已提升「{name}」为顶栏子模块 · 记得点保存菜单")
+
+    def _demote_to_sidebar(self) -> None:
+        """顶栏子模块 → 并入其它子模块的侧栏（二级）。"""
+        gid = self._current_group_id()
+        if not gid or gid == "other":
+            show_warning(self._page, "请先点选要降为侧栏功能的顶栏子模块行（一级项）。")
+            return
+        if gid in _DEMOTE_BLOCK_GROUPS:
+            show_warning(self._page, "「首页」「系统」子模块不可降为侧栏分组。")
+            return
+        indices = self._group_member_indices(gid)
+        if not indices:
+            show_warning(self._page, "该子模块下没有可移动的功能模块。")
+            return
+        glab = self._group_labels.get(gid) or group_label(gid)
+        dlg = _PickTargetGroupDialog(
+            self._page,
+            self._group_labels,
+            exclude_gid=gid,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        target = dlg.selected_group()
+        tlab = self._group_labels.get(target) or group_label(target)
+        count = len(indices)
+        if not ask_confirm(
+            self._page,
+            f"将「{glab}」下 {count} 个功能模块并入「{tlab}」侧栏？\n"
+            "保存后原顶栏 Tab 若无其它模块将不再显示。",
+            title="降为侧栏功能",
+        ):
+            return
+        for idx in indices:
+            self._items[idx]["group"] = target
+        if is_custom_group_id(gid):
+            self._group_order = [g for g in self._group_order if g != gid]
+            self._group_labels.pop(gid, None)
+        self._group_order = normalize_group_order(
+            self._group_order,
+            extra_allowed=[str(it.get("group") or "") for it in self._items],
+        )
+        keep_id = str(self._items[indices[0]].get("id") or "")
+        self._last_module_id = keep_id
+        self._last_group_id = None
+        self._normalize_orders()
+        self._rebuild_group_combo()
+        self._refresh_tree(keep_id=keep_id)
+        self._sync_form_from_selection()
+        self._page.report_status(f"已并入「{tlab}」· 记得点保存菜单")
 
     def _remove_item(self) -> None:
         row = self._resolve_item_index()
@@ -714,7 +1023,13 @@ class MenuSection(QWidget):
         if mid == "home":
             show_warning(self._page, "「首页」不可移除。")
             return
-        if mid in ("theme_preview", "system_settings"):
+        if mid in (
+            "theme_preview",
+            "system_settings",
+            "user_extensions",
+            "job_scheduler",
+            "notifications",
+        ):
             show_warning(self._page, "系统入口请用「在菜单中显示」关闭，勿删除。")
             return
         base_ids = {str(i.get("id") or "") for i in _default_menu_templates()}
@@ -731,15 +1046,20 @@ class MenuSection(QWidget):
         self._page.report_status(f"已移除自定义项 {name} · 记得点保存菜单")
 
     def _save(self) -> None:
+        self._rebuild_group_combo()
         self._flush_edits()
         if not self._items:
             show_warning(self._page, "菜单为空，无法保存。")
             return
         self._normalize_orders()
-        save_menu_items(self._items, group_labels=self._group_labels)
+        save_menu_items(
+            self._items,
+            group_labels=self._group_labels,
+            group_order=self._group_order,
+        )
         request_nav_rebuild()
         self._page.report_status("菜单已保存")
-        show_info(self._page, "菜单已保存，侧栏已刷新。")
+        show_info(self._page, "菜单已保存，侧栏与顶栏目录顺序已刷新。")
 
     def _reset(self) -> None:
         if not ask_confirm(

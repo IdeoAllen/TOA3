@@ -52,8 +52,16 @@ class AboutDialog(BaseDialog):
             add_form_section(root, "使命 · 愿景 · 目标 · 定位", vision)
 
         meta = make_info_form()
-        meta.addRow("版本", value_label(str(info.get("app_version") or "—")))
-        meta.addRow("发行", value_label(str(info.get("build_profile") or "—")))
+        try:
+            from services.user_plan_presentation import user_software_version
+
+            version_text = user_software_version()
+        except Exception:
+            version_text = str(info.get("app_version") or "—")
+        meta.addRow("版本", value_label(version_text))
+        profile = str(info.get("build_profile") or "").strip()
+        if profile:
+            meta.addRow("发行", value_label(profile))
         meta.addRow("产品", value_label(str(info.get("app_name") or "—")))
         meta.addRow("作者", value_label(str(info.get("author") or "—") or "—"))
         email = str(info.get("author_email") or "").strip()

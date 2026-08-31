@@ -9,6 +9,7 @@ from services.integrations.image_gen_client import ImageGenClient
 from services.integrations.llm_client import LlmClient
 from services.integrations.ocr_client import OcrClient
 from services.integrations.tencent_docs_client import TencentDocsClient
+from services.integrations.video_gen_client import VideoGenClient
 from services.integrations.watermark_ai_client import WatermarkAiClient
 
 _REGISTRY = {
@@ -16,6 +17,7 @@ _REGISTRY = {
     "ocr": OcrClient,
     "llm": LlmClient,
     "image_gen": ImageGenClient,
+    "video_gen": VideoGenClient,
     "watermark_ai": WatermarkAiClient,
     "tencent_docs": TencentDocsClient,
     "dingtalk": DingtalkClient,

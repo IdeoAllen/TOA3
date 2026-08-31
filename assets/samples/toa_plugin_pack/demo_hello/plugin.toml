@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "demo_hello"
+name = "示例问候插件"
+group = "business"
+order = 95
+version = "0.1.0"
+requires_license = false
+feature_id = ""
+author = "TOA"
+description = "「我的扩展」样例：导入后出现在业务侧栏，验证脚手架与 Skill 链路"
+
+[entry]
+module_path = "modules.demo_hello.demo_hello_page"
+class_name = "DemoHelloPage"
+page_id = "demo_hello"
+
+[storage]
+data_key = "demo_hello"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

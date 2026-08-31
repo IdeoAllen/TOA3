@@ -1,7 +1,9 @@
 auth:
   skip_login: false
+  force_login_dialog: false
   allow_empty_password: false
   allow_standalone_login: true
+  auto_enter_free: true
 license:
   service_url: https://toa-service.yczh.tech/api/toa-license
   activate_timeout_seconds: 15

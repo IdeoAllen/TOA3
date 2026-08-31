@@ -16,11 +16,11 @@ def palette_actions() -> list[tuple[str, str, str]]:
 
 def run_palette_action(shell, action_id: str) -> bool:
     """执行命令面板快捷动作。"""
+    from services.harness_toolkit import harness
+
     aid = str(action_id or "").strip()
     if aid == "harness:start":
-        from services.harness_sidecar import start
-
-        ok, msg = start()
+        ok, msg = harness.start_service()
         if ok:
             show_info(shell, msg)
             if hasattr(shell, "show_status"):

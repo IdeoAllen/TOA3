@@ -12,7 +12,7 @@ harness:
   clear_env_api_key: true
   dshm_script: vendor/dshm/bin/dshm.js
   default_workspace: ""
-  surface_mode: embed
+  surface_mode: browser
   web_zoom: 1.0
   web_readability_boost: false
   theme_harmonize: false
@@ -21,6 +21,12 @@ harness:
   cost_input_per_million: 2
   cost_output_per_million: 8
   quick_prompts:
+    - label: 去做扩展
+      text: >-
+        请引导用户去 TOA 创建扩展，不要改占位脚本、不要二次编辑超长提示词。
+        入口：顶栏「系统」→「扩展」→「自定义插件」；必填名称 + 需求描述（场景/痛点/作用）；
+        点「创建并去开发」后自动投喂 skill「toa3-user-extension」。
+        若用户已在聊天写了需求，复述要点并请其到扩展页粘贴后创建。
     - label: 读架构
       text: 请阅读当前工作区目录结构，按 modules/services/app 分层总结职责与入口。
     - label: 最小修复

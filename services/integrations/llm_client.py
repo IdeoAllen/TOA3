@@ -187,6 +187,7 @@ class LlmClient(IntegrationClient):
         prompt: str,
         *,
         system: str = "",
+        cancel_check=None,
         **kwargs: Any,
     ) -> Iterator[str]:
         """流式输出文本增量；失败时抛出 IntegrationError。"""
@@ -243,6 +244,7 @@ class LlmClient(IntegrationClient):
                     prompt=str(prompt or ""),
                     system=system,
                     temperature=temperature,
+                    cancel_check=cancel_check,
                 ):
                     yield chunk
                 if model != preferred:
@@ -252,6 +254,8 @@ class LlmClient(IntegrationClient):
                 last_err = exc
                 detail = str(exc)
                 if "429" in detail or "限流" in detail:
+                    raise
+                if "cancelled" in detail.lower() or "已取消" in detail:
                     raise
                 if any(
                     x in detail
@@ -292,6 +296,7 @@ class LlmClient(IntegrationClient):
         prompt: str,
         system: str,
         temperature: float,
+        cancel_check=None,
     ) -> Iterator[str]:
         try:
             yield from self._stream_request(
@@ -304,6 +309,7 @@ class LlmClient(IntegrationClient):
                     merged=False,
                 ),
                 headers,
+                cancel_check=cancel_check,
             )
         except Exception as first:
             detail = str(first)
@@ -319,6 +325,7 @@ class LlmClient(IntegrationClient):
                         merged=True,
                     ),
                     headers,
+                    cancel_check=cancel_check,
                 )
                 return
             raise
@@ -386,6 +393,8 @@ class LlmClient(IntegrationClient):
         url: str,
         body: dict[str, Any],
         headers: dict[str, str],
+        *,
+        cancel_check=None,
     ) -> Iterator[str]:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         try:
@@ -397,13 +406,25 @@ class LlmClient(IntegrationClient):
                 yield text
             return
 
+        # 流式：连接短超时；读超时=两次增量之间最长等待（避免永远「生成中」）
+        stream_timeout = httpx.Timeout(
+            connect=min(15.0, float(self.timeout or 30)),
+            read=90.0,
+            write=30.0,
+            pool=10.0,
+        )
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=stream_timeout) as client:
                 with client.stream("POST", url, content=data, headers=headers) as resp:
                     if resp.status_code >= 400:
                         raw = resp.read().decode("utf-8", errors="replace")
                         self._raise_http_error(resp.status_code, raw)
                     for line in resp.iter_lines():
+                        if cancel_check is not None and cancel_check():
+                            raise self.integration_error(
+                                "cancelled",
+                                user_message="已取消生成。",
+                            )
                         if not line:
                             continue
                         chunk = self._parse_sse_delta(line)
@@ -412,8 +433,17 @@ class LlmClient(IntegrationClient):
         except Exception as exc:
             if hasattr(exc, "service"):
                 raise
+            detail = str(exc)
+            if "ReadTimeout" in type(exc).__name__ or "read timeout" in detail.lower():
+                raise self.integration_error(
+                    detail,
+                    user_message=(
+                        "模型长时间无响应（超过 90 秒无新内容）。"
+                        "请缩短提示词后重试，或换一套写字算力。"
+                    ),
+                ) from exc
             raise self.integration_error(
-                str(exc),
+                detail,
                 user_message=f"大模型流式请求失败：{exc}",
             ) from exc
 

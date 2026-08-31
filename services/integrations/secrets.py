@@ -83,6 +83,13 @@ def get_profile_secret(
         return ""
     if capability == "image_gen":
         return get_secret("image_gen", key)
+    if capability == "video_gen":
+        # 与 Seedream 共用火山方舟 Key（未单独绑定时）
+        return (
+            get_secret("video_gen", key)
+            or get_profile_secret("image_gen", "doubao_seedream", key, allow_legacy_fallback=False)
+            or get_secret("image_gen", key)
+        )
     return ""
 
 

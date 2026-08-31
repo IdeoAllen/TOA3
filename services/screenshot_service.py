@@ -116,7 +116,7 @@ class _RegionOverlay(QWidget):
     finished = Signal()
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(None)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -125,6 +125,7 @@ class _RegionOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         left, top, w, h = virtual_screen_geometry()
         self.setGeometry(left, top, w, h)
         self._virt_origin = QPoint(left, top)
@@ -135,6 +136,19 @@ class _RegionOverlay(QWidget):
         self._result_rect: QRect | None = None
         self.setMouseTracking(True)
         QTimer.singleShot(0, self._seed_mouse_from_cursor)
+        QTimer.singleShot(0, self._claim_input)
+
+    def _claim_input(self) -> None:
+        if not self.isVisible():
+            return
+        try:
+            self.raise_()
+            self.activateWindow()
+            self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+            self.grabMouse()
+            self.grabKeyboard()
+        except Exception:
+            logger.debug("region overlay claim input failed", exc_info=True)
 
     def _seed_mouse_from_cursor(self) -> None:
         local = self.mapFromGlobal(QCursor.pos())
@@ -170,6 +184,11 @@ class _RegionOverlay(QWidget):
             self.close()
 
     def closeEvent(self, event) -> None:
+        try:
+            self.releaseKeyboard()
+            self.releaseMouse()
+        except Exception:
+            pass
         self.finished.emit()
         super().closeEvent(event)
 
@@ -244,7 +263,14 @@ def save_screenshot_pixmap(pix: QPixmap, module_id: str = "screenshot") -> Path:
     return _save_pixmap(pix, module_id=module_id)
 
 
-def _after_grab(pix: QPixmap, parent=None, *, annotate: bool = True, interactive_select: bool = False) -> Path | None:
+def _after_grab(
+    pix: QPixmap,
+    parent=None,
+    *,
+    annotate: bool = True,
+    interactive_select: bool = False,
+    session_token: int = 0,
+) -> Path | None:
     """抓取后默认打开全屏标注；annotate=False 时直接保存并复制。"""
     if pix is None or pix.isNull():
         show_error(parent, "截图失败。")
@@ -252,7 +278,12 @@ def _after_grab(pix: QPixmap, parent=None, *, annotate: bool = True, interactive
     if annotate:
         from services.screenshot_overlay import open_screenshot_overlay
 
-        return open_screenshot_overlay(pix, interactive_select=interactive_select, parent=parent)
+        return open_screenshot_overlay(
+            pix,
+            interactive_select=interactive_select,
+            parent=parent,
+            session_token=session_token,
+        )
     path = _save_pixmap(pix)
     QGuiApplication.clipboard().setPixmap(pix)
     try:
@@ -271,20 +302,28 @@ def _after_grab(pix: QPixmap, parent=None, *, annotate: bool = True, interactive
     return path
 
 
-def capture_fullscreen(parent=None, *, annotate: bool = True) -> Path | None:
+def capture_fullscreen(
+    parent=None, *, annotate: bool = True, session_token: int = 0
+) -> Path | None:
     pix = grab_virtual_screen()
     if pix is None or pix.isNull():
         show_error(parent, "无法获取屏幕。")
         return None
-    return _after_grab(pix, parent, annotate=annotate, interactive_select=False)
+    return _after_grab(
+        pix, parent, annotate=annotate, interactive_select=False, session_token=session_token
+    )
 
 
-def capture_region(parent=None, *, annotate: bool = True) -> Path | None:
+def capture_region(
+    parent=None, *, annotate: bool = True, session_token: int = 0
+) -> Path | None:
     pix = grab_virtual_screen()
     if pix is None or pix.isNull():
         show_error(parent, "无法获取屏幕。")
         return None
-    return _after_grab(pix, parent, annotate=annotate, interactive_select=True)
+    return _after_grab(
+        pix, parent, annotate=annotate, interactive_select=True, session_token=session_token
+    )
 
 
 def hotkeys_enabled() -> bool:
@@ -296,14 +335,34 @@ def run_screenshot_hotkey(parent=None, *, full: bool = False) -> None:
     if not hotkeys_enabled():
         show_info(parent, "截图功能已在系统设置中关闭。")
         return
+    from services.screenshot_overlay import (
+        cancel_active_screenshot,
+        is_screenshot_session_active,
+        release_screenshot_session,
+        release_screenshot_session_if_token,
+        try_acquire_screenshot_session,
+    )
+
+    # 占用中（含抓屏尚未出层）：再按 = 只取消，绝不新开第二层
+    if is_screenshot_session_active():
+        cancel_active_screenshot(reason="hotkey_while_active")
+        return
+    token = try_acquire_screenshot_session()
+    if not token:
+        cancel_active_screenshot(reason="hotkey_race")
+        return
     try:
         if full:
-            capture_fullscreen(parent)
+            capture_fullscreen(parent, session_token=token)
         else:
-            capture_region(parent)
+            capture_region(parent, session_token=token)
     except Exception as e:
+        release_screenshot_session()
         logger.exception("截图失败")
         show_error(parent, f"截图失败：{e}")
+    finally:
+        # 抓屏失败 / 令牌已作废时补释放；正常出层由 open_screenshot_overlay 释放
+        release_screenshot_session_if_token(token)
 
 
 def capture_region_pixmap(parent=None) -> QPixmap | None:
@@ -318,9 +377,11 @@ def capture_region_pixmap(parent=None) -> QPixmap | None:
 
     overlay.finished.connect(_done)
     overlay.destroyed.connect(loop.quit)
-    overlay.showFullScreen()
+    overlay.show()
     overlay.raise_()
     overlay.activateWindow()
+    overlay.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+    overlay._claim_input()
     loop.exec()
     rect = held[0]
     if rect is None:

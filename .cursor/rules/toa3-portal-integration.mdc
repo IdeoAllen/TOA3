@@ -16,7 +16,7 @@ alwaysApply: true
 | 领域 | 主数据 | 角色 |
 |------|--------|------|
 | TOA 桌面授权 | license code + `license.json` | **TOA 云服务** `https://toa-service.yczh.tech`；DMS `AdminToaLicense` 仅过渡 |
-| TOA 运营台 | 授权 + 版本发布 | `https://toa-service.yczh.tech/admin/` |
+| TOA 运营台 | 授权 + 版本发布 | `https://toa-service.yczh.tech/admin/app.html` |
 | TOA 菜单 | `config/app.yml` `menu.menu_items` | 本机 yaml；Portal **无**远程菜单 API |
 | DMS Web 账号 | DMS UserManage | 仅 DMS 交付业务；**≠** TOA 操作员 |
 | TOA 安装包 | Inno 产物 | Portal 下载页 |

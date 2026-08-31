@@ -38,7 +38,13 @@ hotkeys:
   screenshot_region: Alt+Shift+A
   summon_module_id: deduction_note_formatter
   toggle_fullscreen: F11
-  toggle_window: none
+  toggle_window: Alt+B
+  module_shortcuts:
+    quadrant_tasks: Alt+T
+  enable_global_toggle: true
 window:
-  theme: dms_green
+  theme: dms_copper
   default_fullscreen: true
+ui:
+  nav_default_collapsed: false
+  theme: dms_copper

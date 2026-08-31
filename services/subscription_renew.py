@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Tuple
 
-_DEFAULT_PACK = "starter"
-_ALL_PACK = "professional"
+_DEFAULT_PACK = "tiyan"
+_ALL_PACK = "tiyan"
 
 
 def is_activation_block(reason: str) -> bool:
     """单机/未授权/需激活 — 应引导激活，而非续费。"""
     text = str(reason or "")
     keys = (
+        "付费版",
         "完整版",
         "未授权",
         "授权码",
@@ -24,21 +25,28 @@ def is_activation_block(reason: str) -> bool:
 
 
 def is_renewable_block(reason: str) -> bool:
-    """已付费授权到期/续订 — 才弹续费窗。"""
+    """已付费/体验授权到期 — 弹续费/购买窗。"""
     text = str(reason or "")
     if is_activation_block(text):
         return False
-    keys = ("到期", "续费", "订阅", "expired", "已过期")
+    keys = ("到期", "续费", "订阅", "expired", "已过期", "体验版已到期", "免费版体验已到期", "付费模块已到期", "请购买", "请续费")
     return any(k in text for k in keys)
 
 
+def is_trial_expired_block(reason: str) -> bool:
+    text = str(reason or "")
+    return "体验版已到期" in text or "体验已到期" in text or "免费版体验已到期" in text
+
+
 def should_prompt_renew_dialog(*, reason: str | None = None) -> bool:
-    """启动/导航时是否应提供续费（排除单机与从未激活）。"""
+    """启动/导航时是否应提供续费（排除单机与有效授权）。"""
     from services.license_manager import global_license_manager
 
     lm = global_license_manager
     if lm.is_standalone_mode() or lm.is_licensed():
         return False
+    if lm.is_expired_trial() or lm.is_expired_paid():
+        return True
     text = str(reason if reason is not None else lm.get_validity_text() or "")
     return is_renewable_block(text)
 

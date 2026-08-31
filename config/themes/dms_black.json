@@ -1,8 +1,8 @@
 {
   "$schema": "TOA Custom Theme Schema v3.0",
   "name": "dms_black",
-  "display_name": "墨黑·霓虹蓝",
-  "description": "DMS 墨黑：深灰磨砂底 + iOS 霓虹蓝强调，与 OLED 纯黑区分",
+  "display_name": "墨黑",
+  "description": "深灰磨砂底 + 霓虹蓝强调",
   "author": "DMS → TOA port",
   "version": "1.0",
   "mode": "dark",

@@ -1,0 +1,15 @@
+# 发版默认：不含预置云端/本机模型清单（用户自行在「系统设置 → 模型管理」绑定或导入）
+# 开发者本机完整 catalog 见仓库 config/model_catalog.yml，勿打入安装包
+capabilities:
+  text_llm:
+    label: 文本大模型
+    default_profile: ""
+    profiles: {}
+  image_gen:
+    label: 图像生成
+    default_profile: ""
+    profiles: {}
+  video_gen:
+    label: 视频生成
+    default_profile: ""
+    profiles: {}

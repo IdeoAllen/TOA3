@@ -394,7 +394,7 @@ def load_settings() -> dict[str, Any]:
             if mode not in ("simple", "rich"):
                 mode = "rich"
             view = str(raw.get("view_mode") or "edit")
-            if view not in ("edit", "preview"):
+            if view not in ("edit", "design", "preview"):
                 view = "edit"
             return {"editor_mode": mode, "view_mode": view}
     except Exception:
@@ -408,7 +408,7 @@ def save_settings(settings: dict[str, Any]) -> None:
     if mode not in ("simple", "rich"):
         mode = "rich"
     view = str(settings.get("view_mode", cur.get("view_mode")) or "edit")
-    if view not in ("edit", "preview"):
+    if view not in ("edit", "design", "preview"):
         view = "edit"
     _settings_path().write_text(
         json.dumps({"editor_mode": mode, "view_mode": view}, ensure_ascii=False, indent=2),

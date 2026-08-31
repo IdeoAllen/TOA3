@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """系统设置：按角色展示左侧菜单 + 内容区。
 
-菜单懒加载：首次选中再构建。定时任务与通知见系统侧栏 job_scheduler / notifications。
+菜单懒加载：首次选中再构建。定时任务 / 通知 / 扩展见系统侧栏对应模块。
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from services.config_service import get_ui_config, resolve_path, save_ui_theme
 from services.icon_registry import brand_logo_pixmap
 from services.log_view_service import log_file_path, read_log_tail
 from services.system_info import get_system_info, log_directory
-from services.theme_catalog import selectable_themes, theme_description
+from services.theme_catalog import theme_description
 from services.user_system_info import save_user_overrides
 from services.settings_access import (
     TAB_BRAND,
@@ -39,6 +39,7 @@ from services.settings_access import (
     TAB_LICENSE,
     TAB_MENU,
     TAB_MODELS,
+    TAB_OPS_CONSOLE,
     TAB_PREFERENCES,
     TAB_SUBSCRIPTION,
     TAB_SYSTEM,
@@ -57,7 +58,7 @@ from services.settings_menu import (
 )
 from core.ui_spec import page_content_margins
 from widgets import (
-    ComboBox,
+    CheckBox,
     FormSection,
     HintLabel,
     LineEdit,
@@ -66,6 +67,7 @@ from widgets import (
     ReadOnlyPlainTextEdit,
     ScrollPage,
     SecondaryButton,
+    ThemePicker,
 )
 
 
@@ -114,7 +116,7 @@ class SettingsPage(BasePage):
         self._info_fields: dict[str, LineEdit] = {}
         self._integrations = None
         self._log_view: ReadOnlyPlainTextEdit | None = None
-        self._theme_combo: ComboBox | None = None
+        self._theme_picker: ThemePicker | None = None
         self._theme_desc: HintLabel | None = None
         self._lazy_hosts: list[_LazyTabHost] = []
         self._menu_keys: dict[str, int] = {}
@@ -154,12 +156,9 @@ class SettingsPage(BasePage):
 
         ui = get_ui_config()
         cur = str(ui.get("theme") or "dms_blue")
-        if self._theme_combo is not None:
-            idx = self._theme_combo.findData(cur)
-            if idx >= 0:
-                self._theme_combo.setCurrentIndex(idx)
-            else:
-                self._update_description()
+        if self._theme_picker is not None:
+            self._theme_picker.set_theme(cur)
+            self._update_description()
 
     def _factory_for(self, key: str) -> Callable[[], QWidget]:
         factories: dict[str, Callable[[], QWidget]] = {
@@ -172,6 +171,7 @@ class SettingsPage(BasePage):
             TAB_INTEGRATIONS: self._factory_integrations_admin,
             TAB_DIAGNOSTICS: self._factory_diagnostics,
             TAB_SUBSCRIPTION: self._factory_subscription,
+            TAB_OPS_CONSOLE: self._factory_ops_console,
         }
         factory = factories.get(key)
         if factory is None:
@@ -239,7 +239,10 @@ class SettingsPage(BasePage):
         return True
 
     def _factory_preferences(self) -> QWidget:
-        parts: list = [self._build_theme_box()]
+        parts: list = [
+            self._build_theme_box(),
+            self._build_nav_pref_box(),
+        ]
         from modules.system_settings.hotkeys_section import HotkeysSection
 
         parts.append(HotkeysSection(self))
@@ -270,14 +273,12 @@ class SettingsPage(BasePage):
         return host
 
     def _sync_theme_selection(self) -> None:
-        if self._theme_combo is None:
+        if self._theme_picker is None:
             return
         self._applying = True
         ui = get_ui_config()
         cur = str(ui.get("theme") or "dms_blue")
-        idx = self._theme_combo.findData(cur)
-        if idx >= 0:
-            self._theme_combo.setCurrentIndex(idx)
+        self._theme_picker.set_theme(cur)
         self._update_description()
         self._applying = False
 
@@ -303,6 +304,11 @@ class SettingsPage(BasePage):
         from modules.system_settings.subscription_section import SubscriptionSection
 
         return _wrap_scroll(ActivationSection(self), SubscriptionSection(self))
+
+    def _factory_ops_console(self) -> QWidget:
+        from modules.system_settings.ops_console_section import OpsConsoleSection
+
+        return _wrap_scroll(OpsConsoleSection(self))
 
     def _factory_menu(self) -> QWidget:
         from modules.system_settings.menu_section import MenuSection
@@ -400,7 +406,7 @@ class SettingsPage(BasePage):
         row.addWidget(self._logo)
         row.addWidget(
             HintLabel(
-                f"产品 {info['app_name']} · 版本 {info['app_version']}（版本号由发布包决定）"
+                f"产品 {info['app_name']}（版本号由发布包决定，见关于与状态栏）"
             )
         )
         row.addStretch(1)
@@ -485,25 +491,53 @@ class SettingsPage(BasePage):
     def _build_theme_box(self) -> FormSection:
         box = FormSection("主题与外观")
         box.add_widget(
-            HintLabel("切换后立即生效；下方为当前主题说明。")
+            HintLabel("点击下方主题按钮即时切换；当前主题说明见下方。")
         )
+        self._theme_picker = ThemePicker()
+        self._theme_picker.theme_selected.connect(self._on_theme_picked)
+        box.add_widget(self._theme_picker)
         self._theme_desc = HintLabel("")
+        self._theme_desc.setWordWrap(True)
         box.add_widget(self._theme_desc)
-
-        form = QFormLayout()
-        self._theme_combo = ComboBox()
-        for tid, label in selectable_themes():
-            self._theme_combo.addItem(theme_display_name(tid) or label, tid)
-        self._theme_combo.currentIndexChanged.connect(self._on_theme_changed)
-        form.addRow("主题", self._theme_combo)
-        box.add_layout(form)
+        ui = get_ui_config()
+        cur = str(ui.get("theme") or "dms_blue")
+        self._theme_picker.set_theme(cur)
+        self._update_description()
         return box
 
-    def _on_theme_changed(self, _idx: int) -> None:
-        if self._applying:
-            return
-        tid = self._theme_combo.currentData() if self._theme_combo else None
-        if not tid:
+    def _build_nav_pref_box(self) -> FormSection:
+        from services.config_service import nav_default_collapsed
+
+        box = FormSection("二级菜单")
+        box.add_widget(
+            HintLabel(
+                "控制左侧功能侧栏（二级菜单）启动时的默认状态；"
+                "运行中仍可用侧栏折叠按钮随时切换。"
+            )
+        )
+        self._nav_default_collapsed = CheckBox("默认折叠（关着）")
+        self._nav_default_collapsed.setToolTip(
+            "勾选：启动时收起二级菜单，内容区更大；取消：启动时展开二级菜单。"
+        )
+        self._nav_default_collapsed.setChecked(nav_default_collapsed())
+        self._nav_default_collapsed.toggled.connect(self._on_nav_default_collapsed)
+        box.add_widget(self._nav_default_collapsed)
+        return box
+
+    def _on_nav_default_collapsed(self, checked: bool) -> None:
+        from services.config_service import save_ui_values
+
+        save_ui_values(nav_default_collapsed=bool(checked))
+        shell = self.window()
+        if shell is not None and hasattr(shell, "set_nav_collapsed"):
+            shell.set_nav_collapsed(bool(checked), show_rail=True)
+        self.report_status(
+            "二级菜单默认折叠已开启" if checked else "二级菜单默认展开已开启",
+            level=StatusLevel.SUCCESS,
+        )
+
+    def _on_theme_picked(self, tid: str) -> None:
+        if self._applying or not tid:
             return
         self._update_description()
         shell = self.window()
@@ -525,7 +559,7 @@ class SettingsPage(BasePage):
         if self._theme_desc is None:
             return
         tid = (
-            (self._theme_combo.currentData() if self._theme_combo else None)
+            (self._theme_picker.current_theme() if self._theme_picker else None)
             or get_ui_config().get("theme")
             or "dms_blue"
         )
@@ -543,7 +577,6 @@ class SettingsPage(BasePage):
             f"输出目录：{resolve_path('output_dir')}",
             f"日志目录：{log_directory()}",
             f"Python：{sys.executable}",
-            f"版本：{info['app_version']}",
         ]
         box.add_widget(HintLabel("\n".join(lines)))
 
@@ -625,6 +658,19 @@ class SettingsPage(BasePage):
 
     def open_system_tab(self) -> None:
         self.open_tab(TAB_SYSTEM)
+
+    def open_extensions_tab(self) -> None:
+        """兼容旧入口：跳到系统侧栏「扩展」模块。"""
+        shell = self.window()
+        if shell is not None and hasattr(shell, "navigate"):
+            try:
+                shell.navigate("user_extensions")
+                return
+            except Exception:
+                pass
+        from core.user_messages import show_warning
+
+        show_warning(self, "请到顶栏「系统」→ 侧栏「扩展」。")
 
     def open_models_tab(self) -> None:
         self.open_tab(TAB_MODELS)

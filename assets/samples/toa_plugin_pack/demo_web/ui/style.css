@@ -1,0 +1,24 @@
+/* 用户扩展 Web 面基础样式（可自由改） */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  background: #1e1e1e;
+  color: #cccccc;
+}
+.page { max-width: 720px; margin: 0 auto; padding: 20px 16px 32px; }
+h1 { font-size: 20px; margin: 0 0 6px; font-weight: 600; }
+.hint { margin: 0 0 16px; opacity: 0.75; font-size: 13px; }
+button {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2d2d2d;
+  color: inherit;
+  cursor: pointer;
+}
+button:hover { background: #383838; }
+code { font-size: 12px; word-break: break-all; }

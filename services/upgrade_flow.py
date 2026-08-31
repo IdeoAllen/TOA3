@@ -12,6 +12,7 @@ from services.subscription_renew import (
     infer_renew_pack_id,
     is_activation_block,
     is_renewable_block,
+    is_trial_expired_block,
 )
 
 
@@ -23,19 +24,42 @@ class UpgradeIntent(str, Enum):
 
 def is_feature_block(reason: str) -> bool:
     text = str(reason or "")
-    return any(k in text for k in ("未包含功能", "未包含", "请联系管理员开通"))
+    return any(k in text for k in ("未包含功能", "未包含", "请联系管理员开通", "请升级", "升级至"))
 
 
 def should_offer_purchase(*, reason: str = "") -> bool:
     text = str(reason or "")
-    return is_renewable_block(text) or is_activation_block(text) or is_feature_block(text)
+    try:
+        from services.license_manager import global_license_manager as lm
+
+        if lm.is_expired_trial() or lm.is_expired_paid():
+            return True
+    except Exception:
+        pass
+    return is_renewable_block(text) or is_activation_block(text) or is_feature_block(text) or is_trial_expired_block(text)
 
 
 def classify_intent(*, reason: str = "", module_id: str = "") -> UpgradeIntent:
     text = str(reason or "")
-    if is_renewable_block(text):
-        return UpgradeIntent.RENEW
+    try:
+        from services.license_manager import global_license_manager as lm
+
+        if lm.is_expired_trial() or is_trial_expired_block(text):
+            return UpgradeIntent.ACTIVATE
+        if lm.is_expired_paid() or is_renewable_block(text):
+            return UpgradeIntent.RENEW
+    except Exception:
+        if is_trial_expired_block(text):
+            return UpgradeIntent.ACTIVATE
+        if is_renewable_block(text):
+            return UpgradeIntent.RENEW
     if is_feature_block(text) and module_id:
+        from services.plan_tiers import current_plan_id, is_upgrade_needed, suggest_upgrade_plan
+
+        cur = current_plan_id()
+        tgt = suggest_upgrade_plan(module_id=module_id, current_plan_id=cur)
+        if cur and is_upgrade_needed(target_plan_id=tgt, current_plan_id=cur):
+            return UpgradeIntent.UPGRADE
         return UpgradeIntent.UPGRADE
     return UpgradeIntent.ACTIVATE
 
@@ -64,54 +88,52 @@ def module_display_name(module_id: str) -> str:
 
 
 def suggest_pack_for_module(module_id: str) -> str:
-    """选覆盖该模块的最低价可售包；无模块上下文时返回入门版。"""
-    mid = str(module_id or "").strip()
-    from services.feature_packs import expand_features, list_packs
-
-    ok, cloud_packs, _, _ = _list_cloud_packs()
-    price_map: dict[str, int] = {}
-    if ok:
-        for row in cloud_packs:
-            pid = str(row.get("id") or "")
-            if pid:
-                try:
-                    price_map[pid] = int(row.get("price_yuan") or 0)
-                except Exception:
-                    price_map[pid] = 0
-
-    candidates: list[tuple[int, str]] = []
-    for pack in list_packs(sellable_only=True):
-        pid = str(pack.get("id") or "")
-        if not pid:
-            continue
-        feats = expand_features([pid])
-        if feats == ["all"] or (mid and mid in feats) or (not mid and pid == _DEFAULT_PACK):
-            price = price_map.get(pid, 10**9 if mid else 0)
-            candidates.append((price, pid))
-
-    if not candidates:
-        return _DEFAULT_PACK
-    candidates.sort(key=lambda x: (x[0], x[1]))
-    return candidates[0][1]
+    """唯一可售方案：体验版 tiyan。"""
+    return _DEFAULT_PACK
 
 
 def resolve_pack_id(*, intent: UpgradeIntent, module_id: str = "", reason: str = "") -> str:
+    from services.plan_tiers import current_plan_id, suggest_upgrade_plan
+
+    cur = current_plan_id()
     if intent is UpgradeIntent.RENEW:
         return infer_renew_pack_id()
     if intent in (UpgradeIntent.ACTIVATE, UpgradeIntent.UPGRADE):
+        if module_id:
+            return suggest_upgrade_plan(module_id=module_id, current_plan_id=cur)
+        if cur:
+            return cur
         return suggest_pack_for_module(module_id)
     return _DEFAULT_PACK
 
 
-def intent_headline(*, intent: UpgradeIntent, module_id: str = "") -> str:
+def intent_headline(*, intent: UpgradeIntent, module_id: str = "", reason: str = "") -> str:
+    from services.user_plan_presentation import user_upgrade_headline
+
     name = module_display_name(module_id)
+    try:
+        from services.license_manager import global_license_manager as lm
+
+        if lm.is_expired_trial() or is_trial_expired_block(reason):
+            return user_upgrade_headline(module_name=name)
+    except Exception:
+        if is_trial_expired_block(reason):
+            return user_upgrade_headline(module_name=name)
     if intent is UpgradeIntent.RENEW:
+        if name:
+            return user_upgrade_headline(module_name=name)
         return "续费后即可继续使用"
-    if intent is UpgradeIntent.UPGRADE and name:
-        return f"升级后即可使用「{name}」"
-    if name:
-        return f"开通后即可使用「{name}」"
-    return "开通正式版，解锁全部办公工具"
+    if intent is UpgradeIntent.UPGRADE:
+        from services.plan_tiers import current_plan_id, plan_display_name, suggest_upgrade_plan, upgrade_hint
+
+        hint = upgrade_hint(module_id=module_id, current_plan_id=current_plan_id())
+        if hint:
+            return hint
+        tgt = suggest_upgrade_plan(module_id=module_id, current_plan_id=current_plan_id())
+        if name:
+            return f"升级至「{plan_display_name(tgt)}」即可使用「{name}」"
+        return "升级产品方案以解锁更多功能"
+    return user_upgrade_headline(module_name=name)
 
 
 def intent_window_title(*, intent: UpgradeIntent) -> str:
@@ -122,10 +144,83 @@ def intent_window_title(*, intent: UpgradeIntent) -> str:
     return "开通"
 
 
-def primary_action_label(*, intent: UpgradeIntent | None = None, price_yuan: int) -> str:
+def primary_action_label(*, intent: UpgradeIntent | None = None, price_yuan: int = 0) -> str:
     if intent is UpgradeIntent.RENEW:
-        return f"一键续费 ¥{price_yuan}"
-    return f"一键开通 ¥{price_yuan}"
+        return "提交续费申请"
+    return "提交开通申请"
+
+
+def submit_purchase_request(
+    *,
+    pack_id: str = "",
+    plan_id: str = "",
+    name: str,
+    phone: str,
+) -> Tuple[bool, str, dict[str, Any]]:
+    """终端购买：仅创建订单并同步到运营台，不在客户端走支付/自动激活。"""
+    from services.commerce_client import create_order
+    from services.license_manager import global_license_manager
+    from services.product_plans import resolve_plan_id
+
+    meta: dict[str, Any] = {
+        "order_no": "",
+        "pending_payment": True,
+        "pending_admin": True,
+        "pack_id": "",
+        "plan_id": "",
+    }
+
+    phone = str(phone or "").strip()
+    name = str(name or "").strip()
+    if len(phone) != 11 or not phone.isdigit():
+        return False, "请填写 11 位手机号", meta
+    if not name:
+        name = "用户"
+
+    pid = resolve_plan_id(plan_id=plan_id, pack_id=pack_id) or _DEFAULT_PACK
+    meta["plan_id"] = pid
+    meta["pack_id"] = pid
+    mid = global_license_manager.get_machine_id()
+
+    ok, order, err = create_order(
+        plan_id=pid,
+        customer_name=name,
+        phone=phone,
+        machine_id=mid,
+    )
+    if not ok:
+        return False, err or "创建订单失败", meta
+    order_no = str((order or {}).get("order_no") or "")
+    if not order_no:
+        return False, "订单号为空", meta
+    meta["order_no"] = order_no
+    save_profile(name=name, phone=phone)
+    _save_commerce_meta(plan_id=pid, order_no=order_no)
+    return (
+        True,
+        f"开通申请已提交（订单 {order_no}）。请等待运营台确认后，点「同步授权」刷新本机授权。",
+        meta,
+    )
+
+
+def purchase_pack(
+    *,
+    pack_id: str = "",
+    plan_id: str = "",
+    name: str,
+    phone: str,
+) -> Tuple[bool, str, dict[str, Any]]:
+    """终端统一走运营台订单，不在客户端支付。"""
+    return submit_purchase_request(pack_id=pack_id, plan_id=plan_id, name=name, phone=phone)
+
+
+def purchase_plan(
+    *,
+    plan_id: str,
+    name: str,
+    phone: str,
+) -> Tuple[bool, str, dict[str, Any]]:
+    return purchase_pack(plan_id=plan_id, name=name, phone=phone)
 
 
 def _list_cloud_packs() -> Tuple[bool, list[dict[str, Any]], dict, str]:
@@ -161,87 +256,9 @@ def _save_commerce_meta(*, plan_id: str, order_no: str) -> None:
         info["plan_id"] = plan_id
     if order_no:
         info["last_order_no"] = order_no
+        info["order_no"] = order_no
     global_license_manager.license_info.update(info)
     global_license_manager.save_license()
-
-
-def purchase_pack(
-    *,
-    pack_id: str = "",
-    plan_id: str = "",
-    name: str,
-    phone: str,
-) -> Tuple[bool, str, dict[str, Any]]:
-    """创建订单 → 模拟/真实支付 → 激活。meta 含 order_no、plan_id、pending_payment。"""
-    from services.commerce_client import create_order, pay_order
-    from services.license_manager import global_license_manager
-    from services.notify_bus import emit_license_changed
-    from services.product_plans import resolve_plan_id
-
-    meta: dict[str, Any] = {
-        "order_no": "",
-        "pending_payment": False,
-        "renewed": False,
-        "pack_id": "",
-        "plan_id": "",
-    }
-
-    phone = str(phone or "").strip()
-    name = str(name or "").strip()
-    if len(phone) != 11 or not phone.isdigit():
-        return False, "请填写 11 位手机号", meta
-    if not name:
-        name = "用户"
-
-    pid = resolve_plan_id(plan_id=plan_id, pack_id=pack_id) or _DEFAULT_PACK
-    meta["plan_id"] = pid
-    meta["pack_id"] = pid
-    mid = global_license_manager.get_machine_id()
-
-    ok, order, err = create_order(
-        plan_id=pid,
-        customer_name=name,
-        phone=phone,
-        machine_id=mid,
-    )
-    if not ok:
-        return False, err or "创建订单失败", meta
-    order_no = str((order or {}).get("order_no") or "")
-    if not order_no:
-        return False, "订单号为空", meta
-    meta["order_no"] = order_no
-
-    ok, quote, _ = fetch_renew_quote(pid)
-    mock_pay = quote.get("mock_pay", True) if ok else True
-    if not mock_pay:
-        meta["pending_payment"] = True
-        return False, f"订单 {order_no} 已创建，请完成支付后点「同步已付订单」", meta
-
-    ok, paid, err = pay_order(order_no=order_no, phone=phone, machine_id=mid)
-    if not ok:
-        return False, err or "支付失败", meta
-
-    key = str((paid or {}).get("license_key") or "").strip()
-    if not key:
-        return False, "支付成功但未返回授权码", meta
-
-    act_ok, act_msg = _activate_purchased_key(key, name=name, phone=phone)
-    if not act_ok:
-        return False, act_msg or "激活失败", meta
-
-    _save_commerce_meta(plan_id=pid, order_no=order_no)
-    meta["renewed"] = False
-    emit_license_changed()
-    return True, global_license_manager.get_validity_text(), meta
-
-
-def purchase_plan(
-    *,
-    plan_id: str,
-    name: str,
-    phone: str,
-) -> Tuple[bool, str, dict[str, Any]]:
-    return purchase_pack(plan_id=plan_id, name=name, phone=phone)
 
 
 def purchase_one_click(
@@ -304,7 +321,7 @@ def build_offer(*, module_id: str = "", reason: str = "") -> dict[str, Any]:
         "plan_id": plan_id,
         "module_id": module_id,
         "module_name": module_display_name(module_id),
-        "headline": intent_headline(intent=intent, module_id=module_id),
+        "headline": intent_headline(intent=intent, module_id=module_id, reason=reason),
         "window_title": intent_window_title(intent=intent),
         "name": profile.get("name") or "用户",
         "phone": profile.get("phone") or "",

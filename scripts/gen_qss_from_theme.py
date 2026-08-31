@@ -222,6 +222,7 @@ def build_qss(pal: dict) -> str:
     menu_sel_fg = _ensure_contrast(on_primary, menu_sel_bg, 4.5)
     disabled_bg = _p(pal, "primary_disabled_bg", "#F0F3F8")
     surface_raised = _p(pal, "surface_raised", surface)
+    surface_alt = _p(pal, "surface_alt", surface_raised)
     cal_nav_bg = _p(pal, "header_bg", primary)
     cal_nav_fg = _ensure_contrast(_p(pal, "header_fg", on_primary), cal_nav_bg, 4.5)
 
@@ -344,12 +345,38 @@ QPushButton:disabled {{
     border-color: {border};
 }}
 
+/* 带菜单的按钮：右侧三角垂直居中（修复默认偏下） */
+QPushButton[hasMenu="true"] {{
+    padding-right: 22px;
+}}
+
+QPushButton::menu-indicator {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 10px;
+    height: 10px;
+    right: 8px;
+    top: 50%;
+    margin-top: -5px;
+}}
+
 QToolButton {{
     outline: none;
 }}
 
 QToolButton:focus {{
     outline: none;
+}}
+
+/* 通用 ToolButton 菜单三角居中（壳层/更多等） */
+QToolButton::menu-indicator {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 10px;
+    height: 10px;
+    right: 6px;
+    top: 50%;
+    margin-top: -5px;
 }}
 
 QAbstractButton:focus {{
@@ -597,7 +624,11 @@ QComboBox::down-arrow {{
     image: url(__TOA3_ARROW_DOWN__);
     width: 12px;
     height: 12px;
-    margin-right: 4px;
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    right: 8px;
+    top: 50%;
+    margin-top: -6px;
 }}
 
 /* 一体式 DateEdit：外框像输入框，内嵌无边日期字 + 日历图标 */
@@ -771,23 +802,38 @@ QTreeWidget::item:hover {{
     color: {row_hover_fg};
 }}
 
-/* 记事大纲：固定左边距防选中跳动；选中色压过 hover；弱化斑马纹干扰层级 */
+/* 记事大纲：卡片容器 + 轻选中，层级线更清晰 */
+QWidget#OutlineTreePanel {{
+    background: {surface_alt};
+    border: 1px solid {border};
+    border-radius: 10px;
+    padding: 2px;
+}}
+
+QWidget#OutlineTreeHeader {{
+    padding: 0 2px 2px 2px;
+}}
+
 QTreeWidget#OutlineTree {{
-    alternate-background-color: {surface};
+    alternate-background-color: transparent;
+    background: transparent;
+    border: none;
+    outline: none;
     show-decoration-selected: 1;
 }}
 
 QTreeWidget#OutlineTree::item {{
-    min-height: 30px;
-    padding: 3px 6px;
+    min-height: 34px;
+    padding: 5px 10px;
     border-left: 3px solid transparent;
-    margin: 0px;
+    border-radius: 6px;
+    margin: 2px 4px;
 }}
 
 QTreeWidget#OutlineTree::item:hover {{
     background: {row_hover};
     color: {text};
-    border-left: 3px solid transparent;
+    border-left: 3px solid {border};
 }}
 
 QTreeWidget#OutlineTree::item:selected,
@@ -796,6 +842,85 @@ QTreeWidget#OutlineTree::item:selected:active {{
     background: {nav_active_bg};
     color: {nav_active_fg};
     border-left: 3px solid {nav_indicator};
+    font-weight: 600;
+}}
+
+QWidget#NotepadToolbar {{
+    background: {surface_alt};
+    border: 1px solid {border};
+    border-radius: 10px;
+}}
+
+LineEdit#NotepadSearchEdit {{
+    min-height: 32px;
+    border-radius: 8px;
+}}
+
+QWidget#NotepadEditorChrome {{
+    background: {surface_alt};
+    border: 1px solid {border};
+    border-radius: 10px;
+}}
+
+QWidget#NotepadEditorSurface {{
+    background: {surface};
+    border: 1px solid {border};
+    border-radius: 10px;
+}}
+
+QWidget#NotepadFmtToolbar {{
+    background: {bg};
+    border: 1px solid {border};
+    border-radius: 8px;
+}}
+
+QWidget#NotepadEditorFooter {{
+    border-top: 1px solid {border};
+    padding-top: 2px;
+}}
+
+PlainTextEdit#MarkdownSourceEdit,
+TextEdit#MarkdownPreviewEdit,
+TextEdit#MarkdownDesignEdit {{
+    border: none;
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: transparent;
+}}
+
+QWidget#EditorViewTabs {{
+    background: {bg};
+    border: 1px solid {border};
+    border-radius: 999px;
+    padding: 2px;
+}}
+
+QTabBar#EditorViewTabBar {{
+    background: transparent;
+}}
+
+QTabBar#EditorViewTabBar::tab {{
+    min-width: 56px;
+    min-height: 28px;
+    max-height: 30px;
+    padding: 4px 16px;
+    margin: 1px;
+    background: transparent;
+    color: {text2};
+    border: none;
+    border-radius: 999px;
+}}
+
+QTabBar#EditorViewTabBar::tab:selected {{
+    background: {surface};
+    color: {primary};
+    font-weight: 600;
+    border: 1px solid {border};
+}}
+
+QTabBar#EditorViewTabBar::tab:hover:!selected {{
+    background: {nav_hover_bg};
+    color: {text};
 }}
 
 QTreeWidget#OutlineTree::branch {{
@@ -1594,6 +1719,39 @@ QPushButton#NavButton:checked:hover {{
     color: {nav_active_fg};
 }}
 
+QPushButton#ThemePickerBtn {{
+    background: {surface};
+    color: {text};
+    border: 1px solid {border};
+    border-radius: 8px;
+    min-height: 40px;
+    padding: 8px 12px;
+    text-align: left;
+    outline: none;
+}}
+
+QPushButton#ThemePickerBtn:focus {{
+    outline: none;
+}}
+
+QPushButton#ThemePickerBtn:hover {{
+    background: {_p(pal, "surface_raised", bg)};
+    border-color: {_p(pal, "border_strong", border)};
+}}
+
+QPushButton#ThemePickerBtn:checked {{
+    background: {_p(pal, "surface_raised", bg)};
+    border: 2px solid {primary};
+    color: {text};
+    font-weight: 600;
+    padding: 7px 11px;
+}}
+
+QPushButton#ThemePickerBtn:checked:hover {{
+    background: {_p(pal, "surface_raised", bg)};
+    border: 2px solid {primary};
+}}
+
 QWidget#ShellSubHeader {{
     background: {surface};
     border-bottom: 1px solid {border};
@@ -1706,6 +1864,193 @@ QFrame#ToolLaunchCard {{
 QFrame#ToolLaunchCard[hover="true"] {{
     background: {_p(pal, "surface_hover", bg)};
     border: 1px solid {primary};
+}}
+
+QFrame#MediaStudioLeft {{
+    background: {surface};
+    border: 1px solid {border};
+    border-radius: 12px;
+}}
+
+QPlainTextEdit#MediaStudioPrompt {{
+    min-height: 80px;
+    max-height: 80px;
+}}
+
+QFrame#MediaStudioLeft QWidget#FormRow {{
+    min-height: 32px;
+}}
+
+QFrame#MediaStudioLeft QLabel#FormRowLabel {{
+    min-width: 44px;
+}}
+
+QLabel#MediaWorkPlayBadge {{
+    background: transparent;
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 600;
+}}
+
+QLabel#HarnessWebOverlay {{
+    background: rgba(0, 0, 0, 0.45);
+    color: #F5F5F7;
+    padding: 12px 16px;
+}}
+
+QScrollArea#MediaStudioLeftScroll {{
+    background: transparent;
+    border: none;
+}}
+
+QScrollArea#MediaStudioLeftScroll QScrollBar:vertical {{
+    width: 4px;
+    background: transparent;
+    margin: 2px 0px;
+}}
+
+QScrollArea#MediaStudioLeftScroll QScrollBar::handle:vertical {{
+    background: {_p(pal, "scrollbar_thumb", "rgba(255,255,255,0.22)")};
+    min-height: 18px;
+    border-radius: 2px;
+}}
+
+QScrollArea#MediaStudioLeftScroll QScrollBar::add-line:vertical,
+QScrollArea#MediaStudioLeftScroll QScrollBar::sub-line:vertical {{
+    height: 0px;
+    background: none;
+    border: none;
+}}
+
+QScrollArea#MediaStudioLeftScroll QScrollBar::add-page:vertical,
+QScrollArea#MediaStudioLeftScroll QScrollBar::sub-page:vertical {{
+    background: transparent;
+}}
+
+QScrollArea#MediaStudioFilmScroll QScrollBar:horizontal {{
+    height: 4px;
+    background: transparent;
+    margin: 0px 2px;
+}}
+
+QScrollArea#MediaStudioFilmScroll QScrollBar::handle:horizontal {{
+    background: {_p(pal, "scrollbar_thumb", "rgba(255,255,255,0.22)")};
+    min-width: 18px;
+    border-radius: 2px;
+}}
+
+QScrollArea#MediaStudioFilmScroll QScrollBar::add-line:horizontal,
+QScrollArea#MediaStudioFilmScroll QScrollBar::sub-line:horizontal {{
+    width: 0px;
+    background: none;
+    border: none;
+}}
+
+QFrame#MediaStudioVHandle {{
+    background: {border};
+    border-radius: 2px;
+    margin: 2px 16px;
+}}
+
+QFrame#MediaStudioVHandle:hover {{
+    background: {primary};
+}}
+
+QFrame#MediaStudioFooter {{
+    border-top: 1px solid {border};
+    padding-top: 4px;
+    margin-top: 2px;
+}}
+
+QFrame#MediaStudioStage {{
+    background: {_p(pal, "surface_inset", bg)};
+    border: 1px solid {border};
+    border-radius: 12px;
+}}
+
+QLabel#MediaPreviewCanvas {{
+    background: transparent;
+    color: {text2};
+    padding: 12px;
+    font-size: 10pt;
+}}
+
+QFrame#MediaWorksBlock {{
+    background: transparent;
+    border-top: 1px solid {border};
+    padding-top: 6px;
+}}
+
+QLabel#MediaWorkThumb, QLabel#MediaRefThumbImage {{
+    background: transparent;
+}}
+
+QFrame#MediaRefThumb {{
+    background: {_p(pal, "surface_raised", surface)};
+    border: 1px solid {border};
+    border-radius: 8px;
+}}
+
+QFrame#MediaRefThumb:hover {{
+    border-color: {primary};
+}}
+
+QFrame#MediaRefThumb QPushButton#MediaRefRemoveBtn {{
+    min-height: 22px;
+    max-height: 24px;
+    padding: 0px 6px;
+    font-size: 9pt;
+}}
+
+QFrame#MediaRefAddTile {{
+    background: transparent;
+    border: 1px dashed {border};
+    border-radius: 8px;
+}}
+
+QFrame#MediaWorkTile {{
+    background: {_p(pal, "surface_raised", surface)};
+    border: 1px solid {border};
+    border-radius: 8px;
+}}
+
+QFrame#MediaWorkTile:hover {{
+    border-color: {_p(pal, "border_strong", border)};
+    background: {_p(pal, "surface_hover", surface)};
+}}
+
+QFrame#MediaWorkTile[selected="true"] {{
+    border: 2px solid {primary};
+    background: {_p(pal, "surface_hover", surface)};
+}}
+
+QFrame#MediaTaskPanel {{
+    background: {surface};
+    border: 1px solid {border};
+    border-radius: 12px;
+}}
+
+QFrame#MediaTaskRow {{
+    background: {_p(pal, "surface_raised", surface)};
+    border: 1px solid {border};
+    border-radius: 8px;
+}}
+
+QFrame#MediaTaskRow QPushButton {{
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0 6px;
+    font-size: 9pt;
+}}
+
+QFrame#MediaTaskRow QProgressBar#MediaTaskProgress {{
+    min-height: 4px;
+    max-height: 4px;
+    border-radius: 2px;
+}}
+
+QFrame#MediaTaskRow QProgressBar#MediaTaskProgress::chunk {{
+    border-radius: 2px;
 }}
 
 QLabel#ToolCardTitle {{
