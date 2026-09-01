@@ -22,6 +22,13 @@ RELEASE_ASSET_SKIP_PREFIXES: tuple[str, ...] = (
     "samples/license_acceptance",
 )
 
+# 发版 assets 下不打包的文件名（任意层级；含开发机绝对路径的 Agent 说明）
+RELEASE_ASSET_SKIP_NAMES: frozenset[str] = frozenset(
+    {
+        "AGENTS.md",
+    }
+)
+
 # 永不进入发布目录的文件名（任意层级）
 FORBIDDEN_RELEASE_NAMES: frozenset[str] = frozenset(
     {
@@ -66,6 +73,9 @@ def shipped_override_path(packaging_dir: Path, filename: str) -> Path | None:
 def release_asset_rel_should_skip(rel_posix: str) -> bool:
     """rel_posix 相对 assets/ 根，如 samples/comfyui/foo.json。"""
     rel = rel_posix.replace("\\", "/").strip().lstrip("/")
+    name = Path(rel).name
+    if name in RELEASE_ASSET_SKIP_NAMES:
+        return True
     for prefix in RELEASE_ASSET_SKIP_PREFIXES:
         p = prefix.strip("/")
         if rel == p or rel.startswith(p + "/"):
