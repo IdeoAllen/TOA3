@@ -1,15 +1,11 @@
 # 本地回退清单（远程 manifest 不可达时使用）
 # 须与运营台当前 stable 对齐；日常发版后请同步 bump。
 product: TOA3
-version: "3.1.3"
+version: "3.1.4"
 channel: stable
 release_notes: |
-  TOA3 3.1.3 · 首页与发版瘦身
-  · 首页：精选办公/套件入口，不再整表跟菜单渲染；顶栏 ⌂ 打开「检索工作」
-  · 模型管理：进页秒开，本机服务探测改后台异步
-  · Harness / 媒体工坊：整窗抖动与进页卡顿优化
-  · 菜单：二级可升为顶栏子模块；单功能子模块侧栏自动收起
-  · 正式安装包：不含预置模型 catalog / 本机生图下载清单；高级算力用户自行绑定或向导安装
-  · 购买面板：离线先显本机方案；授权验收样例与若干 UI 修复
+  TOA3 3.1.4 · 生成交付报告与 Word 导出修复
+  · 业务侧新增「生成交付报告」：班级交付目录 → Word 封面大纲贴图 + Excel 层级图片统计（迁自 TOA2）
+  · 修复 Word 封面后多出一页空白（分页符接到封面页脚）
 download_page: https://www.yczh.tech/downloads/
-download_url: "https://www.yczh.tech/downloads/TOA3-Setup-v3.1.3.exe"
+download_url: "https://www.yczh.tech/downloads/TOA3-Setup-v3.1.4.exe"

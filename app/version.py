@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """TOA3 版本号（单一来源：发版前只改此处，打包/Portal/运营台须与此一致）。"""
-APP_VERSION = "3.1.3"
+APP_VERSION = "3.1.4"
 APP_NAME = "TOA3"
 
 
