@@ -39,6 +39,8 @@ from widgets.selection import CheckBox, RadioButton, Slider, Switch
 from widgets.themed_labels import HintLabel, PageTitle, SectionTitle, SemanticLabel
 from widgets.theme_picker import ThemePicker
 from widgets.tool_cards import StatusDot, ToolLaunchCard
+from widgets.home_hero import HomeHeroBand, HomePromiseStrip, HomeSectionLabel
+from widgets.charts import PieChartWidget
 
 # list_edit 依赖 BaseDialog，延迟导出以免与 core.user_messages 循环导入
 _LIST_EDIT_NAMES = frozenset(
@@ -99,7 +101,11 @@ CONTROL_CLASSES = [
     "manage_panel_from_fields",
     "ToolLaunchCard",
     "StatusDot",
+    "HomeHeroBand",
+    "HomePromiseStrip",
+    "HomeSectionLabel",
     "ThemePicker",
+    "PieChartWidget",
 ]
 
 __all__ = CONTROL_CLASSES

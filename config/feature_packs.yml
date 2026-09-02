@@ -21,7 +21,7 @@ packs:
       - user_extensions
       - harness_agent
 
-  # 单机免费层（不联网；登录「体验版」入口，非本方案售卖）
+  # 单机免费层（不联网；登录「进入软件」入口，非本方案售卖）
   local_free:
     name: 单机基础版
     desc: 装完即用；离线本地小工具

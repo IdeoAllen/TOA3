@@ -315,6 +315,15 @@ QLabel[class="semantic-info"][compact="true"] {{
     min-height: 18px;
 }}
 
+QLabel[class="semantic-success"][score="true"],
+QLabel[class="semantic-danger"][score="true"] {{
+    background: transparent;
+    padding: 0 2px;
+    font-size: 16pt;
+    font-weight: 700;
+    min-height: 0;
+}}
+
 QPushButton {{
     min-height: 28px;
     padding: 4px 12px;
@@ -823,11 +832,11 @@ QTreeWidget#OutlineTree {{
 }}
 
 QTreeWidget#OutlineTree::item {{
-    min-height: 34px;
-    padding: 5px 10px;
+    min-height: 30px;
+    padding: 2px 8px;
     border-left: 3px solid transparent;
     border-radius: 6px;
-    margin: 2px 4px;
+    margin: 1px 2px;
 }}
 
 QTreeWidget#OutlineTree::item:hover {{
@@ -839,9 +848,9 @@ QTreeWidget#OutlineTree::item:hover {{
 QTreeWidget#OutlineTree::item:selected,
 QTreeWidget#OutlineTree::item:selected:hover,
 QTreeWidget#OutlineTree::item:selected:active {{
-    background: {nav_active_bg};
-    color: {nav_active_fg};
-    border-left: 3px solid {nav_indicator};
+    background: {row_sel};
+    color: {row_sel_text};
+    border-left: 3px solid {primary};
     font-weight: 600;
 }}
 
@@ -919,7 +928,7 @@ QTabBar#EditorViewTabBar::tab:selected {{
 }}
 
 QTabBar#EditorViewTabBar::tab:hover:!selected {{
-    background: {nav_hover_bg};
+    background: {row_hover};
     color: {text};
 }}
 
@@ -1864,6 +1873,122 @@ QFrame#ToolLaunchCard {{
 QFrame#ToolLaunchCard[hover="true"] {{
     background: {_p(pal, "surface_hover", bg)};
     border: 1px solid {primary};
+}}
+
+QFrame#ToolLaunchCard[featured="true"] {{
+    background: {surface};
+    border: 1px solid {border};
+    border-radius: 14px;
+    min-height: 132px;
+    padding: 2px;
+}}
+
+QFrame#ToolLaunchCard[featured="true"][hover="true"] {{
+    background: {_p(pal, "surface_hover", bg)};
+    border: 2px solid {primary};
+}}
+
+QFrame#HomeHeroBand {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 {_p(pal, "header_gradient_start", _p(pal, "header_bg", primary))},
+        stop:1 {_p(pal, "header_gradient_end", _p(pal, "nav_bg", primary))});
+    border: none;
+    border-radius: 16px;
+    min-height: 168px;
+}}
+
+QLabel#HomeHeroBrand {{
+    color: {_p(pal, "header_fg", "#F0F7FF")};
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: transparent;
+    border: none;
+}}
+
+QLabel#HomeHeroTagline {{
+    color: {_p(pal, "header_fg", "#F0F7FF")};
+    font-size: 15px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+}}
+
+QLabel#HomeHeroStatement {{
+    color: rgba(240, 247, 255, 0.82);
+    font-size: 13px;
+    background: transparent;
+    border: none;
+}}
+
+QLabel#HomeHeroLogo {{
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px;
+}}
+
+QPushButton#HomeHeroPrimary {{
+    min-height: 34px;
+    padding: 6px 18px;
+    font-weight: 600;
+}}
+
+QPushButton#HomeHeroSecondary {{
+    min-height: 34px;
+    padding: 6px 14px;
+    color: {_p(pal, "header_fg", "#F0F7FF")};
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+}}
+
+QPushButton#HomeHeroSecondary:hover {{
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}}
+
+QLabel#HomeSectionEyebrow {{
+    color: {primary};
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    background: transparent;
+    border: none;
+}}
+
+QLabel#HomeSectionTitle {{
+    color: {text};
+    font-size: 18px;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}}
+
+QFrame#HomePromiseStrip {{
+    background: {_p(pal, "surface_hover", surface)};
+    border: 1px solid {border};
+    border-radius: 12px;
+}}
+
+QLabel#HomePromiseChip {{
+    color: {text};
+    font-size: 12px;
+    background: transparent;
+    border: none;
+    padding: 2px 4px;
+}}
+
+QWidget#HomePromiseSep {{
+    background: {border};
+    border: none;
+    max-width: 1px;
+}}
+
+QLabel#HomeAdvancedNote {{
+    color: {_p(pal, "text_muted", text)};
+    font-size: 12px;
+    background: transparent;
+    border: none;
+    margin-top: 4px;
 }}
 
 QFrame#MediaStudioLeft {{

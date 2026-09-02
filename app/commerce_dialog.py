@@ -18,6 +18,9 @@ from services.notify_bus import emit_license_changed
 from services.upgrade_flow import classify_intent, intent_headline
 from services.user_plan_presentation import (
     user_account_subtitle,
+    user_auth_failure_hint,
+    user_entitlement_status_line,
+    user_offline_grace_hint,
     user_plan_tier,
     user_product_pack_label,
     user_validity_line,
@@ -57,18 +60,25 @@ class _AccountSummarySection(FormSection):
         super().__init__("当前状态", parent)
         form = QFormLayout()
         self._tier = value_label("")
+        self._l2 = value_label("", selectable=True)
         self._pack = value_label("")
         self._validity = value_label("", selectable=True)
         form.addRow("当前档位", self._tier)
+        form.addRow("云状态", self._l2)
         form.addRow("当前套餐", self._pack)
         form.addRow("有效期", self._validity)
         wrap = QWidget()
         wrap.setLayout(form)
         self.add_widget(wrap)
+        grace = user_offline_grace_hint()
+        self._grace_hint = HintLabel(grace) if grace else None
+        if self._grace_hint is not None:
+            self.add_widget(self._grace_hint)
         self.refresh()
 
     def refresh(self) -> None:
         self._tier.setText(user_plan_tier())
+        self._l2.setText(user_entitlement_status_line())
         self._pack.setText(user_product_pack_label())
         self._validity.setText(user_validity_line(date_only=True))
 
@@ -271,7 +281,10 @@ class LicenseActivateDialog(BaseDialog):
     def _on_activate_done(self, ok: bool, msg: str, payload: object) -> None:
         self._set_busy(False)
         if not ok:
-            show_error(self, msg or "激活失败")
+            err = msg or "激活失败"
+            hint = user_auth_failure_hint(err)
+            body = f"{err}\n\n{hint}" if hint else err
+            show_error(self, body, title="联网激活失败")
             return
         name = str((payload or {}).get("name") or self._user.text().strip() or "用户")
         role = str((payload or {}).get("role") or "user")

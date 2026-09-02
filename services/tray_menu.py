@@ -39,6 +39,7 @@ class TrayMenuModel:
     license_line: str
     show_expiry_action: bool
     expiry_label: str = "授权即将过期"
+    expiry_kind: str = "renew"  # renew | upgrade | standalone
 
 
 def tray_module_ids() -> list[str]:
@@ -118,6 +119,8 @@ def build_tray_menu_model(
 
     license_line = "—"
     show_expiry = False
+    expiry_label = "授权即将过期"
+    expiry_kind = "renew"
     try:
         from services.user_plan_presentation import user_status_plan_label
 
@@ -127,11 +130,26 @@ def build_tray_menu_model(
 
     try:
         from services.license_manager import global_license_manager as lm
+        from services.user_plan_presentation import OFFICIAL_TIER_LABEL, TRIAL_TIER_LABEL
 
-        if lm.is_licensed() and not lm.is_standalone_mode():
-            days = lm.get_remaining_days()
-            if days != float("inf") and 0 <= int(days) <= 7:
+        days = lm.get_remaining_days()
+        if days != float("inf") and 0 <= int(days) <= 7:
+            if lm.is_standalone_mode():
                 show_expiry = True
+                expiry_kind = "standalone"
+                expiry_label = f"{TRIAL_TIER_LABEL}将于 {int(days)} 天后到期"
+            elif lm.is_licensed():
+                show_expiry = True
+                ent = lm.get_entitlement()
+                if ent == "trial":
+                    expiry_kind = "upgrade"
+                    expiry_label = f"试用授权将于 {int(days)} 天后到期"
+                elif ent == "paid":
+                    expiry_kind = "renew"
+                    expiry_label = f"{OFFICIAL_TIER_LABEL}即将过期"
+                else:
+                    expiry_kind = "renew"
+                    expiry_label = "授权即将过期"
     except Exception:
         pass
 
@@ -139,6 +157,8 @@ def build_tray_menu_model(
         summon=tuple(summon),
         license_line=license_line,
         show_expiry_action=show_expiry,
+        expiry_label=expiry_label,
+        expiry_kind=expiry_kind,
     )
 
 

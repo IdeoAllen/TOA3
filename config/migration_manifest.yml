@@ -132,13 +132,14 @@ modules:
       - 若日后要开日常通用入口，须与 watermark_photo_generator 文案边界再论证
 
   directory_generator:
-    status: mvp
+    status: done
     priority: P0
     office_freq: high
     toa2_ref: modules/directory_generator/
-    note: 个人最高频·快速建多文件夹；Top3 approved；模板+粘贴名单+预览
-    gaps:
-      - 主理人点验模板/幂等后清 gaps
+    note: >-
+      Wave★-7 收尾；Top3 approved；主理人 2026-09-01「通过」UI 点验；
+      粘贴名单/多模板/幂等已兑现；Wave F 可开
+    gaps: []
 
   screenshot_translate:
     status: missing
@@ -216,13 +217,16 @@ modules:
       - 批量与 EXIF 无损方向
 
   batch_rename:
-    status: Hold
-    priority: P2
-    office_freq: low
+    status: mvp
+    priority: P1
+    office_freq: high
     toa2_ref: —
-    note: 菜单已隐藏；主理人判定无清晰场景
+    note: >-
+      Wave F-3；Top3 approved；预设/冲突门禁/撤销/链式提示已落地；待主理人点验后清 gaps→done
     gaps:
-      - 无强需求前不进菜单
+      - 主理人点验：照片/课件预设
+      - 主理人点验：冲突红字禁止执行
+      - 主理人点验：撤销本轮 + 去打包归档
 
   image_to_scan:
     status: mvp
@@ -268,7 +272,7 @@ modules:
     priority: P1
     toa2_ref: —
     note: >-
-      TOA3「目录结构检查」：相对路径清单/类型统计/空目录与命名；
+      TOA3「目录透视」：相对路径清单/类型占比饼图/空目录与命名；
       非 TOA2 DirectoryCheckerApp（Word 大纲贴图 + Excel 图片统计）。
       后者见 deliverable_directory_check。
     gaps: []
@@ -362,20 +366,36 @@ modules:
       - 钉钉/邮件提醒联动
 
   pdf_toolkit:
-    status: stub
-    priority: P2
+    status: mvp
+    priority: P1
+    office_freq: high
     toa2_ref: —
-    note: 侧栏已隐藏（待开发占位）
+    note: >-
+      Wave F-1；Top3 approved；合并/拆分/抽页已落地；
+      坏文件点名可续；边界文案已写；待主理人点验后清 gaps→done
     gaps:
-      - PDF 合并
-      - PDF 拆分
-      - 按页提取
+      - 主理人点验：拖拽/上下调序合并页数合计
+      - 主理人点验：拆分与按页提取
+      - 主理人点验：损坏 PDF 红色点名可续跑
+
+  file_packager:
+    status: mvp
+    priority: P1
+    office_freq: high
+    toa2_ref: —
+    note: >-
+      Wave F-2；Top3 approved；打包/剔项/清单已落地；待主理人点验后清 gaps→done
+    gaps:
+      - 主理人点验：两套预设命名
+      - 主理人点验：剔空目录与排除后缀
+      - 主理人点验：清单.txt + show_saved
 
   excel_cleaner:
     status: stub
     priority: P2
+    office_freq: medium
     toa2_ref: —
-    note: 侧栏已隐藏（待开发占位）
+    note: 侧栏已隐藏；Wave F 明确本波不做；有主理人强痛再 Top3
     gaps:
       - 空行/重复行清洗
       - 列格式规范化

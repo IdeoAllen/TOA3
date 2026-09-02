@@ -2,10 +2,10 @@
 
 vision:
   # 对外使命（首页 / 关于首屏 · 不是「口号」）
-  tagline: 办公极简伴侣 · 少点一下，多干一件事
+  tagline: 打开就能用 · 用完不想换
   mission_label: 使命
   # 愿景（我们要去哪）
-  statement: 让办公人员感到极致简便——打开就能用，用完不想换别的软件。
+  statement: 少点一下，多干一件事——把截图、记事、剪贴板与目录文件，收进同一处顺手工具。
   # 目标（我们要成为谁）
   goal: 成为办公室工作人员最爱、最方便、最离不开的桌面办公软件。
   # 集成定位（首页精简条）
@@ -32,8 +32,8 @@ vision:
 
 # 首页展示（curated · 不随 app.yml 菜单整表渲染）
 home:
-  search_hint: 点击顶栏 ⌂ 或按 Ctrl+K，输入关键字直达任一工作。
-  advanced_note: 文生图、视频、Harness 等高级算力请到「系统设置 → 模型管理」自行绑定 Key 或安装本机组件；向导式配置，无需手改配置文件。
+  search_hint: 顶栏 ⌂ 或 Ctrl+K，关键字直达任一工作。
+  advanced_note: 文生图、视频、Harness 等请到「系统设置 → 模型管理」绑定；向导配置，无需手改文件。
   office_pins:
     - id: quick_notepad
       title: 快速记事
@@ -53,16 +53,17 @@ home:
   suite_highlights:
     - id: directory_generator
       title: 目录生成
-      subtitle: 培训交付结构
-    - id: batch_rename
-      title: 批量重命名
-      subtitle: 整理文件名
-    - id: watermark_remover
-      title: 去水印
-      subtitle: 框选清理
+      subtitle: 粘贴名单建夹
+    - id: pdf_toolkit
+      title: PDF 工具
+      subtitle: 合并拆分抽页
+    - id: file_packager
+      title: 打包归档
+      subtitle: 规范命名 zip
     - id: column_preview
       title: 桌面浏览
       subtitle: 列式预览
+    # Wave F 模块已露出；watermark_remover 仍在办公/图片线
 
 module_groups:
   # 顶栏一级 = 子模块（子系统）；侧栏二级 = 功能模块（见 shell 术语表）
@@ -88,8 +89,10 @@ roadmap:
     - 无感更新：后台检测、托盘提示、可选静默覆盖安装（单机 Inno 同 AppId）
     - 截图标注继续对齐微信能力（钉选/历史面板等）
     - 腾讯文档 OAuth 联调
-    - 通用生成引擎加深（完整 generic_generator）
+    - Wave F 文件四件套：directory_generator 点验 → pdf_toolkit → file_packager → batch_rename
   p2:
+    - 通用生成引擎加深（完整 generic_generator · 须先评估）
+    - excel_cleaner（有强痛再 Top3）
     - 网络版：账号/配置云同步（可选）；部分数据 DMS 只读同步
     - 移动端伴侣：通知、日程只读、剪贴板接力（非全功能复刻）
     - 培训交付看板（环节+材料模板+进展）— 垂直场景，非通用 Jira

@@ -124,11 +124,11 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
     fixtures: dict[str, dict[str, Any]] = {}
 
     fixtures["01_trial_standalone_active"] = {
-        "title": "试用版 · 单机体验中",
-        "chip": "试用版",
+        "title": "基础版 · 单机体验中",
+        "chip": "基础版",
         "chip_kind": "info",
         "pack": "基础功能",
-        "login": "启动后点登录窗「体验版」或自动恢复会话",
+        "login": "启动后点登录窗「进入软件」或自动恢复会话",
         "paid_module": "batch_rename 应拦截并引导升级",
         "basic_module": "quick_notepad 可用",
         "payload": {
@@ -155,11 +155,11 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
     }
 
     fixtures["02_trial_standalone_expired"] = {
-        "title": "试用版 · 单机体验已到期",
+        "title": "基础版 · 单机体验已到期",
         "chip": "续费",
         "chip_kind": "warning",
         "pack": "基础功能",
-        "login": "点「体验版」进入；付费模块统一引导购买",
+        "login": "点「进入软件」；付费模块统一引导购买",
         "paid_module": "watermark_remover 不可打开",
         "basic_module": "screenshot_tool 仍可用",
         "payload": {
@@ -170,11 +170,11 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
     }
 
     fixtures["03_unlicensed_fresh"] = {
-        "title": "试用版 · 未激活（出厂空授权）",
-        "chip": "试用版",
+        "title": "基础版 · 未激活（出厂空授权）",
+        "chip": "基础版",
         "chip_kind": "info",
         "pack": "基础功能",
-        "login": "需手动选体验版或粘贴授权码",
+        "login": "需手动选「进入软件」或粘贴授权码",
         "paid_module": "directory_generator 不可打开",
         "basic_module": "home 可用",
         "payload": {
@@ -204,7 +204,7 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
         "title": "授权版 · 体验码有效",
         "chip": "授权版",
         "chip_kind": "success",
-        "pack": "体验版 / 体验授权",
+        "pack": "基础版 / 体验授权",
         "login": "重启后应自动恢复「验收员·体验授权」",
         "paid_module": "若 features 不含 all，付费模块仍拦截",
         "basic_module": "local_free 模块可用",

@@ -29,8 +29,8 @@ SCENARIOS: dict[str, dict[str, str]] = {
     "directory_inspector": {
         "scene": "交付前检查目录是否缺文件、有空文件夹、命名不规范",
         "input": "本地根目录",
-        "output": "路径清单 + 检查报告（TXT/Word/Excel）",
-        "invoke": "目录 → 目录结构检查",
+        "output": "路径清单 + 类型占比饼图 + 检查报告（TXT/Word/Excel）",
+        "invoke": "目录 → 目录透视",
     },
     "directory_generator": {
         "scene": "新班级/新项目一次性建好标准文件夹",

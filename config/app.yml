@@ -104,9 +104,9 @@ license:
   # 过渡：未部署 TOA 云服务前 fallback；迁移完成后删除
   dms_base_url: https://dms.yczh.tech
   offline_grace_days: 2
-  # 登录「体验版」离线免费体验时长（天）；到期后提示升级 upgrade_target_label
+  # 登录「进入软件」离线基础版时长（天）；到期后提示升级 upgrade_target_label
   standalone_experience_days: 30
-  upgrade_target_label: 付费版
+  upgrade_target_label: 正式版
 update:
   enabled: true
   timeout_seconds: 3
@@ -269,7 +269,7 @@ menu:
     requires_license: false
     show: false
   - class_name: BatchRenamePage
-    desc: 按规则批量重命名文件（菜单隐藏，场景弱）
+    desc: 交付照片/课件编号批量重命名（预设、冲突门禁、可撤销）
     group: directory
     icon: batch_rename
     id: batch_rename
@@ -278,26 +278,37 @@ menu:
     order: 22
     feature_id: batch_rename
     requires_license: true
-    show: false
-  - class_name: MigrationPlaceholderPage
-    desc: PDF 合并、拆分、按页提取（待开发）
+    show: true
+  - class_name: PdfToolkitPage
+    desc: PDF 合并、拆分、按页提取（仅 PDF；多图合成请用文档合成器）
     group: file
     icon: pdf_toolkit
     id: pdf_toolkit
-    module_path: modules.stub.migration_placeholder_page
+    module_path: modules.pdf_toolkit.pdf_toolkit_page
     name: PDF 工具
     order: 23
     feature_id: pdf_toolkit
     requires_license: true
-    show: false
+    show: true
+  - class_name: FilePackagerPage
+    desc: 选文件/文件夹预览后规范命名打包 zip（可剔空目录与后缀，可选清单）
+    group: file
+    icon: file_packager
+    id: file_packager
+    module_path: modules.file_packager.file_packager_page
+    name: 文件打包归档
+    order: 24
+    feature_id: file_packager
+    requires_license: true
+    show: true
   - class_name: MigrationPlaceholderPage
-    desc: Excel 空行/重复行清洗与格式规范化（待开发）
+    desc: Excel 空行/重复行清洗与格式规范化（本波不做，占位）
     group: file
     icon: excel_cleaner
     id: excel_cleaner
     module_path: modules.stub.migration_placeholder_page
     name: Excel 清洗
-    order: 24
+    order: 25
     feature_id: excel_cleaner
     requires_license: true
     show: false
@@ -368,12 +379,12 @@ menu:
     requires_license: true
     show: true
   - class_name: DirectoryInspectorPage
-    desc: 检查文件夹结构：路径清单、空目录、命名规范（不做 Word 贴图/交付统计）
+    desc: 目录透视：路径清单、空目录/命名，文件类型占比饼图（不做 Word 贴图/交付统计）
     group: directory
     icon: directory_inspector
     id: directory_inspector
     module_path: modules.directory_inspector.directory_inspector_page
-    name: 目录结构检查
+    name: 目录透视
     order: 20
     feature_id: directory_inspector
     requires_license: true

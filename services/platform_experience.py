@@ -9,9 +9,9 @@ from PySide6.QtCore import QObject, QTimer
 
 from core.status_service import StatusLevel
 from services.notify_bus import get_bus
+from services.update_check import UpdateCheckResult, format_up_to_date_message, get_update_hub
 from services.tray_menu import build_tray_menu_model
 from services.tray_service import get_tray
-from services.update_check import UpdateCheckResult, get_update_hub
 
 if TYPE_CHECKING:
     from app.shell import MainShell
@@ -50,19 +50,32 @@ class PlatformExperience(QObject):
     def _maybe_license_tray_hint(self) -> None:
         try:
             from services.license_manager import global_license_manager as lm
+            from services.user_plan_presentation import OFFICIAL_TIER_LABEL, TRIAL_TIER_LABEL
 
-            if lm.is_standalone_mode() or not lm.is_licensed():
-                return
             days = lm.get_remaining_days()
-            if days == float("inf") or days > 7:
+            if days == float("inf") or int(days) > 7:
                 return
+
             shell = self._shell
             if shell is None:
                 return
-            get_tray().show_message(
-                shell._st.brand_name(),
-                f"付费版将于 {int(days)} 天后到期，请在此续费。",
-            )
+
+            ent = lm.get_entitlement()
+            if lm.is_standalone_mode():
+                body = (
+                    f"{TRIAL_TIER_LABEL}将于 {int(days)} 天后到期，"
+                    f"请授权码登录或购买{OFFICIAL_TIER_LABEL}。"
+                )
+            elif not lm.is_licensed():
+                return
+            elif ent == "trial":
+                body = f"试用授权将于 {int(days)} 天后到期，请升级{OFFICIAL_TIER_LABEL}。"
+            elif ent == "paid":
+                body = f"{OFFICIAL_TIER_LABEL}将于 {int(days)} 天后到期，请在此续费。"
+            else:
+                body = f"授权将于 {int(days)} 天后到期，请查看续费选项。"
+
+            get_tray().show_message(shell._st.brand_name(), body)
         except Exception:
             pass
 
@@ -156,24 +169,42 @@ class PlatformExperience(QObject):
         if shell is None:
             return
 
-        if result.has_update and result.latest_version:
+        hub = get_update_hub()
+        reason = hub.last_reason()
+
+        if result.has_update:
             title = shell._st.brand_name()
-            body = f"发现新版本 v{result.latest_version}（当前 v{result.current_version}）"
+            latest = result.latest_version or "新版本"
+            body = f"发现新版本 v{latest}（当前 v{result.current_version}）"
+            if result.below_min_version and result.min_version:
+                body = (
+                    f"版本过旧（低于 v{result.min_version}）· "
+                    f"请升级到 v{latest}"
+                )
             get_tray().show_message(title, body)
-            hub = get_update_hub()
-            if hub.last_reason() == "startup":
+            if reason == "startup":
                 shell.show_status(
-                    f"有新版本 v{result.latest_version} · 托盘或关于页可下载",
+                    f"有新版本 v{latest} · 托盘或关于页可下载",
                     level=StatusLevel.INFO,
+                )
+            elif reason == "tray":
+                # 与关于/设置同路径：唤起主窗 + 专用更新对话框（可应用内下载）
+                shell._show_from_tray()
+                shell.show_status(
+                    f"发现新版本 v{latest} · 请在对话框中下载或打开下载页",
+                    level=StatusLevel.INFO,
+                )
+                from app.update_available_dialog import present_update_available
+
+                QTimer.singleShot(
+                    50,
+                    lambda r=result, s=shell: present_update_available(s, r),
                 )
             return
 
-        hub = get_update_hub()
-        # 关于页手动检查由 AboutAppSection 弹窗；托盘手动检查在此提示
-        if hub.last_reason() == "tray" and not result.has_update:
-            msg = f"当前版本 {result.current_version} 已是最新"
-            if result.error:
-                msg = result.error
+        # 关于页手动检查由 AboutDialog / AppUpdateSection 弹窗；托盘手动检查在此提示
+        if reason == "tray" and not result.has_update:
+            msg = format_up_to_date_message(result, for_tray=True)
             get_tray().show_message(shell._st.brand_name(), msg)
 
     def refresh_license_chip(self) -> None:

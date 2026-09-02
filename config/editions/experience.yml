@@ -1,7 +1,7 @@
-# 体验版（小范围调研）菜单白名单 — manifest=done + 壳层必备
+# 基础版调研白名单 — manifest=done + 壳层必备
 id: experience
-label: 体验版
-window_title_suffix: " · 体验版"
+label: 基础版
+window_title_suffix: " · 基础版"
 
 # 侧栏可见模块；不在名单且 hide_non_whitelist=true 的条目隐藏
 menu_whitelist:
@@ -24,7 +24,7 @@ menu_whitelist:
 
 hide_non_whitelist: true
 
-# 侧栏额外展示：manifest=mvp、首页已有入口，标为实验（体验版调研用）
+# 侧栏额外展示：manifest=mvp、首页已有入口，标为实验（基础版调研用）
 experimental_menu_ids:
   - web_workspace
   - quick_notepad

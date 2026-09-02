@@ -72,6 +72,7 @@ modules:
   schedule_format_converter: {}
   generic_generator: {}
   pdf_toolkit: {}
+  file_packager: {}
   excel_cleaner: {}
   resume_extractor: {}
   schedule_reminder: {}

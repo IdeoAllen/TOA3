@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from widgets.metrics import BUTTON_MIN_HEIGHT
+from widgets.metrics import BUTTON_MIN_HEIGHT, COMBO_MIN_CONTENTS_LENGTH, COMBO_MIN_WIDTH
 
 
 class LineEdit(QLineEdit):
@@ -61,17 +61,37 @@ class ReadOnlyTextEdit(TextEdit):
 
 
 class ComboBox(QComboBox):
-    """整框可点展开；未聚焦时滚轮不误改选项。"""
+    """整框可点展开；未聚焦时滚轮不误改选项。
+
+    默认保证最小内容宽度与箭头区，避免业务页在 HBox 里被挤成「字看不全、右侧无下拉箭头」。
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(BUTTON_MIN_HEIGHT)
+        self.setMinimumWidth(COMBO_MIN_WIDTH)
         self.setMaxVisibleItems(14)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(COMBO_MIN_CONTENTS_LENGTH)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        sh = super().sizeHint()
+        return QSize(
+            max(sh.width(), self.minimumWidth()),
+            max(sh.height(), self.minimumHeight()),
+        )
 
     def showPopup(self) -> None:  # noqa: N802
-        self.view().setMinimumWidth(max(self.width(), 160))
+        fm = self.fontMetrics()
+        # 闭合框宽度 + 最长项 + 箭头/滚动条余量，避免弹层文字截断
+        need = max(self.width(), self.minimumWidth(), COMBO_MIN_WIDTH)
+        for i in range(self.count()):
+            need = max(need, fm.horizontalAdvance(self.itemText(i)) + 56)
+        view = self.view()
+        view.setMinimumWidth(need)
+        view.setTextElideMode(Qt.TextElideMode.ElideNone)
         super().showPopup()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802

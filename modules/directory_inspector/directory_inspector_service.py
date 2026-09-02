@@ -42,7 +42,7 @@ class InspectReport:
         want_dirs = self.include_dirs if include_dirs is None else include_dirs
         paths = self.relative_paths(include_dirs=want_dirs)
         lines = [
-            "目录路径列表",
+            "目录透视报告",
             f"根目录: {self.root}",
             f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"子目录数: {self.dir_count} · 文件数: {self.file_count}",
@@ -163,7 +163,7 @@ def export_report_word(report: InspectReport, out_path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     paths = report.relative_paths()
     doc = Document()
-    title = doc.add_heading("目录路径列表", level=0)
+    title = doc.add_heading("目录透视报告", level=0)
     title.runs[0].font.size = Pt(18)
     doc.add_paragraph(f"根目录：{report.root}")
     doc.add_paragraph(f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -236,7 +236,7 @@ def export_report_excel(report: InspectReport, out_path: str | Path) -> Path:
 
     # —— 摘要 ——
     ws = wb.create_sheet("摘要", 1)
-    ws["A1"] = "目录路径列表"
+    ws["A1"] = "目录透视报告"
     ws["A1"].font = Font(bold=True, size=14)
     rows_meta = [
         ("根目录", report.root),

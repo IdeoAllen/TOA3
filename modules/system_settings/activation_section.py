@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal, QTimer
 from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
 
 from core.exceptions import AuthError
@@ -75,8 +75,8 @@ class ActivationSection(FormSection):
         self.add_widget(self._status)
         self.add_widget(
             HintLabel(
-                "当前为试用版：填手机号后在此升级正式版；离线体验时长见 config/app.yml license.standalone_experience_days。"
-                "外部支付后点「同步已付订单」。"
+                "当前为基础版：可填手机号「开始试用」联网开通，或在此购买正式版。"
+                "购买与续费需联网。外部支付后点「同步已付订单」。"
             )
         )
 
@@ -91,7 +91,7 @@ class ActivationSection(FormSection):
         self.add_widget(self._phone)
 
         row = QHBoxLayout()
-        self._btn_trial = SecondaryButton("下载试用")
+        self._btn_trial = SecondaryButton("开始试用")
         self._btn_trial.clicked.connect(self._on_trial)
         row.addWidget(self._btn_trial)
         self._btn_buy = PrimaryButton("购买 / 续费")
@@ -127,6 +127,10 @@ class ActivationSection(FormSection):
         self.refresh_status()
         self._load_quote()
 
+        self._phone.returnPressed.connect(self._on_one_click)
+        self._key.returnPressed.connect(self._on_activate)
+        QTimer.singleShot(0, self._phone.setFocus)
+
     def _scroll_to_more_packs(self) -> None:
         from core.user_messages import show_info
 
@@ -142,7 +146,7 @@ class ActivationSection(FormSection):
             return
         phone = self._buyer_phone()
         if len(phone) != 11 or not phone.isdigit():
-            show_warning(self._page, "下载试用请填写 11 位手机号")
+            show_warning(self._page, "开始试用请填写 11 位手机号")
             return
         name = str(self._profile.get("name") or "用户").strip() or "用户"
         self._set_busy(True)
@@ -160,7 +164,14 @@ class ActivationSection(FormSection):
         def done(ok: bool, err: str, session: object) -> None:
             self._set_busy(False)
             if not ok:
-                show_error(self._page, err or "试用申请失败")
+                try:
+                    from services.user_plan_presentation import user_auth_failure_hint
+
+                    hint = user_auth_failure_hint(err)
+                    body = f"{err or '试用申请失败'}\n\n{hint}" if hint else (err or "试用申请失败")
+                except Exception:
+                    body = err or "试用申请失败"
+                show_error(self._page, body)
                 return
             from app.app_state import AppState
             from services.notify_bus import emit_license_changed
@@ -218,7 +229,7 @@ class ActivationSection(FormSection):
             self._btn_trial.setText("申请中…")
         elif not self._busy:
             self._btn_buy.setText("购买 / 续费")
-            self._btn_trial.setText("下载试用")
+            self._btn_trial.setText("开始试用")
             self._load_quote()
 
     def _load_quote(self) -> None:
@@ -309,7 +320,15 @@ class ActivationSection(FormSection):
     def _on_activate_done(self, ok: bool, msg: str, payload: object) -> None:
         self._set_busy(False)
         if not ok:
-            show_error(self._page, msg or "激活失败", title="联网激活失败")
+            err = msg or "激活失败"
+            try:
+                from services.user_plan_presentation import user_auth_failure_hint
+
+                hint = user_auth_failure_hint(err)
+                body = f"{err}\n\n{hint}" if hint else err
+            except Exception:
+                body = err
+            show_error(self._page, body, title="联网激活失败")
             self._page.report_status("联网激活失败")
             return
         name = str((payload or {}).get("name") or "用户")

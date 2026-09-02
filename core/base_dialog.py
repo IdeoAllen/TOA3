@@ -32,6 +32,12 @@ class BaseDialog(QDialog):
             pass
         super().showEvent(event)
         finalize_dialog_geometry(self, self.dialog_kind)
+        try:
+            from services.windows_app_identity import apply_window_taskbar_identity
+
+            apply_window_taskbar_identity(self)
+        except Exception:
+            pass
 
     def run_safe(self, fn, *, title: str | None = None, success_status: str | None = None) -> bool:
         ctx = self.__class__.__name__

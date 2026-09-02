@@ -49,7 +49,7 @@ class SubscriptionSection(FormSection):
     """选套餐 → 一键开通；与 paywall 弹窗同一购买链路。"""
 
     def __init__(self, parent: BasePage) -> None:
-        super().__init__("付费版方案")
+        super().__init__("正式版方案")
         self._page = parent
         self._lm = global_license_manager
         self._packs: list[dict] = []
@@ -60,7 +60,7 @@ class SubscriptionSection(FormSection):
 
         self.add_widget(
             HintLabel(
-                "选方案、填手机号、支付；成功后顶栏显示付费套餐与有效期。"
+                "选方案、填手机号、支付；成功后顶栏显示正式版套餐与有效期。"
                 "外部支付后点「同步已付订单」。"
             )
         )

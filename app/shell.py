@@ -370,7 +370,7 @@ class MainShell(QMainWindow):
         self._brand_label = brand
         hlay.addWidget(brand, 0, header_align)
 
-        self._license_chip = MessageKindButton("试用版", kind="info")
+        self._license_chip = MessageKindButton("基础版", kind="info")
         self._license_chip.setObjectName("ShellLicenseChip")
         self._license_chip.setCursor(Qt.CursorShape.PointingHandCursor)
         self._license_chip.setFixedHeight(26)
@@ -812,7 +812,7 @@ class MainShell(QMainWindow):
 
             block_msg = user_access_block_message()
         except Exception:
-            block_msg = "该功能需付费版"
+            block_msg = "该功能需正式版"
         self.show_status(
             reason or block_msg,
             level=StatusLevel.WARNING,

@@ -121,7 +121,7 @@ def upgrade_target_label() -> str:
                 return name
     except Exception:
         pass
-    return "付费版"
+    return "正式版"
 
 
 def _parse_date(value: Optional[str]) -> Optional[datetime.date]:
@@ -1497,7 +1497,7 @@ class LicenseManager:
         return self.had_network_activation()
 
     def get_validity_text(self) -> str:
-        """主页/状态栏/账号展示用（用户口径：免费版/付费版）。"""
+        """主页/状态栏/账号展示用（用户口径：基础版/授权版/正式版）。"""
         if _dev_grant_all_enabled():
             return "开发构建 · 已默认授权全部菜单"
         if self.is_standalone_mode() and not str(self.license_info.get("expire_date") or "").strip():

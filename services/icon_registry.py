@@ -66,6 +66,7 @@ _ALIAS: dict[str, str] = {
     "batch_rename": "batch_rename",
     "enhanced_directory_inspector": "package",
     "package": "package",
+    "file_packager": "package",
     # 文档 / 表格
     "file-text": "file_text",
     "file_text": "file_text",

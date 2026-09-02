@@ -92,14 +92,21 @@ def main() -> int:
     # 须在 QApplication 之前：否则任务栏仍归到 python.exe「Python」
     from services.windows_app_identity import apply_windows_app_identity
 
-    apply_windows_app_identity(display_name="运营宝 TOA3")
+    apply_windows_app_identity()
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
     app.setApplicationName("TOA3")
-    app.setApplicationDisplayName("运营宝 TOA3")
+    try:
+        from services.app_branding import is_development_profile
+
+        app.setApplicationDisplayName(
+            "运营宝 TOA3 (开发)" if is_development_profile() else "运营宝 TOA3"
+        )
+    except Exception:
+        app.setApplicationDisplayName("运营宝 TOA3")
     app.setOrganizationName("YCZH")
     app.setApplicationVersion(APP_VERSION)
     _set_app_icon(app)
@@ -143,6 +150,12 @@ def main() -> int:
         shell_holder.append(shell)
         shell.complete_startup()
         shell.show()
+        try:
+            from services.windows_app_identity import apply_window_taskbar_identity
+
+            apply_window_taskbar_identity(shell)
+        except Exception:
+            pass
     except Exception:
         logger.exception("主壳启动失败")
         from services.single_instance import release_single_instance

@@ -27,6 +27,7 @@ from widgets import (
     ScrollPage,
     SecondaryButton,
     SectionTitle,
+    SemanticLabel,
 )
 from widgets.list_edit import ListPanel, confirm_delete
 
@@ -45,7 +46,6 @@ class DeductionNotePage(BasePage):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._history = DeductionNoteHistory()
-        self._score_label = HintLabel("")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -84,6 +84,7 @@ class DeductionNotePage(BasePage):
         root.addWidget(splitter, 1)
 
         actions = QHBoxLayout()
+        actions.setSpacing(8)
         btn_format = PrimaryButton("整理")
         btn_format.clicked.connect(self._on_format)
         actions.addWidget(btn_format)
@@ -106,7 +107,27 @@ class DeductionNotePage(BasePage):
         actions.addWidget(btn_clear)
 
         actions.addStretch(1)
-        actions.addWidget(self._score_label)
+
+        score_strip = QHBoxLayout()
+        score_strip.setSpacing(4)
+        score_strip.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self._count_label = HintLabel("共 0 条")
+        self._count_label.setWordWrap(False)
+        self._score_prefix = HintLabel("· 得分")
+        self._score_prefix.setWordWrap(False)
+        self._score_value = SemanticLabel("100", kind="success", score=True)
+        self._deduct_sep = HintLabel("/ 扣")
+        self._deduct_sep.setWordWrap(False)
+        self._deduct_value = SemanticLabel("0", kind="danger", score=True)
+        for w in (
+            self._count_label,
+            self._score_prefix,
+            self._score_value,
+            self._deduct_sep,
+            self._deduct_value,
+        ):
+            score_strip.addWidget(w)
+        actions.addLayout(score_strip)
         root.addLayout(actions)
 
         hist_box = FormSection("历史记录")
@@ -160,7 +181,9 @@ class DeductionNotePage(BasePage):
 
     def _refresh_score_hint(self, count: int) -> None:
         score, deducted = score_from_item_count(count)
-        self._score_label.setText(f"共 {count} 条 · 得分 {score} / 扣 {deducted}")
+        self._count_label.setText(f"共 {count} 条")
+        self._score_value.setText(str(score))
+        self._deduct_value.setText(str(deducted))
 
     def _on_format(self) -> None:
         raw = self._input.toPlainText()

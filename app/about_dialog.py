@@ -16,7 +16,8 @@ from core.user_messages import show_error, show_info
 from services.icon_registry import brand_logo_pixmap
 from services.product_vision import tagline, vision_display_rows
 from services.system_info import get_system_info, logo_path
-from services.update_check import UpdateCheckResult, get_update_hub, open_download_page
+from services.update_check import UpdateCheckResult, format_up_to_date_message, get_update_hub
+from app.update_available_dialog import present_update_available
 from widgets import DialogButtonRow, HintLabel
 
 
@@ -84,7 +85,7 @@ class AboutDialog(BaseDialog):
         self._set_check_busy(busy)
 
     def _on_hub_result(self, result: object) -> None:
-        if get_update_hub().last_reason() != "manual":
+        if get_update_hub().last_reason() != "about":
             return
         if not self.isVisible():
             return
@@ -104,26 +105,11 @@ class AboutDialog(BaseDialog):
     def _on_check_update(self) -> None:
         if self._update_busy:
             return
-        get_update_hub().check_async(reason="manual")
+        get_update_hub().check_async(reason="about")
 
     def _on_update_checked(self, result: UpdateCheckResult) -> None:
         self._update_result = result
-        if result.has_update and result.latest_version:
-            notes = ""
-            if result.release_notes:
-                notes = f"\n\n{result.release_notes.strip()}"
-            show_info(
-                self,
-                f"发现新版本 {result.latest_version}（当前 {result.current_version}）。"
-                f"{notes}\n\n将打开下载页。",
-                title="有可用更新",
-            )
-            open_download_page(result)
+        if result.has_update:
+            present_update_available(self, result)
             return
-        msg = f"当前版本 {result.current_version} 已是最新。"
-        if result.source:
-            src = "TOA 云服务" if result.source.startswith("toa") else result.source
-            msg += f"\n（来源：{src}）"
-        if result.error and result.source.startswith("local"):
-            msg += f"\n\n提示：{result.error}"
-        show_info(self, msg, title="检查更新")
+        show_info(self, format_up_to_date_message(result), title="检查更新")

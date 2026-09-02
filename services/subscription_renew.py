@@ -13,12 +13,14 @@ def is_activation_block(reason: str) -> bool:
     text = str(reason or "")
     keys = (
         "付费版",
+        "正式版",
         "完整版",
         "未授权",
         "授权码",
         "激活",
         "单机基础",
         "单机体验",
+        "基础版",
         "local_free",
     )
     return any(k in text for k in keys)
@@ -29,13 +31,30 @@ def is_renewable_block(reason: str) -> bool:
     text = str(reason or "")
     if is_activation_block(text):
         return False
-    keys = ("到期", "续费", "订阅", "expired", "已过期", "体验版已到期", "免费版体验已到期", "付费模块已到期", "请购买", "请续费")
+    keys = (
+        "到期",
+        "续费",
+        "订阅",
+        "expired",
+        "已过期",
+        "体验版已到期",
+        "基础版已到期",
+        "免费版体验已到期",
+        "付费模块已到期",
+        "请购买",
+        "请续费",
+    )
     return any(k in text for k in keys)
 
 
 def is_trial_expired_block(reason: str) -> bool:
     text = str(reason or "")
-    return "体验版已到期" in text or "体验已到期" in text or "免费版体验已到期" in text
+    return (
+        "体验版已到期" in text
+        or "体验已到期" in text
+        or "基础版已到期" in text
+        or "免费版体验已到期" in text
+    )
 
 
 def should_prompt_renew_dialog(*, reason: str | None = None) -> bool:

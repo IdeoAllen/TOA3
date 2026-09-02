@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QMouseEvent, QPainter, QPen, QPixmap
+from PySide6.QtCore import QPoint, QRect, QRectF, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QDesktopServices,
+    QFont,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QColor,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -47,6 +55,85 @@ except ImportError:  # pragma: no cover
 IMAGE_FILTER = "Images (*.jpg *.jpeg *.png *.bmp *.webp *.tif *.tiff)"
 
 
+def _theme_palette() -> dict:
+    try:
+        from app.app_state import AppState
+
+        return AppState.get().palette or {}
+    except Exception:
+        return {}
+
+
+def _paint_empty_canvas(
+    widget: QLabel,
+    painter: QPainter,
+    *,
+    title: str,
+    subtitle: str = "",
+) -> None:
+    """浅色虚线空态画布（替代 palette(dark) 大黑块）。"""
+    p = _theme_palette()
+    surface = QColor(str(p.get("surface") or "#F7F3EE"))
+    raised = QColor(str(p.get("surface_raised") or p.get("panel") or "#EFE8E0"))
+    border = QColor(str(p.get("border") or "#D4C4B0"))
+    muted = QColor(str(p.get("text_secondary") or "#8A7A6A"))
+    text = QColor(str(p.get("text_primary") or "#3D3229"))
+    primary = QColor(str(p.get("primary") or "#C17F4E"))
+
+    rect = widget.rect()
+    painter.fillRect(rect, surface)
+    # 轻微棋盘感，提示「画布」而非死黑
+    tile = 14
+    painter.setPen(Qt.PenStyle.NoPen)
+    for y in range(0, rect.height(), tile):
+        for x in range(0, rect.width(), tile):
+            if ((x // tile) + (y // tile)) % 2 == 0:
+                painter.fillRect(x, y, tile, tile, raised)
+
+    inset = rect.adjusted(10, 10, -10, -10)
+    pen = QPen(border)
+    pen.setWidth(1)
+    pen.setStyle(Qt.PenStyle.DashLine)
+    pen.setDashPattern([5, 4])
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(QRectF(inset), 10, 10)
+
+    # 中心圆标
+    cx, cy = rect.center().x(), rect.center().y() - 18
+    painter.setBrush(QColor(primary.red(), primary.green(), primary.blue(), 28))
+    painter.setPen(QPen(QColor(primary.red(), primary.green(), primary.blue(), 90), 1.5))
+    painter.drawEllipse(QPoint(cx, cy), 28, 28)
+    # 简易图片图标
+    painter.setPen(QPen(primary, 2))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(cx - 12, cy - 9, 24, 18, 3, 3)
+    painter.drawLine(cx - 6, cy + 2, cx - 1, cy - 4)
+    painter.drawLine(cx - 1, cy - 4, cx + 5, cy + 3)
+    painter.drawEllipse(QPoint(cx + 6, cy - 4), 2, 2)
+
+    f1 = QFont(painter.font())
+    f1.setBold(True)
+    f1.setPointSize(max(10, f1.pointSize() + 1))
+    painter.setFont(f1)
+    painter.setPen(text)
+    title_rect = QRect(rect.x() + 20, cy + 36, rect.width() - 40, 24)
+    painter.drawText(title_rect, int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), title)
+
+    if subtitle:
+        f2 = QFont(painter.font())
+        f2.setBold(False)
+        f2.setPointSize(max(8, f2.pointSize() - 1))
+        painter.setFont(f2)
+        painter.setPen(muted)
+        sub_rect = QRect(rect.x() + 24, cy + 58, rect.width() - 48, 40)
+        painter.drawText(
+            sub_rect,
+            int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
+            subtitle,
+        )
+
+
 def _fit_pixmap(source: QPixmap, target_w: int, target_h: int, *, dpr: float) -> QPixmap:
     """按逻辑尺寸缩放，物理像素按 DPR 光栅化，避免糊。"""
     if source.isNull() or target_w < 8 or target_h < 8:
@@ -70,18 +157,19 @@ class FitPixmapLabel(QLabel):
     def __init__(self, placeholder: str = "", parent=None) -> None:
         super().__init__(parent)
         self._source: QPixmap | None = None
-        self._placeholder = placeholder
+        self._placeholder = placeholder or "效果预览"
+        self._empty_subtitle = "处理或标记后，这里显示去水印效果"
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumHeight(320)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setStyleSheet("background: palette(dark); border: 1px solid palette(mid);")
-        self.setText(placeholder)
+        self.setText("")  # 空态由 paintEvent 绘制，避免黑底+灰字
 
     def set_source_pixmap(self, pm: QPixmap | None) -> None:
         if pm is None or pm.isNull():
             self._source = None
             self.clear()
-            self.setText(self._placeholder)
+            self.setText("")
+            self.update()
             return
         self._source = pm
         self._rebuild()
@@ -89,12 +177,34 @@ class FitPixmapLabel(QLabel):
     def clear_preview(self, text: str | None = None) -> None:
         self._source = None
         self.clear()
-        self.setText(text if text is not None else self._placeholder)
+        self.setText("")
+        if text is not None:
+            self._placeholder = text
+            # 状态类提示用短副标题；默认空态用引导文案
+            if text in ("效果预览", "标记后自动显示效果预览"):
+                self._empty_subtitle = "处理或标记后，这里显示去水印效果"
+            else:
+                self._empty_subtitle = "框选 / 涂抹水印区域后自动刷新"
+        self.update()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         if self._source is not None:
             self._rebuild()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if self._source is None or self.pixmap() is None or self.pixmap().isNull():
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            _paint_empty_canvas(
+                self,
+                painter,
+                title=self._placeholder or "效果预览",
+                subtitle=self._empty_subtitle,
+            )
+            painter.end()
+            return
+        super().paintEvent(event)
 
     def _rebuild(self) -> None:
         if self._source is None:
@@ -116,9 +226,7 @@ class RegionPreviewLabel(QLabel):
         self.setMinimumHeight(320)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet(
-            "background: palette(dark); border: 1px solid palette(mid);"
-        )
+        self.setText("")
         self.setMouseTracking(True)
         self._source: QPixmap | None = None
         self._scaled: QPixmap | None = None
@@ -134,6 +242,8 @@ class RegionPreviewLabel(QLabel):
         self._brush_mask: object | None = None
         self._last_paint_img: tuple[int, int] | None = None
         self._emit_marks = True
+        self._empty_title = "标记水印区域"
+        self._empty_subtitle = "添加图片后，在此框选或涂抹水印"
 
     def _notify_marks(self) -> None:
         if self._emit_marks:
@@ -161,9 +271,14 @@ class RegionPreviewLabel(QLabel):
             self._sel_display = None
             self._boxes.clear()
             self._brush_mask = None
-            self.setText("无法加载预览")
+            self.setText("")
+            self._empty_title = "无法加载预览"
+            self._empty_subtitle = "请换一张图片后重试"
+            self.update()
             return False
         self._source = pm
+        self._empty_title = "标记水印区域"
+        self._empty_subtitle = "添加图片后，在此框选或涂抹水印"
         self._sel_display = None
         self._boxes.clear()
         if _HAS_CV2:
@@ -172,6 +287,18 @@ class RegionPreviewLabel(QLabel):
             self._brush_mask = None
         self._rebuild_scaled()
         return True
+
+    def clear_image(self) -> None:
+        self._source = None
+        self._scaled = None
+        self._sel_display = None
+        self._boxes.clear()
+        self._brush_mask = None
+        self.clear()
+        self.setText("")
+        self._empty_title = "标记水印区域"
+        self._empty_subtitle = "添加图片后，在此框选或涂抹水印"
+        self.update()
 
     def clear_selection(self) -> None:
         self._sel_display = None
@@ -357,9 +484,29 @@ class RegionPreviewLabel(QLabel):
         ).normalized()
 
     def paintEvent(self, event) -> None:  # noqa: N802
+        if self._source is None or self._scaled is None:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            _paint_empty_canvas(
+                self,
+                painter,
+                title=self._empty_title,
+                subtitle=self._empty_subtitle,
+            )
+            painter.end()
+            return
+
+        # 浅色衬底，避免图片周围露黑边
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p = _theme_palette()
+        surface = QColor(str(p.get("surface") or "#F7F3EE"))
+        painter.fillRect(self.rect(), surface)
+        painter.end()
+
         super().paintEvent(event)
         painter = QPainter(self)
-        pen = QPen(Qt.GlobalColor.red)
+        pen = QPen(QColor("#E11D48"))
         pen.setWidth(2)
         pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
@@ -573,8 +720,7 @@ class WatermarkRemoverPage(BasePage):
         if self._files:
             self._list.setCurrentRow(min(rows[-1], len(self._files) - 1))
         else:
-            self._preview.setText("预览")
-            self._preview.setPixmap(QPixmap())
+            self._preview.clear_image()
             self._after.clear_preview()
         self._result.setText(f"列表 {len(self._files)} 张。")
 

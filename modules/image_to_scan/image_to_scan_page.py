@@ -6,10 +6,11 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QPixmap
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout
 
 from core.base_page import BasePage
 from core.status_service import StatusLevel
+from core.ui_spec import page_content_margins
 from core.user_messages import show_saved, show_warning
 from modules.image_to_scan.image_to_scan_service import (
     DEFAULT_SETTINGS,
@@ -28,7 +29,6 @@ from widgets import (
     PageHeader,
     PrimaryButton,
     ProgressBar,
-    ScrollPage,
     SecondaryButton,
     SpinBox,
 )
@@ -42,6 +42,18 @@ def _pil_to_qpixmap(pil_img) -> QPixmap:
     pm = QPixmap()
     pm.loadFromData(buf.getvalue(), "PNG")
     return pm
+
+
+def _param_cell(label: str, spin: SpinBox) -> QVBoxLayout:
+    """标签在上、数字框在下，保证文字完整显示。"""
+    col = QVBoxLayout()
+    col.setSpacing(4)
+    tip = HintLabel(label)
+    tip.setWordWrap(False)
+    col.addWidget(tip)
+    spin.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    col.addWidget(spin)
+    return col
 
 
 class ImageToScanPage(BasePage):
@@ -58,19 +70,21 @@ class ImageToScanPage(BasePage):
         self._preview_timer.timeout.connect(self._refresh_preview)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = ScrollPage()
-        outer.addWidget(scroll)
+        m = page_content_margins()
+        outer.setContentsMargins(m[0], m[1], m[2], m[3])
+        outer.setSpacing(10)
 
-        scroll.add_widget(
+        outer.addWidget(
             PageHeader(
                 "图片转扫描件",
-                "选文件夹 → 调参看预览 → 批量输出清晰灰度 PDF。",
+                "选文件夹并调参看预览，再批量输出清晰灰度 PDF。",
             )
         )
 
-        path_box = FormSection("源文件夹")
+        # —— 源文件夹 + 扫描参数放同一区 ——
+        top = FormSection("源文件夹与扫描参数")
         row = QHBoxLayout()
+        row.setSpacing(8)
         self._folder = LineEdit()
         self._folder.setPlaceholderText("选择或粘贴图片文件夹…")
         row.addWidget(self._folder, 1)
@@ -80,18 +94,52 @@ class ImageToScanPage(BasePage):
         btn_load = SecondaryButton("载入列表")
         btn_load.clicked.connect(self._load_list)
         row.addWidget(btn_load)
-        path_box.add_layout(row)
+        top.add_layout(row)
+
+        opts = QHBoxLayout()
+        opts.setSpacing(16)
         self._recursive = CheckBox("包含子文件夹")
         self._recursive.setChecked(True)
-        path_box.add_widget(self._recursive)
-        scroll.add_widget(path_box)
+        opts.addWidget(self._recursive)
+
+        self._shadow = SpinBox()
+        self._shadow.setRange(0, 100)
+        self._shadow.setValue(DEFAULT_SETTINGS.shadow_remove)
+        self._shadow.valueChanged.connect(self._schedule_preview)
+        opts.addLayout(_param_cell("去阴影 (0–100)", self._shadow))
+
+        self._clarity = SpinBox()
+        self._clarity.setRange(0, 100)
+        self._clarity.setValue(DEFAULT_SETTINGS.clarity)
+        self._clarity.valueChanged.connect(self._schedule_preview)
+        opts.addLayout(_param_cell("清晰度 (0–100)", self._clarity))
+
+        self._bw = SpinBox()
+        self._bw.setRange(0, 100)
+        self._bw.setValue(DEFAULT_SETTINGS.bw_level)
+        self._bw.valueChanged.connect(self._schedule_preview)
+        opts.addLayout(_param_cell("黑白强度 (0–100)", self._bw))
+
+        opts.addStretch(1)
+        top.add_layout(opts)
+        top.add_widget(HintLabel("调参后自动刷新预览；默认清晰灰度，黑白强度过高易伤细节。"))
+        outer.addWidget(top)
 
         mid = QHBoxLayout()
+        mid.setSpacing(10)
         list_box = FormSection("图片列表")
         self._list = ListWidget()
-        self._list.setMinimumHeight(220)
+        self._list.setMinimumHeight(240)
+        self._list.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self._list.currentRowChanged.connect(lambda _=None: self._schedule_preview())
-        list_box.add_widget(self._list)
+        list_box.add_widget(self._list, stretch=1)
+        list_box.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         mid.addWidget(list_box, 1)
 
         prev_box = FormSection("效果预览")
@@ -100,41 +148,25 @@ class ImageToScanPage(BasePage):
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview.setMinimumHeight(280)
         self._preview.setMinimumWidth(320)
-        prev_box.add_widget(self._preview)
+        self._preview.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        prev_box.add_widget(self._preview, stretch=1)
+        prev_box.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         mid.addWidget(prev_box, 1)
-        scroll.add_layout(mid)
-
-        opt = FormSection("扫描参数")
-        opt.add_widget(HintLabel("调参后自动刷新预览；默认清晰灰度，黑白强度过高易伤细节。"))
-        row_s = QHBoxLayout()
-        self._shadow = SpinBox()
-        self._shadow.setRange(0, 100)
-        self._shadow.setValue(DEFAULT_SETTINGS.shadow_remove)
-        self._shadow.setSuffix(" 去阴影")
-        self._shadow.valueChanged.connect(self._schedule_preview)
-        row_s.addWidget(self._shadow)
-        self._clarity = SpinBox()
-        self._clarity.setRange(0, 100)
-        self._clarity.setValue(DEFAULT_SETTINGS.clarity)
-        self._clarity.setSuffix(" 清晰度")
-        self._clarity.valueChanged.connect(self._schedule_preview)
-        row_s.addWidget(self._clarity)
-        self._bw = SpinBox()
-        self._bw.setRange(0, 100)
-        self._bw.setValue(DEFAULT_SETTINGS.bw_level)
-        self._bw.setSuffix(" 黑白强度")
-        self._bw.valueChanged.connect(self._schedule_preview)
-        row_s.addWidget(self._bw)
-        row_s.addStretch(1)
-        opt.add_layout(row_s)
-        scroll.add_widget(opt)
+        outer.addLayout(mid, 1)
 
         self._progress = ProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        scroll.add_widget(self._progress)
+        outer.addWidget(self._progress)
 
         actions = QHBoxLayout()
+        actions.setSpacing(8)
         btn_run = PrimaryButton("批量转为 PDF")
         btn_run.clicked.connect(self._on_run)
         actions.addWidget(btn_run)
@@ -142,11 +174,15 @@ class ImageToScanPage(BasePage):
         btn_open.clicked.connect(self._open_out)
         actions.addWidget(btn_open)
         actions.addStretch(1)
-        scroll.add_layout(actions)
+        outer.addLayout(actions)
 
         self._result = HintLabel("输出写入本模块 output 目录。")
-        scroll.add_widget(self._result)
-        scroll.add_stretch(1)
+        outer.addWidget(self._result)
+
+        self.apply_page_focus_policy()
+
+    def primary_focus_widget(self):
+        return self._folder
 
     def _settings(self) -> ScanSettings:
         return ScanSettings(
@@ -193,7 +229,6 @@ class ImageToScanPage(BasePage):
             if pil is None:
                 self._preview.setText("预览失败")
                 return
-            # 缩小显示
             w, h = pil.size
             max_show = 480
             if max(w, h) > max_show:
@@ -248,3 +283,4 @@ class ImageToScanPage(BasePage):
 
     def on_enter(self) -> None:
         self.report_status("图片转扫描件")
+        self.schedule_primary_focus()

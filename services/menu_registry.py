@@ -136,6 +136,8 @@ MIGRATED_MODULES: dict[str, str] = {
     "deliverable_directory_check": "modules.deliverable_directory_check.deliverable_directory_check_page.DeliverableDirectoryCheckPage",
     "excel_row_to_column": "modules.excel_row_to_column.excel_row_to_column_page.ExcelRowToColumnPage",
     "document_composer": "modules.document_composer.document_composer_page.DocumentComposerPage",
+    "pdf_toolkit": "modules.pdf_toolkit.pdf_toolkit_page.PdfToolkitPage",
+    "file_packager": "modules.file_packager.file_packager_page.FilePackagerPage",
     "schedule_format_converter": "modules.schedule_format_converter.schedule_format_converter_page.ScheduleFormatConverterPage",
     "generic_generator_simple": "modules.generic_generator_simple.generic_generator_simple_page.GenericGeneratorSimplePage",
     "table_card_generator": "modules.table_card_generator.table_card_generator_page.TableCardGeneratorPage",

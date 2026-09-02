@@ -1,11 +1,19 @@
 # -*- coding: utf-8 -*-
-"""目录结构检查：递归路径清单 + 空目录/命名问题（≠ 班级交付 Word 贴图检查）。"""
+"""目录透视：路径清单 + 空目录/命名 + 文件类型占比饼图（≠ 班级交付 Word 贴图）。"""
 from __future__ import annotations
 
 from datetime import datetime
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QSizePolicy, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QSizePolicy,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from core.base_page import BasePage
 from core.status_service import StatusLevel
@@ -27,12 +35,14 @@ from widgets import (
     PrimaryButton,
     ReadOnlyPlainTextEdit,
     SecondaryButton,
+    SemanticLabel,
 )
+from widgets.charts import PieChartWidget
 
 
 class DirectoryInspectorPage(BasePage):
     page_id = "directory_inspector"
-    page_title = "目录结构检查"
+    page_title = "目录透视"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -42,36 +52,36 @@ class DirectoryInspectorPage(BasePage):
         outer = QVBoxLayout(self)
         m = page_content_margins()
         outer.setContentsMargins(m[0], m[1], m[2], m[3])
-        outer.setSpacing(12)
+        outer.setSpacing(10)
 
         outer.addWidget(
             PageHeader(
-                "目录结构检查",
-                "列出相对路径，检查空目录与命名问题；导出 TXT/Word/Excel 报告。"
-                "（班级交付 Word 贴图请用业务侧「生成交付报告」。）",
+                "目录透视",
+                "左侧看文件类型占比，右侧看路径与问题。"
+                "班级交付 Word 贴图请用业务侧「生成交付报告」。",
             )
         )
 
-        path_box = FormSection("检查根目录")
+        # —— 扫描范围：路径 + 全部按钮一排 ——
+        path_box = FormSection("扫描范围")
         row = QHBoxLayout()
         self._root = LineEdit()
-        self._root.setPlaceholderText("选择要检查的根目录…")
+        self._root.setPlaceholderText("选择要透视的根目录…")
         row.addWidget(self._root, 1)
         btn_browse = SecondaryButton("浏览…")
         btn_browse.clicked.connect(self._browse)
         row.addWidget(btn_browse)
         path_box.add_layout(row)
 
-        self._include_dirs = CheckBox("目录（路径列表中显示目录路径）")
-        self._include_dirs.setChecked(True)
-        self._include_dirs.setToolTip("关闭后列表仅显示文件相对路径，目录路径不列出")
-        self._include_dirs.toggled.connect(self._on_include_dirs_toggled)
-        path_box.add_widget(self._include_dirs)
-        path_box.add_widget(HintLabel("开启「目录」：列表含文件夹与文件；关闭：仅文件。"))
-        outer.addWidget(path_box)
-
         actions = QHBoxLayout()
-        btn_scan = PrimaryButton("开始检查")
+        actions.setSpacing(8)
+        self._include_dirs = CheckBox("路径列表含目录")
+        self._include_dirs.setChecked(True)
+        self._include_dirs.setToolTip("关闭后列表仅显示文件相对路径")
+        self._include_dirs.toggled.connect(self._on_include_dirs_toggled)
+        actions.addWidget(self._include_dirs)
+        actions.addStretch(1)
+        btn_scan = PrimaryButton("开始透视")
         btn_scan.clicked.connect(self._on_scan)
         actions.addWidget(btn_scan)
         btn_txt = SecondaryButton("导出 TXT")
@@ -83,29 +93,119 @@ class DirectoryInspectorPage(BasePage):
         btn_xlsx = SecondaryButton("导出 Excel")
         btn_xlsx.clicked.connect(lambda: self._on_export("xlsx"))
         actions.addWidget(btn_xlsx)
-        btn_copy = SecondaryButton("复制")
+        btn_copy = SecondaryButton("复制路径")
         btn_copy.setToolTip("复制相对路径列表到剪贴板")
         btn_copy.clicked.connect(self._on_copy)
         actions.addWidget(btn_copy)
-        actions.addStretch(1)
-        outer.addLayout(actions)
+        path_box.add_layout(actions)
+        outer.addWidget(path_box)
 
-        report_box = FormSection("路径列表 / 检查报告")
+        # —— 左右分栏：左=大饼图，右=概览+路径 ——
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(6)
+
+        left = QWidget()
+        left_lay = QVBoxLayout(left)
+        left_lay.setContentsMargins(0, 0, 4, 0)
+        left_lay.setSpacing(8)
+        chart_box = FormSection("文件类型占比")
+        self._pie = PieChartWidget()
+        self._pie.setMinimumSize(360, 360)
+        self._pie.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        chart_box.add_widget(self._pie, stretch=1)
+        chart_box.add_widget(HintLabel("悬停扇区或图例可查看占比；超过 7 种合并为「其它」。"))
+        chart_box.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        left_lay.addWidget(chart_box, 1)
+        splitter.addWidget(left)
+
+        right = QWidget()
+        right_lay = QVBoxLayout(right)
+        right_lay.setContentsMargins(4, 0, 0, 0)
+        right_lay.setSpacing(10)
+
+        overview = FormSection("目录概览")
+        stats = QHBoxLayout()
+        stats.setSpacing(8)
+        self._stat_files = SemanticLabel("文件 —", kind="info", compact=True)
+        self._stat_dirs = SemanticLabel("子目录 —", kind="info", compact=True)
+        self._stat_types = SemanticLabel("类型 —", kind="info", compact=True)
+        self._stat_empty = SemanticLabel("空目录 —", kind="warning", compact=True)
+        self._stat_naming = SemanticLabel("命名问题 —", kind="warning", compact=True)
+        for w in (
+            self._stat_files,
+            self._stat_dirs,
+            self._stat_types,
+            self._stat_empty,
+            self._stat_naming,
+        ):
+            stats.addWidget(w)
+        stats.addStretch(1)
+        overview.add_layout(stats)
+        right_lay.addWidget(overview)
+
+        report_box = FormSection("路径清单与问题")
         self._report = ReadOnlyPlainTextEdit()
         self._report.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
         self._report.setMinimumHeight(200)
+        self._report.setPlaceholderText("点击「开始透视」后，此处显示相对路径、空目录与命名问题…")
         report_box.add_widget(self._report, stretch=1)
-        report_box.add_widget(
-            HintLabel("含文件类型统计、相对路径列表；下方为空目录与命名问题。可点「复制」拷贝路径。")
-        )
         report_box.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        outer.addWidget(report_box, 1)
+        right_lay.addWidget(report_box, 1)
+        splitter.addWidget(right)
+
+        # 左饼图、右路径；默认饼图侧略宽
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
+        splitter.setSizes([520, 600])
+        outer.addWidget(splitter, 1)
+
+        self.apply_page_focus_policy()
+        self._reset_overview()
+
+    def primary_focus_widget(self):
+        return self._root
+
+    def _reset_overview(self) -> None:
+        self._stat_files.setText("文件 —")
+        self._stat_dirs.setText("子目录 —")
+        self._stat_types.setText("类型 —")
+        self._stat_empty.setText("空目录 —")
+        self._stat_naming.setText("命名问题 —")
+        self._pie.set_slices([])
+
+    def _update_overview(self, report) -> None:
+        self._stat_files.setText(f"文件 {report.file_count}")
+        self._stat_dirs.setText(f"子目录 {report.dir_count}")
+        self._stat_types.setText(f"类型 {len(report.ext_counts)} 种")
+        empty_n = len(report.empty_dirs)
+        naming_n = len(report.naming_issues)
+        self._stat_empty.setText(f"空目录 {empty_n}")
+        self._stat_naming.setText(f"命名问题 {naming_n}")
+        for w, kind in (
+            (self._stat_empty, "warning" if empty_n else "info"),
+            (self._stat_naming, "warning" if naming_n else "info"),
+        ):
+            w.setProperty("class", f"semantic-{kind}")
+            w.setProperty("compact", "true")
+            st = w.style()
+            if st is not None:
+                st.unpolish(w)
+                st.polish(w)
+        slices = [(ext, n) for ext, n in report.ext_counts.items()]
+        self._pie.set_slices(slices)
 
     def _browse(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "选择根目录")
@@ -142,6 +242,7 @@ class DirectoryInspectorPage(BasePage):
             self._last_report = report
             self._last_text = report.as_text()
             self._report.setPlainText(self._last_text)
+            self._update_overview(report)
             n = len(report.relative_paths())
             types_n = len(report.ext_counts)
             self.report_status(
@@ -149,11 +250,11 @@ class DirectoryInspectorPage(BasePage):
                 level=StatusLevel.SUCCESS,
             )
 
-        self.run_safe(_run, title="目录检查失败")
+        self.run_safe(_run, title="目录透视失败")
 
     def _on_copy(self) -> None:
         if self._last_report is None:
-            show_warning(self, "没有可复制的内容，请先检查。")
+            show_warning(self, "没有可复制的内容，请先透视。")
             return
         self._last_report.include_dirs = self._include_dirs_flag()
         paths = self._last_report.relative_paths()
@@ -166,7 +267,7 @@ class DirectoryInspectorPage(BasePage):
 
     def _on_export(self, kind: str = "txt") -> None:
         if not self._last_text.strip() or self._last_report is None:
-            show_warning(self, "没有可导出的报告，请先检查。")
+            show_warning(self, "没有可导出的报告，请先透视。")
             return
 
         def _run() -> None:
@@ -190,4 +291,8 @@ class DirectoryInspectorPage(BasePage):
         self.run_safe(_run, title="导出失败")
 
     def on_enter(self) -> None:
-        self.report_status("目录结构检查")
+        self.report_status("目录透视")
+        self.schedule_primary_focus()
+
+    def on_theme_changed(self) -> None:
+        self._pie.update()

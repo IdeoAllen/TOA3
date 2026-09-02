@@ -46,7 +46,9 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QMenu,
     QSizePolicy,
+    QSplitter,
     QStackedWidget,
     QTabBar,
     QToolButton,
@@ -58,6 +60,7 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from core.base_page import BasePage
 from core.status_service import StatusLevel
+from core.ui_spec import page_content_margins
 from core.user_messages import show_warning
 from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
 from modules.clipboard_history.history_store import push_text
@@ -96,13 +99,13 @@ from widgets import (
     FormSection,
     HintLabel,
     LineEdit,
+    MenuButton,
     PageHeader,
-    SemanticLabel,
-    PlainTextEdit,
     PrimaryButton,
-    ScrollPage,
     SecondaryButton,
     SectionTitle,
+    SemanticLabel,
+    PlainTextEdit,
     TextEdit,
     TreeWidget,
 )
@@ -330,6 +333,7 @@ class _OutlineTree(TreeWidget):
         super().__init__(parent)
         self.setObjectName("OutlineTree")
         self.setAlternatingRowColors(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setDragEnabled(True)
@@ -342,7 +346,9 @@ class _OutlineTree(TreeWidget):
         self.setItemsExpandable(True)
         self.setExpandsOnDoubleClick(False)
         self.setAnimated(False)
-        self.setAllColumnsShowFocus(True)
+        # 不要画系统虚线焦点框；选中态交给 QSS
+        self.setAllColumnsShowFocus(False)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._dragging = False
         self._drop_item: QTreeWidgetItem | None = None
         self._drop_where = QAbstractItemView.DropIndicatorPosition.OnViewport
@@ -687,60 +693,34 @@ class QuickNotepadPage(BasePage):
         self._autosave_timer.timeout.connect(self._on_autosave)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = ScrollPage()
-        outer.addWidget(scroll)
+        m = page_content_margins()
+        outer.setContentsMargins(m[0], m[1], m[2], m[3])
+        outer.setSpacing(8)
 
         header = PageHeader(
-            "快速记事", "大纲速记 · 源码/设计/预览 · 剪贴板/截图可一键落入正文"
+            "快速记事",
+            "左大纲 · 右正文 · 检索/模式/操作同一排",
         )
-        scroll.add_widget(header)
+        outer.addWidget(header)
         self._page_header = header
-        hint = SemanticLabel(
-            "Tab / Shift+Tab 升降级 · Enter 新建同级 · 右侧正文支持源码、所见即所得设计与预览页签。",
-            kind="info",
-            compact=True,
-        )
-        scroll.add_widget(hint)
-        self._hint_label = hint
+        # 兼容全屏隐藏列表（不再单独占顶栏）
+        self._hint_label = None
+        self._tools_host = None
 
-        tools = QHBoxLayout()
-        self._tools_host = QWidget()
-        self._tools_host.setObjectName("NotepadToolbar")
-        self._tools_host.setLayout(tools)
-        tools.setContentsMargins(12, 8, 12, 8)
-        tools.setSpacing(10)
-        self._search = LineEdit()
-        self._search.setObjectName("NotepadSearchEdit")
-        self._search.setPlaceholderText("搜索标题/正文…")
-        self._search.textChanged.connect(lambda _t: self._reload_tree())
-        tools.addWidget(self._search, 1)
-        tools.addWidget(HintLabel("模式"))
-        self._mode = ComboBox()
-        self._mode.setMinimumWidth(168)
-        self._mode.setMinimumContentsLength(12)
-        self._mode.setSizeAdjustPolicy(
-            ComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
-        )
-        self._mode.addItem("简约 · 纯文本", "simple")
-        self._mode.addItem("多功能 · 源码/设计/预览", "rich")
-        self._mode.setCurrentIndex(1)
-        self._mode.currentIndexChanged.connect(self._on_mode_changed)
-        tools.addWidget(self._mode)
-        scroll.add_widget(self._tools_host)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(6)
 
-        body = QHBoxLayout()
-        body.setSpacing(14)
-        self._body_host = QWidget()
-        self._body_host.setLayout(body)
+        # —— 左：大纲 ——
         tree_box = FormSection("大纲")
-        tree_box.setMaximumWidth(360)
+        tree_box.setMinimumWidth(260)
+        tree_box.setMaximumWidth(400)
         self._tree_box = tree_box
         self._tree_panel = QWidget()
         self._tree_panel.setObjectName("OutlineTreePanel")
         tree_panel_lay = QVBoxLayout(self._tree_panel)
         tree_panel_lay.setContentsMargins(8, 8, 8, 8)
-        tree_panel_lay.setSpacing(8)
+        tree_panel_lay.setSpacing(6)
         tree_head_host = QWidget()
         tree_head_host.setObjectName("OutlineTreeHeader")
         tree_head = QHBoxLayout(tree_head_host)
@@ -751,9 +731,10 @@ class QuickNotepadPage(BasePage):
         tree_head.addWidget(self._outline_count)
         tree_panel_lay.addWidget(tree_head_host)
         self._tree = _OutlineTree()
-        self._tree.setMinimumHeight(280)
+        self._tree.setMinimumHeight(160)
         self._tree.setRootIsDecorated(True)
         self._tree.setAnimated(True)
+        self._tree.setUniformRowHeights(True)
         self._tree.currentItemChanged.connect(self._on_tree_select)
         self._tree.itemDoubleClicked.connect(self._on_tree_double_clicked)
         self._tree.drop_resolved.connect(self._on_drop_resolved)
@@ -764,13 +745,28 @@ class QuickNotepadPage(BasePage):
         self._tree.installEventFilter(self._key_filter)
         tree_panel_lay.addWidget(self._tree, 1)
         tree_box.add_widget(self._tree_panel, 1)
-        row = QHBoxLayout()
-        row.setSpacing(6)
+        # 两行操作：避免挤在一排把「新建/删除」字裁掉
+        row1 = QHBoxLayout()
+        row1.setSpacing(6)
         btn_new = PrimaryButton("新建")
         btn_new.setToolTip("Ctrl+N / Enter")
+        btn_new.setMinimumWidth(64)
         btn_new.clicked.connect(self._on_new_note)
-        row.addWidget(btn_new)
-        row.addWidget(
+        row1.addWidget(btn_new)
+        btn_edit = SecondaryButton("标题")
+        btn_edit.setToolTip("F2 或双击条目修改标题")
+        btn_edit.setMinimumWidth(64)
+        btn_edit.clicked.connect(self._on_edit_title)
+        row1.addWidget(btn_edit)
+        btn_del = DangerButton("删除")
+        btn_del.setMinimumWidth(64)
+        btn_del.clicked.connect(self._on_delete)
+        row1.addWidget(btn_del)
+        row1.addStretch(1)
+        tree_box.add_layout(row1)
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        row2.addWidget(
             self._outline_tool_btn(
                 "right",
                 "缩进",
@@ -778,7 +774,7 @@ class QuickNotepadPage(BasePage):
                 self._on_indent,
             )
         )
-        row.addWidget(
+        row2.addWidget(
             self._outline_tool_btn(
                 "left",
                 "升级",
@@ -786,26 +782,36 @@ class QuickNotepadPage(BasePage):
                 self._on_outdent,
             )
         )
-        btn_edit = SecondaryButton("标题")
-        btn_edit.setToolTip("F2 或双击条目修改标题")
-        btn_edit.clicked.connect(self._on_edit_title)
-        row.addWidget(btn_edit)
-        btn_del = DangerButton("删除")
-        btn_del.clicked.connect(self._on_delete)
-        row.addWidget(btn_del)
-        row.addStretch(1)
-        tree_box.add_layout(row)
-        body.addWidget(tree_box)
+        row2.addStretch(1)
+        tree_box.add_layout(row2)
+        splitter.addWidget(tree_box)
 
+        # —— 右：检索/模式/页签/保存 + 更多 ——
         editor = FormSection("正文")
         self._editor_box = editor
         self._editor_chrome = QWidget()
         self._editor_chrome.setObjectName("NotepadEditorChrome")
-        title_row = QHBoxLayout(self._editor_chrome)
-        title_row.setContentsMargins(10, 6, 10, 6)
-        title_row.setSpacing(10)
-        self._title_label = SectionTitle("未选择")
-        title_row.addWidget(self._title_label, 1)
+        chrome = QHBoxLayout(self._editor_chrome)
+        chrome.setContentsMargins(8, 4, 8, 4)
+        chrome.setSpacing(8)
+
+        self._search = LineEdit()
+        self._search.setObjectName("NotepadSearchEdit")
+        self._search.setPlaceholderText("搜索标题/正文…")
+        self._search.setMinimumWidth(140)
+        self._search.textChanged.connect(lambda _t: self._reload_tree())
+        chrome.addWidget(self._search, 1)
+
+        self._mode = ComboBox()
+        # ComboBox 默认 min=180，这里收窄但仍要容纳「多功能」+ 箭头区
+        self._mode.setMinimumWidth(120)
+        self._mode.setMaximumWidth(150)
+        self._mode.setToolTip("简约=纯文本；多功能=源码/设计/预览")
+        self._mode.addItem("简约", "simple")
+        self._mode.addItem("多功能", "rich")
+        self._mode.setCurrentIndex(1)
+        self._mode.currentIndexChanged.connect(self._on_mode_changed)
+        chrome.addWidget(self._mode)
 
         self._view_tabs_host = QFrame()
         self._view_tabs_host.setObjectName("EditorViewTabs")
@@ -821,22 +827,51 @@ class QuickNotepadPage(BasePage):
             self._view_tab_bar.addTab(label)
         self._view_tab_bar.currentChanged.connect(self._on_view_tab_changed)
         tabs_lay.addWidget(self._view_tab_bar)
-        title_row.addWidget(self._view_tabs_host)
+        chrome.addWidget(self._view_tabs_host)
 
-        self._btn_fullscreen = SecondaryButton("全屏")
-        self._btn_fullscreen.setObjectName("NotepadFullscreenBtn")
-        self._btn_fullscreen.setToolTip("隐藏大纲，专注正文 · Esc 退出")
-        self._btn_fullscreen.clicked.connect(self._toggle_editor_fullscreen)
-        title_row.addWidget(self._btn_fullscreen)
         self._save_hint = SemanticLabel("", kind="success", compact=True)
         self._save_hint.setVisible(False)
-        title_row.addWidget(self._save_hint)
+        chrome.addWidget(self._save_hint)
+
+        self._btn_save = SecondaryButton("保存")
+        self._btn_save.setToolTip("Ctrl+S · 平时自动保存")
+        self._btn_save.setMinimumWidth(56)
+        self._btn_save.clicked.connect(self._on_save_body)
+        chrome.addWidget(self._btn_save)
+
+        more = MenuButton("更多")
+        more.setToolTip("导入、剪贴板、全屏等")
+        more_menu = QMenu(more)
+        act_import = more_menu.addAction("导入 Markdown…")
+        act_import.triggered.connect(self._on_import_md)
+        act_cb = more_menu.addAction("从剪贴板粘贴")
+        act_cb.triggered.connect(self._from_clipboard)
+        act_hist = more_menu.addAction("最近剪贴板历史")
+        act_hist.triggered.connect(self._from_clipboard_history)
+        act_copy = more_menu.addAction("复制正文")
+        act_copy.triggered.connect(self._to_clipboard)
+        more_menu.addSeparator()
+        act_fs = more_menu.addAction("全屏写作")
+        act_fs.triggered.connect(self._toggle_editor_fullscreen)
+        more.setMenu(more_menu)
+        chrome.addWidget(more)
+        # 兼容旧属性名（显隐/快捷键仍可用）
+        self._btn_import = more
+        self._btn_from_cb = more
+        self._btn_from_hist = more
+        self._btn_to_cb = more
+        self._btn_fullscreen = more
+        self._act_import = act_import
+        self._act_fullscreen = act_fs
         editor.add_widget(self._editor_chrome)
+
+        self._title_label = SectionTitle("未选择")
+        editor.add_widget(self._title_label)
 
         self._fmt_toolbar_host = QWidget()
         self._fmt_toolbar_host.setObjectName("NotepadFmtToolbar")
         self._fmt_toolbar = QHBoxLayout(self._fmt_toolbar_host)
-        self._fmt_toolbar.setContentsMargins(8, 6, 8, 6)
+        self._fmt_toolbar.setContentsMargins(8, 4, 8, 4)
         self._fmt_toolbar.setSpacing(4)
         self._fmt_btns: list = []
         for label, tip, fn in (
@@ -879,6 +914,12 @@ class QuickNotepadPage(BasePage):
         self._fmt_toolbar.addWidget(self._btn_fg)
         self._fmt_toolbar.addWidget(self._btn_hl)
         self._fmt_btns.extend([self._btn_fg, self._btn_hl])
+        btn_time = SecondaryButton("时间")
+        btn_time.setToolTip("插入当前时间")
+        btn_time.clicked.connect(self._insert_timestamp)
+        self._btn_time = btn_time
+        self._fmt_toolbar.addWidget(btn_time)
+        self._fmt_btns.append(btn_time)
         self._fmt_toolbar.addStretch(1)
         editor.add_widget(self._fmt_toolbar_host)
         self._color_chrome: list = []
@@ -886,20 +927,20 @@ class QuickNotepadPage(BasePage):
         self._editor_surface = QWidget()
         self._editor_surface.setObjectName("NotepadEditorSurface")
         surface_lay = QVBoxLayout(self._editor_surface)
-        surface_lay.setContentsMargins(6, 6, 6, 6)
+        surface_lay.setContentsMargins(4, 4, 4, 4)
         surface_lay.setSpacing(0)
         self._view_stack = QStackedWidget()
-        self._view_stack.setMinimumHeight(320)
+        self._view_stack.setMinimumHeight(200)
         self._view_stack.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self._plain = PlainTextEdit()
-        self._plain.setMinimumHeight(320)
+        self._plain.setMinimumHeight(160)
         self._view_stack.addWidget(self._plain)
 
         self._rich = TextEdit()
         self._rich.setObjectName("MarkdownDesignEdit")
-        self._rich.setMinimumHeight(320)
+        self._rich.setMinimumHeight(160)
         self._rich.setAcceptRichText(True)
         self._rich.setAutoFormatting(TextEdit.AutoFormattingFlag.AutoBulletList)
         self._view_stack.addWidget(self._rich)
@@ -924,55 +965,28 @@ class QuickNotepadPage(BasePage):
 
         self._editor_footer = QWidget()
         self._editor_footer.setObjectName("NotepadEditorFooter")
-        footer_lay = QVBoxLayout(self._editor_footer)
-        footer_lay.setContentsMargins(0, 8, 0, 0)
+        footer_lay = QHBoxLayout(self._editor_footer)
+        footer_lay.setContentsMargins(4, 2, 4, 0)
         footer_lay.setSpacing(8)
-        self._rich_bar = QHBoxLayout()
         self._word_count = HintLabel("")
-        self._rich_bar.addWidget(self._word_count, 1)
-        btn_time = SecondaryButton("插入时间")
-        btn_time.clicked.connect(self._insert_timestamp)
-        self._btn_time = btn_time
-        self._rich_bar.addWidget(btn_time)
-        footer_lay.addLayout(self._rich_bar)
-        act = QHBoxLayout()
-        self._btn_save = SecondaryButton("立即保存")
-        self._btn_save.setToolTip("Ctrl+S · 平时自动保存")
-        self._btn_save.clicked.connect(self._on_save_body)
-        act.addWidget(self._btn_save)
-        btn_import = SecondaryButton("导入 MD")
-        btn_import.setToolTip("从 .md 导入并转为所见即所得正文")
-        btn_import.clicked.connect(self._on_import_md)
-        act.addWidget(btn_import)
-        self._btn_import = btn_import
-        btn_from_cb = SecondaryButton("从剪贴板")
-        btn_from_cb.setToolTip("Ctrl+Shift+V · 文本或图片（含截图）")
-        btn_from_cb.clicked.connect(self._from_clipboard)
-        act.addWidget(btn_from_cb)
-        btn_from_hist = SecondaryButton("最近历史")
-        btn_from_hist.setToolTip("把剪贴板历史最新一条落入当前记事")
-        btn_from_hist.clicked.connect(self._from_clipboard_history)
-        act.addWidget(btn_from_hist)
-        btn_to_cb = SecondaryButton("复制正文")
-        btn_to_cb.setToolTip("Ctrl+Shift+C · 富文本带 HTML")
-        btn_to_cb.clicked.connect(self._to_clipboard)
-        act.addWidget(btn_to_cb)
-        self._btn_from_cb = btn_from_cb
-        self._btn_from_hist = btn_from_hist
-        self._btn_to_cb = btn_to_cb
-        act.addStretch(1)
-        footer_lay.addLayout(act)
+        footer_lay.addWidget(self._word_count, 1)
         editor.add_widget(self._editor_footer)
-        body.addWidget(editor, 1)
 
-        scroll.add_widget(self._body_host)
+        # 兼容旧引用：格式栏旁曾有独立 rich_bar
+        self._rich_bar = footer_lay
+
+        splitter.addWidget(editor)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([280, 720])
+        outer.addWidget(splitter, 1)
+        self._body_host = splitter
+
         self._plain.textChanged.connect(self._on_body_changed)
         self._rich.textChanged.connect(self._on_body_changed)
         self._md_source.textChanged.connect(self._on_md_source_changed)
         self._fullscreen_hide = (
             self._page_header,
-            self._hint_label,
-            self._tools_host,
             self._tree_box,
         )
         self._fs_esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
@@ -1015,6 +1029,7 @@ class QuickNotepadPage(BasePage):
         btn.setIconSize(QSize(16, 16))
         btn.setText(text)
         btn.setMinimumHeight(BUTTON_MIN_HEIGHT)
+        btn.setMinimumWidth(72)
         btn.setToolTip(tip)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -1100,8 +1115,8 @@ class QuickNotepadPage(BasePage):
         self._mode.blockSignals(True)
         self._mode.setCurrentIndex(idx)
         self._mode.blockSignals(False)
-        self._mode.setItemText(0, "简约 · 纯文本")
-        self._mode.setItemText(1, "多功能 · 源码/设计/预览")
+        self._mode.setItemText(0, "简约")
+        self._mode.setItemText(1, "多功能")
         view = str(st.get("view_mode") or "edit")
         if view not in _VIEW_MODES:
             view = "edit"
@@ -1211,7 +1226,9 @@ class QuickNotepadPage(BasePage):
         for w in self._fullscreen_hide:
             if w is not None:
                 w.setVisible(not self._editor_fullscreen)
-        self._btn_fullscreen.setText("退出全屏" if self._editor_fullscreen else "全屏")
+        act = getattr(self, "_act_fullscreen", None)
+        if act is not None:
+            act.setText("退出全屏" if self._editor_fullscreen else "全屏写作")
         self.report_status(
             "编辑区全屏 · Esc 退出" if self._editor_fullscreen else "已退出全屏",
             level=StatusLevel.INFO,
@@ -1226,12 +1243,15 @@ class QuickNotepadPage(BasePage):
         rich = str(self._mode.currentData() or "") == "rich"
         self._view_tabs_host.setVisible(rich)
         design = rich and self._view_mode == "design"
+        self._fmt_toolbar_host.setVisible(design)
         for btn in self._fmt_btns:
             btn.setVisible(design)
         for w in getattr(self, "_color_chrome", []):
             w.setVisible(design)
-        self._btn_import.setVisible(rich)
-        self._btn_time.setVisible(design)
+        act_import = getattr(self, "_act_import", None)
+        if act_import is not None:
+            act_import.setEnabled(rich)
+            act_import.setVisible(rich)
 
     def _on_mode_changed(self, _index: int) -> None:
         mode = str(self._mode.currentData() or "rich")
@@ -1259,8 +1279,6 @@ class QuickNotepadPage(BasePage):
     def _apply_editor_mode(self, mode: str) -> None:
         rich = mode == "rich"
         self._word_count.setVisible(True)
-        for btn in (self._btn_from_cb, self._btn_from_hist, self._btn_to_cb):
-            btn.setVisible(True)
         font = QFont("Microsoft YaHei UI")
         font.setPointSize(10)
         if rich:
@@ -1493,9 +1511,7 @@ class QuickNotepadPage(BasePage):
                 editor = self._md_source
         else:
             editor = self._plain
-        chain = [self._search, self._tree, editor, self._btn_save]
-        if self._btn_from_cb.isVisible():
-            chain.extend([self._btn_from_cb, self._btn_from_hist, self._btn_to_cb])
+        chain = [self._search, self._tree, editor, self._btn_save, self._btn_import]
         return chain
 
     def _ensure_shortcuts(self) -> None:
@@ -1705,8 +1721,13 @@ class QuickNotepadPage(BasePage):
     def _on_tree_select(self, current: QTreeWidgetItem | None, _previous) -> None:
         if self._rebuilding_tree or current is None:
             return
-        self._flush_autosave()
         nid = str(current.data(0, Qt.ItemDataRole.UserRole) or "")
+        if not nid:
+            return
+        # 已是当前笔记则不再 flush，避免「先改 _current_id 再选中」把编辑器旧内容盖到新笔记
+        if nid == self._current_id:
+            return
+        self._flush_autosave()
         n = find_note(nid)
         if n:
             self._current_id = nid
@@ -1722,16 +1743,30 @@ class QuickNotepadPage(BasePage):
             return
         QuickNotepadPage._incoming = None
         title, body, image_path = stash
+        self._flush_autosave()
         entry = add_note(title or "来自投喂", body or "", parent_id=self._sibling_parent_id())
-        self._current_id = entry["id"]
+        self._autosave_timer.stop()
         self._search.clear()
-        self._reload_tree(keep_selection=self._current_id)
-        self._on_tree_select(self._tree.currentItem(), None)
+        # 勿先改 _current_id，否则树选中 flush 会冲掉投喂正文
+        self._reload_tree(keep_selection=entry["id"])
+        n = find_note(entry["id"])
+        if n:
+            self._current_id = entry["id"]
+            self._title_label.setText(str(n.get("title") or ""))
+            self._load_note_body(str(n.get("body") or ""))
+            self._set_save_badge("saved")
+            self._update_word_count()
+            self._sync_view_chrome()
         if image_path and Path(image_path).is_file():
             if str(self._mode.currentData() or "") != "rich":
                 idx = self._mode.findData("rich")
                 if idx >= 0:
+                    self._mode.blockSignals(True)
                     self._mode.setCurrentIndex(idx)
+                    self._mode.blockSignals(False)
+                    save_settings({"editor_mode": "rich"})
+                    self._apply_editor_mode("rich")
+                    self._sync_view_chrome()
             if insert_image(self._rich, Path(image_path)):
                 self._flush_autosave()
         self.report_status("已写入记事", level=StatusLevel.SUCCESS)
@@ -1882,14 +1917,23 @@ class QuickNotepadPage(BasePage):
         )
         if not paths:
             return
+        # 先落盘当前编辑器，避免稍后选中新笔记时把旧正文冲掉导入内容
+        self._flush_autosave()
         # 导入后便于编辑/预览：切到多功能 Markdown
         if str(self._mode.currentData() or "") != "rich":
             idx = self._mode.findData("rich")
             if idx >= 0:
+                self._mode.blockSignals(True)
                 self._mode.setCurrentIndex(idx)
+                self._mode.blockSignals(False)
+                save_settings({"editor_mode": "rich"})
+                self._apply_editor_mode("rich")
 
         last_id = ""
+        last_body = ""
+        last_title = ""
         ok = 0
+        parent_id = self._sibling_parent_id()
         for p in paths:
             path = Path(p)
             if not path.is_file():
@@ -1900,20 +1944,26 @@ class QuickNotepadPage(BasePage):
                 show_warning(self, f"无法读取：\n{path.name}\n{exc}")
                 continue
             title = self._title_from_md(path, body)
-            entry = add_note(title, "", parent_id=self._sibling_parent_id())
-            update_note(entry["id"], title, body)
+            entry = add_note(title, body, parent_id=parent_id)
             last_id = entry["id"]
+            last_body = body
+            last_title = title
             ok += 1
 
         if ok == 0:
             show_warning(self, "没有成功导入的文件。")
             return
-        self._current_id = last_id
+        # 切勿在 reload 前改 _current_id：树选中会 flush 编辑器，
+        # 若已指向新笔记，会把仍显示的旧/示例正文盖掉刚导入的内容。
+        self._autosave_timer.stop()
         self._reload_tree(keep_selection=last_id)
         n = find_note(last_id)
         if n:
-            self._title_label.setText(str(n.get("title") or ""))
-            self._load_note_body(str(n.get("body") or ""))
+            self._current_id = last_id
+            self._title_label.setText(str(n.get("title") or last_title))
+            self._load_note_body(str(n.get("body") or last_body))
+            self._set_save_badge("saved")
+            self._update_word_count()
             self._sync_view_chrome()
         self.schedule_primary_focus()
         self.report_status(

@@ -515,6 +515,7 @@ def build(
         "docx",
         "reportlab",
         "PyPDF2",
+        "pypdf",
         "yaml",
         "cv2",
         "numpy",
@@ -591,7 +592,7 @@ def build(
             log(str(exc))
             return False
 
-    profile_label = "开发版（含 app.dev.yml · 自动登录赵成）" if is_dev else "体验版 + 正式版（授权码/在线开通）"
+    profile_label = "开发版（含 app.dev.yml · 自动登录赵成）" if is_dev else "基础版入口 + 授权码 / 正式版开通"
     readme = release_dir / "README.txt"
     readme.write_text(
         f"TOA3 赋能培训运营助手（运营宝）· {profile_label}\n"
@@ -602,8 +603,9 @@ def build(
         + (
             "开发版：默认 skip_login，恢复本机赵成全功能授权；勿对外分发。\n"
             if is_dev
-            else "首次启动可选「体验版」：免授权码、可离线，含记事/截图/剪贴板/Harness 等基础工具。\n"
-            "正式版：登录窗粘贴 TOA 授权码，或在设置内选择产品方案一键开通。\n"
+            else "首次启动：有授权码点「授权码登录」；没有就点「进入软件」（基础版，可离线使用记事/截图/剪贴板等）。\n"
+            "正式版：在软件内选择产品方案一键开通，或粘贴运营台签发的授权码。\n"
+            "升级安装不会删除「系统设置 → 扩展」里你自己做的功能。\n"
         )
         + "授权到期或被停用后，无需卸载，重新申请新码激活即可。\n"
         "默认不需要管理员权限；如需装到 Program Files 可在向导中选择提升。\n"

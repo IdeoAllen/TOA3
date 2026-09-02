@@ -6,8 +6,9 @@ import logging
 import threading
 import time
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QDialog, QVBoxLayout
+from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QDialog, QPushButton, QVBoxLayout
 
 from app.app_state import AppState
 from app.dialog_chrome import add_dialog_hero, apply_dialog_root, make_info_form
@@ -16,8 +17,8 @@ from core.exceptions import AuthError
 from services.auth_service import authenticate, authenticate_standalone
 from services.config_service import get_auth_config
 from services.icon_registry import brand_logo_pixmap
-from services.user_plan_presentation import TRIAL_TIER_LABEL, user_login_hint, user_login_subtitle
-from widgets import DialogButtonRow, LineEdit, PasswordLineEdit, PrimaryButton, SecondaryButton, SemanticLabel
+from services.user_plan_presentation import user_login_hint, user_login_subtitle
+from widgets import DialogButtonRow, LineEdit, PasswordLineEdit, PrimaryButton, SemanticLabel
 
 logger = logging.getLogger(__name__)
 
@@ -72,23 +73,68 @@ class LoginDialog(BaseDialog):
             self._btn_login.clicked.connect(self._on_accept)
             layout.addWidget(self._btn_login)
 
-        self._status = SemanticLabel("", kind="info")
-        self._status.hide()
+        # 状态区常驻，避免 hide→show 改窗高被看成「又闪出一个进度窗」
+        self._status = SemanticLabel(" ", kind="info")
+        self._status.setMinimumHeight(40)
+        self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
         buttons = DialogButtonRow()
         buttons.add_secondary("取消", self.reject)
         if self._allow_standalone and not self._skip:
-            self._btn_standalone = buttons.add_secondary(TRIAL_TIER_LABEL, self._on_standalone)
+            self._btn_standalone = buttons.add_secondary("进入软件", self._on_standalone)
         layout.addWidget(buttons)
 
         self._authenticated = False
         self._login_busy = False
+        self._active_login_mode = ""
         self._login_poll: QTimer | None = None
         self._login_deadline = 0.0
         self._login_result: tuple[bool, dict, str] | None = None
+        self._enter_guard = False
         if not self._skip and hasattr(self, "_key"):
+            self._disable_dialog_default_buttons()
+            self._install_enter_filter()
             self._key.setFocus()
+
+    def _disable_dialog_default_buttons(self) -> None:
+        """禁止任何按钮成为默认键，避免 Enter 走 QDialog.accept / 重复触发。"""
+        for btn in self.findChildren(QPushButton):
+            btn.setAutoDefault(False)
+            btn.setDefault(False)
+
+    def _install_enter_filter(self) -> None:
+        for w in (self._user, self._key):
+            w.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if self._login_busy or self._enter_guard:
+                    return True
+                self._enter_guard = True
+                try:
+                    self._on_accept()
+                finally:
+                    QTimer.singleShot(0, self._clear_enter_guard)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _clear_enter_guard(self) -> None:
+        self._enter_guard = False
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        # 吞掉对话框级 Enter，绝不走 QDialog 默认 accept
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def accept(self) -> None:
+        """只允许登录成功后关闭；绝不在未认证时借 accept 再开一轮登录。"""
+        if not self._authenticated:
+            return
+        super().accept()
 
     def _prefill_username(self) -> None:
         auth = get_auth_config()
@@ -107,20 +153,29 @@ class LoginDialog(BaseDialog):
             self._key.setText(preset)
 
     def _set_status(self, text: str, *, kind: str = "info", visible: bool = True) -> None:
-        self._status.setText(text)
-        self._status.setProperty("class", f"semantic-{kind}")
-        self._status.style().unpolish(self._status)
-        self._status.style().polish(self._status)
-        self._status.setVisible(visible and bool(text.strip()))
+        # 常驻占位：空文案用空格保持高度，禁止 hide/show 导致窗体跳动
+        shown = (text or "").strip() if visible else ""
+        self._status.setText(shown if shown else " ")
+        self._status.setProperty("class", f"semantic-{kind if shown else 'info'}")
+        sty = self._status.style()
+        if sty is not None:
+            sty.unpolish(self._status)
+            sty.polish(self._status)
+        self._status.setVisible(True)
 
     def _set_login_busy(self, busy: bool, *, status: str = "") -> None:
         self._login_busy = busy
+        mode = self._active_login_mode if busy else ""
         if hasattr(self, "_btn_login"):
             self._btn_login.setEnabled(not busy)
-            self._btn_login.setText("登录中…" if busy else "授权码登录")
+            self._btn_login.setText(
+                "登录中…" if busy and mode == "license" else "授权码登录"
+            )
         if hasattr(self, "_btn_standalone"):
             self._btn_standalone.setEnabled(not busy)
-            self._btn_standalone.setText(f"进入{TRIAL_TIER_LABEL}…" if busy else TRIAL_TIER_LABEL)
+            self._btn_standalone.setText(
+                "进入中…" if busy and mode == "standalone" else "进入软件"
+            )
         if hasattr(self, "_user"):
             self._user.setEnabled(not busy)
         if hasattr(self, "_key"):
@@ -129,6 +184,18 @@ class LoginDialog(BaseDialog):
             self._set_status(status or "正在联网激活，请稍候…", kind="info")
         elif not status:
             self._set_status("", visible=False)
+            self._active_login_mode = ""
+
+    def _finish_authenticated(self, username: str, display_name: str, *, role: str = "") -> None:
+        AppState.get().set_user(username, display_name, role=role)
+        self._authenticated = True
+        self._set_login_busy(False)
+
+        def _close() -> None:
+            QDialog.accept(self)
+
+        # 延后关闭，避免与 Enter 事件栈重入导致窗体闪一下
+        QTimer.singleShot(0, _close)
 
     def _try_accept_local_license(self, license_key: str) -> bool:
         key = str(license_key or "").strip()
@@ -147,9 +214,7 @@ class LoginDialog(BaseDialog):
             name = str(info.get("user_name") or payload.get("name") or "").strip()
             if not name:
                 return False
-            AppState.get().set_user(name, name, role=str(info.get("role") or ""))
-            self._authenticated = True
-            self.accept()
+            self._finish_authenticated(name, name, role=str(info.get("role") or ""))
             return True
         except Exception:
             logger.debug("本机快速登录失败", exc_info=True)
@@ -160,10 +225,10 @@ class LoginDialog(BaseDialog):
         *,
         username: str,
         license_key: str,
-        standalone: bool,
+        mode: str = "license",
     ) -> tuple[bool, dict, str]:
         try:
-            if standalone:
+            if mode == "standalone":
                 session = authenticate_standalone()
             else:
                 session = authenticate(username, license_key)
@@ -179,14 +244,19 @@ class LoginDialog(BaseDialog):
         *,
         username: str,
         license_key: str,
-        standalone: bool,
+        mode: str = "license",
     ) -> None:
         if self._login_busy:
             return
-        if not standalone and self._try_accept_local_license(license_key):
+        # 先亮本页状态，再做本机快检 / 联网——避免先卡 UI 再突然弹出别的观感
+        status_map = {
+            "standalone": "正在进入软件…",
+            "license": "正在校验授权码…",
+        }
+        self._active_login_mode = mode
+        self._set_login_busy(True, status=status_map.get(mode, "正在处理…"))
+        if mode == "license" and self._try_accept_local_license(license_key):
             return
-        status = f"正在进入{TRIAL_TIER_LABEL}…" if standalone else "正在校验授权码…"
-        self._set_login_busy(True, status=status)
         self._login_result = None
         self._login_deadline = time.monotonic() + _LOGIN_TIMEOUT_S
 
@@ -194,7 +264,7 @@ class LoginDialog(BaseDialog):
             result = self._run_login_task(
                 username=username,
                 license_key=license_key,
-                standalone=standalone,
+                mode=mode,
             )
             self._login_result = result
 
@@ -233,27 +303,38 @@ class LoginDialog(BaseDialog):
         if not self._login_busy:
             return
         if ok:
-            AppState.get().set_user(
+            role = str(
+                session.get("role")
+                or ("user" if session.get("runtime_mode") == "standalone" else "")
+            )
+            self._finish_authenticated(
                 session["username"],
                 session["display_name"],
-                role=str(session.get("role") or ("user" if session.get("runtime_mode") == "standalone" else "")),
+                role=role,
             )
-            self._authenticated = True
-            self._set_login_busy(False)
-            self.accept()
             return
         self._set_login_busy(False)
-        self._set_status(err or "登录失败", kind="danger")
+        hint = ""
+        try:
+            from services.user_plan_presentation import user_auth_failure_hint
+
+            hint = user_auth_failure_hint(err)
+        except Exception:
+            pass
+        lines = [err or "登录失败"]
+        if hint:
+            lines.append(hint)
+        self._set_status("\n".join(lines), kind="danger")
 
     def _on_standalone(self) -> None:
-        self._start_worker(username="", license_key="", standalone=True)
+        self._start_worker(username="", license_key="", mode="standalone")
 
     def _on_accept(self) -> None:
         key = self._key.text().strip() if hasattr(self, "_key") else ""
         if not key and not self._skip:
             self._set_status("请粘贴 TOA 运营台签发的完整授权码", kind="warning")
             return
-        self._start_worker(username=self._user.text(), license_key=key, standalone=False)
+        self._start_worker(username=self._user.text(), license_key=key, mode="license")
 
     @property
     def authenticated(self) -> bool:
@@ -348,7 +429,7 @@ def try_restore_licensed_session() -> bool:
             break
         info = global_license_manager.get_license_info()
         if is_standalone_record(info) and not info.get("is_licensed"):
-            logger.info("已恢复%s会话", TRIAL_TIER_LABEL)
+            logger.info("已恢复单机会话")
         else:
             logger.info("已恢复本机授权会话: %s", name)
     except Exception:
@@ -382,10 +463,10 @@ def bootstrap_app_session() -> bool:
             session["display_name"],
             role=str(session.get("role") or "user"),
         )
-        logger.info("自动进入%s", TRIAL_TIER_LABEL)
+        logger.info("自动进入单机版")
         return True
     except Exception:
-        logger.exception("自动进入免费版失败")
+        logger.exception("自动进入单机版失败")
         return False
 
 

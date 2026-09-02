@@ -16,6 +16,7 @@ from services.user_plan_presentation import (
     dev_build_tag,
     is_dev_build,
     user_account_subtitle,
+    user_offline_grace_hint,
 )
 from widgets import (
     DataTable,
@@ -127,7 +128,11 @@ class LicenseSection(QWidget):
         root.addWidget(users, 1)
 
         cloud = FormSection("云服务连接")
-        cloud.add_widget(HintLabel(_CLOUD_HINT))
+        cloud_lines = [_CLOUD_HINT]
+        grace = user_offline_grace_hint()
+        if grace:
+            cloud_lines.append(grace)
+        cloud.add_widget(HintLabel("\n".join(cloud_lines)))
         env = QFormLayout()
         env.setSpacing(6)
         self._service_url = LineEdit()

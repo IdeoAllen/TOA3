@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""终端用户口径：试用版 / 授权版 / 正式版 + 套餐（与开发构建、发行 profile 分离）。
+"""终端用户口径：基础版 / 授权版 / 正式版 + 套餐（与开发构建、发行 profile 分离）。
 
 软件版本号仅在「关于」弹窗与状态栏永久区展示，其它入口不得重复。
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
-TRIAL_TIER_LABEL = "试用版"
+TRIAL_TIER_LABEL = "基础版"
 AUTH_TIER_LABEL = "授权版"
 OFFICIAL_TIER_LABEL = "正式版"
 
@@ -78,7 +78,7 @@ def user_has_code_activation() -> bool:
 
 
 def user_plan_tier() -> str:
-    """用户档位：试用版 | 授权版 | 正式版。"""
+    """用户档位：基础版 | 授权版 | 正式版。"""
     lm = _license_manager()
     if user_has_paid_order():
         ok, _ = lm._activation_still_valid()
@@ -204,7 +204,7 @@ def user_validity_line(*, date_only: bool = False) -> str:
             return f"{OFFICIAL_TIER_LABEL}已到期 · 续费后恢复全部模块"
         if lm.is_expired_trial():
             return f"体验已到期 · 购买{OFFICIAL_TIER_LABEL}解锁付费模块"
-        return f"{TRIAL_TIER_LABEL}体验已到期 · 升级{OFFICIAL_TIER_LABEL}解锁付费模块"
+        return f"{TRIAL_TIER_LABEL}已到期 · 升级{OFFICIAL_TIER_LABEL}解锁付费模块"
 
     if tier == OFFICIAL_TIER_LABEL:
         head = pack if pack and pack not in (OFFICIAL_TIER_LABEL, "付费套餐") else OFFICIAL_TIER_LABEL
@@ -274,11 +274,123 @@ def user_status_version_label() -> str:
     return user_status_bar_version_label()
 
 
+def user_offline_grace_hint() -> str:
+    """L12：断网宽限期说明（配置 offline_grace_days）。"""
+    try:
+        from services.license_client import offline_grace_days
+
+        days = int(offline_grace_days() or 0)
+        if days <= 0:
+            return ""
+        return (
+            f"已联网激活后，断网仍可使用约 {days} 天（离线宽限期）；"
+            "超期或吊销后需恢复网络并再次联网校验。"
+        )
+    except Exception:
+        return "已联网激活后，断网短期内仍可使用；恢复网络后请再联网校验一次。"
+
+
+def user_auth_failure_hint(err: str) -> str:
+    """L3：登录/激活失败时的下一步引导（单行，接在主错误后）。"""
+    text = str(err or "").strip()
+    low = text.lower()
+    if not text:
+        return "请检查网络后重试，或在设置页查看云服务连接。"
+
+    if "绑定" in text or "bound" in low or "其它电脑" in text or "其它设备" in text:
+        try:
+            mid = _license_manager().get_machine_id()
+            return (
+                f"本机机器 ID：{mid}。"
+                "请复制后发给管理员换机解绑，或打开运营台处理。"
+            )
+        except Exception:
+            return "请在「系统设置 → 授权 → 云服务连接」复制机器 ID，联系管理员换机解绑。"
+
+    if any(k in text for k in ("停用", "吊销", "revoked")):
+        return "请联系管理员恢复授权，或在运营台查看该账号状态。"
+
+    if "到期" in text or "expired" in low:
+        return "登录成功后，可在顶栏 Chip 或「设置 → 开通与续费」续费。"
+
+    if any(k in text for k in ("登记", "新码", "更换", "无效", "missing", "unknown")):
+        return "请从运营台重新获取完整授权码后再试。"
+
+    if "手机" in text or "11 位" in text:
+        return "请确认手机号无误；若已在他处试用，请联系运营台。"
+
+    if any(k in text for k in ("超时", "网络", "连接", "timeout")):
+        return "请检查网络或防火墙，稍后重试。"
+
+    return "仍无法登录时，请打开「系统设置 → 云服务连接」核对 API 与机器 ID。"
+
+
+def user_entitlement_status_line() -> str:
+    """L2 云授权状态：用户可读一行摘要（Chip tooltip / 我的账号）。"""
+    lm = _license_manager()
+    if is_dev_build():
+        return "开发构建 · 全部功能已开放"
+
+    info = lm.get_license_info()
+    online = str(info.get("online_status") or "").strip().lower()
+
+    def _days_suffix() -> str:
+        days = lm.get_remaining_days()
+        if days != float("inf") and int(days) >= 0:
+            return f" · 剩余 {int(days)} 天"
+        return ""
+
+    if lm.is_standalone_mode():
+        if lm.is_expired_standalone():
+            return "离线体验已到期"
+        suffix = _days_suffix()
+        return f"离线体验（未联网授权）{suffix}" if suffix else "离线体验（未联网授权）"
+
+    if online == "revoked":
+        return "已吊销"
+    if online == "bound_elsewhere":
+        return "已绑定其它设备"
+
+    if not lm.is_licensed():
+        offline_map = {
+            "expired": "已过期",
+            "missing": "授权无效",
+            "unknown": "授权无效",
+        }
+        return offline_map.get(online, "未激活")
+
+    ent = lm.get_entitlement()
+
+    if user_plan_expired() or online == "expired":
+        if ent == "paid":
+            return "正式授权已过期"
+        if ent == "trial":
+            return "试用已过期"
+        if ent == "invited":
+            return "邀请授权已过期"
+        return "授权已过期"
+
+    suffix = _days_suffix()
+    if ent == "admin":
+        return f"管理员授权 · 有效{suffix}"
+    if ent == "invited":
+        return f"邀请授权 · 有效{suffix}"
+    if ent == "paid":
+        return f"正式授权 · 有效{suffix}"
+    if ent == "trial":
+        return f"试用中{suffix}"
+    if online == "active" or lm.had_network_activation():
+        return f"授权有效{suffix}"
+    return f"授权有效{suffix}"
+
+
 def user_chip_display() -> Tuple[str, str, str]:
     """顶栏 Chip：文案、语义 kind、tooltip。"""
     tier = user_plan_tier()
+    l2 = user_entitlement_status_line()
     tooltip = (
         f"档位：{tier}\n"
+        f"云状态：{l2}\n"
         f"身份/套餐：{user_product_pack_label()}\n"
         f"{user_validity_line()}"
     )
@@ -337,7 +449,7 @@ def user_login_subtitle() -> str:
 
 
 def user_login_hint() -> str:
-    return f"粘贴授权码登录，或直接进入{TRIAL_TIER_LABEL}。购买与续费在软件内完成。"
+    return "有授权码就登录；没有就点「进入软件」，联网后再升级。"
 
 
 def user_version_caption(*, for_about: bool = False) -> str:

@@ -16,6 +16,8 @@ build/
 .env
 .env.*
 config/license.json
+config/admin_bootstrap_code.txt
+config/license.json.bak*
 
 # Qt / Designer
 *.qmlc
