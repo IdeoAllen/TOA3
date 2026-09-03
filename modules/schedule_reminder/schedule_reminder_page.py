@@ -2,6 +2,7 @@
 """班级日程提醒：五场景课表 + 简易事件列表。"""
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from core.base_page import BasePage
@@ -23,6 +24,7 @@ from modules.schedule_reminder.schedule_reminder_service import (
     load_schedule_source,
     query_all_scenes,
 )
+from services.harness_task_runner import HarnessTaskRunner
 from services.storage_paths import module_output_dir
 from widgets import (
     DataTable,
@@ -47,6 +49,8 @@ class ScheduleReminderPage(BasePage):
         self._events = []
         self._scenes = {}
         self._tables: dict[str, DataTable] = {}
+        self._scene_mtime: float | None = None
+        self._scene_runner = HarnessTaskRunner(self)
 
         outer = QVBoxLayout(self)
         m = page_content_margins()
@@ -198,26 +202,75 @@ class ScheduleReminderPage(BasePage):
 
         self.run_safe(_run, title="加载失败")
 
-    def _reload_scenes(self) -> None:
-        def _run() -> None:
-            self._scenes = query_all_scenes()
-            for sid, _, _ in SCENE_DEFS:
-                result = self._scenes.get(sid)
-                table = self._tables[sid]
-                if result is None:
-                    continue
-                table.set_headers(result.columns)
-                table.set_rows([tuple(str(c) for c in row) for row in result.rows])
-            counts = {
-                sid: len(r.rows)
-                for sid, r in self._scenes.items()
-                if r and not (len(r.columns) == 1 and r.columns[0] == "提示")
-            }
-            msg = "已刷新五场景：" + "、".join(f"{k}={v}" for k, v in counts.items())
-            self._log.setPlainText(msg)
-            self.report_status(msg)
+    def _reload_scenes(self, *, force: bool = True) -> None:
+        path = data_file_path()
+        if not path.is_file():
+            return
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = None
+        # 进页重复切业务：文件未变则不重读 Excel
+        if (
+            not force
+            and self._scenes
+            and mtime is not None
+            and self._scene_mtime == mtime
+        ):
+            return
+        if self._scene_runner.is_running():
+            return
 
-        self.run_safe(_run, title="查询失败")
+        self._log.setPlainText("正在查询五场景…")
+        self.report_status("正在查询课表…", level=StatusLevel.INFO)
+
+        def _work():
+            scenes = query_all_scenes()
+            try:
+                stamp = path.stat().st_mtime
+            except OSError:
+                stamp = None
+            return scenes, stamp
+
+        def _done(ok: bool, value) -> None:
+            if self.window() is not None and getattr(
+                self.window(), "_current_id", None
+            ) != self.page_id:
+                # 已离开本页：仍缓存结果，下次进页免再等
+                if ok and isinstance(value, tuple) and len(value) == 2:
+                    self._scenes, self._scene_mtime = value[0], value[1]
+                return
+            if not ok:
+                self.handle_error(value, title="查询失败")
+                return
+            scenes, stamp = value
+            self._apply_scenes(scenes, stamp)
+
+        if not self._scene_runner.run(_work, on_done=_done):
+            # 线程忙时退回同步（极少）
+            self.run_safe(
+                lambda: self._apply_scenes(query_all_scenes(), mtime),
+                title="查询失败",
+            )
+
+    def _apply_scenes(self, scenes: dict, mtime: float | None) -> None:
+        self._scenes = scenes or {}
+        self._scene_mtime = mtime
+        for sid, _, _ in SCENE_DEFS:
+            result = self._scenes.get(sid)
+            table = self._tables[sid]
+            if result is None:
+                continue
+            table.set_headers(result.columns)
+            table.set_rows([tuple(str(c) for c in row) for row in result.rows])
+        counts = {
+            sid: len(r.rows)
+            for sid, r in self._scenes.items()
+            if r and not (len(r.columns) == 1 and r.columns[0] == "提示")
+        }
+        msg = "已刷新五场景：" + "、".join(f"{k}={v}" for k, v in counts.items())
+        self._log.setPlainText(msg)
+        self.report_status(msg)
 
     def _current_scene_id(self) -> str:
         idx = self._scene_tabs.currentIndex()
@@ -316,7 +369,18 @@ class ScheduleReminderPage(BasePage):
         self.run_safe(_run, title="扫描失败")
 
     def on_enter(self) -> None:
-        self._reload_events()
-        if data_file_path().is_file():
-            self._reload_scenes()
+        # 先让顶栏「业务」与侧栏画完，再刷事件/课表（Excel 查询放后台）
         self.report_status("班级日程提醒")
+        QTimer.singleShot(0, self._on_enter_deferred)
+
+    def _on_enter_deferred(self) -> None:
+        if self.window() is not None and getattr(self.window(), "_current_id", None) != self.page_id:
+            return
+        self._reload_events()
+        if not data_file_path().is_file():
+            return
+        # 有缓存先画上，避免顶栏切业务时空转
+        if self._scenes:
+            self._apply_scenes(self._scenes, self._scene_mtime)
+            self.report_status("课表（缓存）", level=StatusLevel.INFO)
+        self._reload_scenes(force=False)

@@ -29,9 +29,8 @@ def build_global_hotkey_bindings(shell: "MainShell") -> dict[str, Callable[[], N
             bindings[str(hk["screenshot_region"])] = lambda: run_screenshot_hotkey(
                 shell, full=True
             )
-    fs_key = str(hk.get("toggle_fullscreen") or "F11").strip()
-    if fs_key and fs_key.lower() != "none":
-        bindings[fs_key] = shell._toggle_fullscreen
+    # F11 / 沉浸键禁止 RegisterHotKey：正式版会系统级抢走开发版按键。
+    # 沉浸只在本窗前台有意义 → ApplicationShortcut + _ShellNavKeyFilter。
     tw_key = str(hk.get("toggle_window") or "").strip()
     if (
         tw_key
@@ -75,9 +74,6 @@ def apply_global_hotkeys_for_shell(shell: Any) -> dict[str, str]:
     if errs:
         logger.info("全局热键部分失败: %s", errs)
 
-    hk = get_hotkeys_config()
-    fs_key = str(hk.get("toggle_fullscreen") or "F11").strip()
-    shell._global_fullscreen_hotkey_ok = bool(
-        fs_key and fs_key.lower() != "none" and fs_key not in errs
-    )
+    # 沉浸全屏仅应用内处理，不占用 OS 全局 F11
+    shell._global_fullscreen_hotkey_ok = False
     return errs

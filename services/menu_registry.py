@@ -7,16 +7,26 @@ from typing import Any
 
 from services.config_service import get_all_menu_items, get_menu_item_by_id, get_menu_items
 
-GROUP_ORDER = ("home", "office", "ai", "image", "directory", "file", "business", "system")
+# 按办公室实际场景：日常随手 → 图片 → 文件交付 → 开源引擎 → 培训业务 → 系统
+GROUP_ORDER = ("home", "office", "image", "files", "engines", "business", "system")
+# 旧 group_id → 新（本机 menu.yml / 云端目录兼容）
+GROUP_ID_ALIASES = {
+    "ai": "engines",
+    "directory": "files",
+    "file": "files",
+}
 GROUP_LABELS = {
-    "home": "首页",
-    "office": "办公增效",
-    "ai": "AI 智能体",
+    "home": "首页与桌面",
+    "office": "日常办公",
     "image": "图片处理",
-    "directory": "文件/目录操作",
-    "file": "文件操作",
-    "business": "业务相关",
+    "files": "文件与目录",
+    "engines": "开源引擎",
+    "business": "培训业务",
     "system": "系统",
+    # 兼容旧标签查询
+    "ai": "开源引擎",
+    "directory": "文件与目录",
+    "file": "文件与目录",
 }
 # GROUP_LABELS = 子模块（子系统）完整名；DOMAIN_TAB_LABELS = 顶栏短名
 
@@ -24,14 +34,23 @@ GROUP_LABELS = {
 DOMAIN_TAB_LABELS = {
     "home": "首页",
     "office": "办公",
-    "ai": "编码智能体",
     "image": "图片",
-    "directory": "目录",
-    "file": "文件",
+    "files": "文件",
+    "engines": "引擎",
     "business": "业务",
     "system": "系统",
     "other": "其它",
+    # 兼容旧 id
+    "ai": "引擎",
+    "directory": "文件",
+    "file": "文件",
 }
+
+
+def normalize_menu_group_id(group_id: str | None) -> str:
+    """统一菜单 group（含历史 ai/directory/file 别名）。"""
+    gid = str(group_id or "").strip().lower() or "other"
+    return GROUP_ID_ALIASES.get(gid, gid)
 
 
 _GROUP_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
@@ -39,8 +58,8 @@ _GROUP_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
 
 def is_custom_group_id(group_id: str | None) -> bool:
     """用户提升为顶栏子模块时，group 可等于模块 id（不在出厂 GROUP_ORDER）。"""
-    gid = str(group_id or "").strip().lower()
-    return bool(gid) and gid not in GROUP_ORDER and bool(_GROUP_ID_RE.match(gid))
+    gid = normalize_menu_group_id(group_id)
+    return bool(gid) and gid not in GROUP_ORDER and gid != "other" and bool(_GROUP_ID_RE.match(gid))
 
 
 def extra_group_ids_from_items(items: list[dict] | None = None) -> set[str]:
@@ -51,7 +70,7 @@ def extra_group_ids_from_items(items: list[dict] | None = None) -> set[str]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        gid = str(item.get("group") or "").strip().lower()
+        gid = normalize_menu_group_id(item.get("group"))
         if is_custom_group_id(gid):
             out.add(gid)
     return out
@@ -64,12 +83,12 @@ def normalize_group_order(raw: Any, *, extra_allowed: Any = None) -> list[str]:
     extras: set[str] = set()
     if extra_allowed:
         for item in extra_allowed:
-            gid = str(item or "").strip().lower()
+            gid = normalize_menu_group_id(item)
             if is_custom_group_id(gid):
                 extras.add(gid)
     if isinstance(raw, (list, tuple)):
         for item in raw:
-            gid = str(item or "").strip().lower()
+            gid = normalize_menu_group_id(item)
             if is_custom_group_id(gid):
                 extras.add(gid)
     allowed_set = base_set | extras
@@ -77,7 +96,7 @@ def normalize_group_order(raw: Any, *, extra_allowed: Any = None) -> list[str]:
     seen: set[str] = set()
     if isinstance(raw, (list, tuple)):
         for item in raw:
-            gid = str(item or "").strip().lower()
+            gid = normalize_menu_group_id(item)
             if gid in allowed_set and gid not in seen:
                 out.append(gid)
                 seen.add(gid)
@@ -129,6 +148,9 @@ MIGRATED_MODULES: dict[str, str] = {
     "llm_assistant": "modules.llm_assistant.llm_assistant_page.LlmAssistantPage",
     "media_studio": "modules.media_studio.media_studio_page.MediaStudioPage",
     "harness_agent": "modules.harness_agent.harness_agent_page.HarnessAgentPage",
+    "open_pencil": "modules.open_pencil.open_pencil_page.OpenPencilPage",
+    "drawio_web": "modules.drawio_web.drawio_web_page.DrawioWebPage",
+    "comfyui_web": "modules.comfyui_web.comfyui_web_page.ComfyUiWebPage",
     "directory_generator": "modules.directory_generator.directory_generator_page.DirectoryGeneratorPage",
     "directory_inspector": "modules.directory_inspector.directory_inspector_page.DirectoryInspectorPage",
     "column_preview": "modules.column_preview.column_preview_page.ColumnPreviewPage",
@@ -205,7 +227,7 @@ def grouped_menu_items(
     buckets: dict[str, list[dict]] = {g: [] for g in order}
     other: list[dict] = []
     for item in items:
-        g = str(item.get("group") or "business").lower()
+        g = normalize_menu_group_id(item.get("group") or "business")
         if g in buckets:
             buckets[g].append(item)
         elif is_custom_group_id(g):

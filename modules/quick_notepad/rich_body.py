@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
-from PySide6.QtGui import QImage, QTextDocument
+from PySide6.QtGui import QImage, QTextDocument, QTextImageFormat
 from PySide6.QtWidgets import QTextEdit
 
 from services.storage_paths import module_data_dir
@@ -354,7 +354,18 @@ def _insert_stored_image(edit: QTextEdit, dest: Path) -> bool:
     url = QUrl.fromLocalFile(str(dest.resolve()))
     doc = edit.document()
     doc.addResource(QTextDocument.ResourceType.ImageResource, url, img)
+    fmt = QTextImageFormat()
+    fmt.setName(url.toString())
+    # 初始宽度适配编辑区，便于设计模式拖角继续缩放
+    try:
+        max_w = max(160, min(960, edit.viewport().width() - 48))
+    except Exception:
+        max_w = 640
+    if img.width() > max_w > 0:
+        h = max(1, int(round(img.height() * max_w / img.width())))
+        fmt.setWidth(max_w)
+        fmt.setHeight(h)
     cur = edit.textCursor()
-    cur.insertImage(url.toString())
+    cur.insertImage(fmt)
     edit.setTextCursor(cur)
     return True

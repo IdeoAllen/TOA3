@@ -113,10 +113,11 @@ def parse_plugin_root(root: Path | str) -> PluginManifest:
 
     name = str(plugin.get("name") or pid).strip()
     group = str(plugin.get("group") or "business").strip().lower()
-    from services.menu_registry import GROUP_ORDER
+    from services.menu_registry import GROUP_ORDER, normalize_menu_group_id
 
-    if group not in GROUP_ORDER:
-        raise ValueError(f"plugin.group 须为 {GROUP_ORDER} 之一")
+    g = normalize_menu_group_id(group)
+    if g not in GROUP_ORDER:
+        raise ValueError(f"plugin.group 须为 {GROUP_ORDER} 之一（可用别名 ai→engines, directory/file→files）")
 
     version = str(plugin.get("version") or "0.1.0").strip()
     if not _VERSION_RE.match(version):
@@ -152,7 +153,7 @@ def parse_plugin_root(root: Path | str) -> PluginManifest:
         schema_version=schema_version,
         plugin_id=pid,
         name=name,
-        group=group,
+        group=g,
         order=int(plugin.get("order") or 90),
         version=version,
         requires_license=_as_bool(plugin.get("requires_license"), False),

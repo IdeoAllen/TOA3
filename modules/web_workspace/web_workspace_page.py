@@ -2,7 +2,7 @@
 """网页工作台：内嵌浏览器，可配置并切换多个在线文档/网页地址。"""
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QEvent, QObject, QUrl, Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from core.base_page import BasePage
@@ -33,6 +33,28 @@ def _webengine_available() -> bool:
     from services.qt_webengine_bootstrap import webengine_import_ok
 
     return webengine_import_ok()
+
+
+class _WebWorkspaceF11Filter(QObject):
+    """WebEngine 内把 F11 交给壳层沉浸，避免浏览器自吃全屏键。"""
+
+    def __init__(self, page: "WebWorkspacePage") -> None:
+        super().__init__(page)
+        self._page = page
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride):
+            return False
+        if event.key() != Qt.Key.Key_F11 or event.modifiers() != Qt.KeyboardModifier.NoModifier:
+            return False
+        shell = self._page.window()
+        if shell is None or not hasattr(shell, "_toggle_fullscreen"):
+            return False
+        if event.type() == QEvent.Type.ShortcutOverride:
+            event.accept()
+        else:
+            shell._toggle_fullscreen()
+        return True
 
 
 class _SitesManageDialog(BaseDialog):
@@ -266,6 +288,8 @@ class WebWorkspacePage(BasePage):
         if lay is not None:
             self._placeholder.hide()
             lay.addWidget(self._view, 1)
+        self._f11_filter = _WebWorkspaceF11Filter(self)
+        self._view.installEventFilter(self._f11_filter)
         self._apply_zoom(get_zoom_factor())
 
     def _apply_zoom(self, zoom: float) -> None:
@@ -286,6 +310,11 @@ class WebWorkspacePage(BasePage):
     def _on_load_finished(self, ok: bool) -> None:
         if self._view is not None:
             self._view.setZoomFactor(get_zoom_factor())
+            # 阻止页面把 F11 当成浏览器全屏
+            self._view.page().runJavaScript(
+                "document.addEventListener('keydown',function(e){"
+                "if(e.key==='F11'){e.preventDefault();e.stopImmediatePropagation();}},true);"
+            )
         if ok:
             self.report_status("页面就绪", level=StatusLevel.SUCCESS)
         else:

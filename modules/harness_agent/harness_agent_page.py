@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DeepSeek Harness · 侧栏任务页（group: ai）
+DeepSeek Harness · 侧栏任务页（group: engines）
 
 流程：先画壳（启停 + 状态 + WebEngine 占位）→ 读安装 → 读服务 → 就绪后加载 URL。
 """
@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QTimer, QUrl, Qt
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 
 from core.base_page import BasePage
@@ -25,6 +25,7 @@ from services.harness_feed import copy_to_clipboard, format_feed_message, peek_f
 from services.harness_probe import HarnessPageState, probe_page_state
 from services.harness_setup import install_harness_runtime, repair_harness_runtime
 from services.harness_sidecar import (
+    is_running,
     open_config_dir,
     prepare_sidecar_start,
     sidecar_start_progress,
@@ -32,6 +33,12 @@ from services.harness_sidecar import (
     stop,
 )
 from services.harness_status import HarnessStatus, InstallState, ServiceState, read_harness_status
+from services.harness_surface import (
+    open_in_system_browser,
+    prefer_browser,
+    prefer_embed,
+    set_surface_mode,
+)
 from services.os_open import open_in_file_manager
 from services.storage_paths import module_data_dir, module_output_dir
 from widgets import DangerButton, HintLabel, MenuButton, PrimaryButton, SecondaryButton, SectionTitle
@@ -66,23 +73,21 @@ class _HarnessF11Filter(QObject):
 
 
 def _make_harness_web_page(profile, view, *, base_url: str):
-    from PySide6.QtWebEngineCore import QWebEnginePage
+    from PySide6.QtCore import QUrl
+
+    from services.webengine_host import ToaWebEnginePage
 
     base = QUrl(base_url)
     host = (base.host() or "").lower()
 
-    class _HarnessWebPage(QWebEnginePage):
-        def acceptNavigationRequest(self, url, nav_type, is_main_frame):  # noqa: N802
-            if is_main_frame and url.scheme() in ("http", "https") and host:
-                target_host = (url.host() or "").lower()
-                if target_host and target_host != host:
-                    return False
-            return super().acceptNavigationRequest(url, nav_type, is_main_frame)
+    def _accept(url, _nav_type, is_main_frame) -> bool:
+        if is_main_frame and url.scheme() in ("http", "https") and host:
+            target_host = (url.host() or "").lower()
+            if target_host and target_host != host:
+                return False
+        return True
 
-        def createWindow(self, _type):  # noqa: N802
-            return self
-
-    return _HarnessWebPage(profile, view)
+    return ToaWebEnginePage(profile, view, accept_nav=_accept)
 
 
 class _HarnessWebHost(QWidget):
@@ -91,7 +96,7 @@ class _HarnessWebHost(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("HarnessWebHost")
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        # 勿 WA_OpaquePaintEvent：与 GPU WebView 叠层时易悬停闪烁
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -105,6 +110,8 @@ class _HarnessWebHost(QWidget):
         self._overlay.setObjectName("HarnessWebOverlay")
         self._overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._overlay.setWordWrap(True)
+        # 加载遮罩默认挡点击；揭开后 hide，避免误挡 WebView
+        self._overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self._overlay.hide()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
@@ -116,23 +123,37 @@ class _HarnessWebHost(QWidget):
         self._placeholder.show()
 
     def embed_view(self, view: QWidget) -> None:
-        self._placeholder.hide()
+        """把 WebView 放进槽位；遮罩盖住冷启动。不冻主窗。"""
         lay = self.layout()
         if lay is None:
             return
+        if not (self._overlay.text() or "").strip():
+            self._overlay.setText("正在准备 DeepSeek Harness…")
+        self._overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self._overlay.show()
+        self._overlay.raise_()
         if lay.indexOf(view) < 0:
+            view.hide()
             lay.addWidget(view, 1)
+        self._placeholder.hide()
+        view.show()
+        self._overlay.raise_()
 
     def set_overlay_text(self, text: str | None) -> None:
         """仅用全局 QSS（HarnessWebOverlay）；禁止 setStyleSheet 以免整窗重绘抖动。"""
         if text:
             if self._overlay.text() != text:
                 self._overlay.setText(text)
+            self._overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
             if not self._overlay.isVisible():
                 self._overlay.show()
-                self._overlay.raise_()
-        elif self._overlay.isVisible():
-            self._overlay.hide()
+            self._overlay.raise_()
+        else:
+            # 就绪后彻底放开鼠标，避免透明层仍吃事件造成「点一下卡一下」
+            self._overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            if self._overlay.isVisible():
+                self._overlay.hide()
+            self._overlay.clear()
 
 
 class HarnessAgentPage(BasePage):
@@ -161,6 +182,12 @@ class HarnessAgentPage(BasePage):
         self._prewarm_done = False
         self._more_menu_signature: tuple[bool, bool] | None = None
         self._f11_filter = _HarnessF11Filter(self)
+        self._auto_start_tried = False
+        self._browser_surface_opened = False
+        self._reveal_token = 0
+        self._cred_heal_tried = False
+        # 进/离页代次：作废 singleShot，避免引擎↔业务↔系统快切时原生闪退
+        self._visit_gen = 0
 
         m = page_content_margins()
         outer = QVBoxLayout(self)
@@ -256,18 +283,19 @@ class HarnessAgentPage(BasePage):
     def _rebuild_more_menu(self) -> None:
         st = self._status
         running = bool(st.running) if st is not None else False
-        external = (
-            st is not None and st.service == ServiceState.RUNNING_EXTERNAL
-        )
-        signature = (running, external)
+        embed = prefer_embed()
+        signature = (running, embed)
         if signature == self._more_menu_signature:
             return
         self._more_menu_signature = signature
         self._more_menu.clear()
         self._more_menu.addAction("在浏览器打开", self._open_external)
+        if embed:
+            self._more_menu.addAction("改用系统浏览器显示", self._switch_to_browser_surface)
+        else:
+            self._more_menu.addAction("改回套件内嵌显示", self._switch_to_embed_surface)
         self._more_menu.addAction("重启服务", self._on_restart)
-        if external:
-            self._more_menu.addAction("接管并重启", self._on_takeover_restart)
+        self._more_menu.addAction("接管并重启", self._on_takeover_restart)
         self._more_menu.addAction("修复运行环境", self._on_repair_env)
         self._more_menu.addSeparator()
         self._more_menu.addAction("导出最近会话", self._export_recent)
@@ -281,11 +309,29 @@ class HarnessAgentPage(BasePage):
         # 勿把焦点交给 WebEngine，避免进页时整窗闪动（网页工作台也只聚焦工具条）
         return self._btn_refresh if self._body_stack.currentIndex() == 1 else None
 
-    def on_enter(self) -> None:
-        """与网页工作台一致：切页先完成绘制，下一帧再刷内容与 overlay。"""
-        QTimer.singleShot(0, self._on_enter_deferred)
+    def _page_active(self, visit: int | None = None) -> bool:
+        if visit is not None and visit != self._visit_gen:
+            return False
+        win = self.window()
+        if win is not None and getattr(win, "_current_id", None) != self.page_id:
+            return False
+        return True
 
-    def _on_enter_deferred(self) -> None:
+    def on_enter(self) -> None:
+        """切页先完成绘制，再刷状态；WebView 延后挂载。"""
+        self._visit_gen += 1
+        visit = self._visit_gen
+        QTimer.singleShot(120, lambda v=visit: self._on_enter_deferred(v))
+
+    def _on_enter_deferred(self, visit: int | None = None) -> None:
+        if not self._page_active(visit):
+            return
+        try:
+            from services.harness_model_defaults import ensure_official_default_model
+
+            ensure_official_default_model()
+        except Exception:
+            pass
         self._apply_pending_feed()
         self._refresh_setup_sync()
         if self._setup_state in (HarnessPageState.NOT_INSTALLED, HarnessPageState.NEEDS_KEY):
@@ -295,61 +341,134 @@ class HarnessAgentPage(BasePage):
             self._install_line.setText(f"安装：{self._status.install_label}")
             self._service_line.setText(f"服务：{self._status.service_label}")
             self._sync_service_bar()
+        if prefer_browser():
+            if self._status_is_fresh() and self._status is not None:
+                if self._status.running:
+                    self._apply_browser_surface(self._status)
+                elif not self._maybe_auto_start(self._status):
+                    self._show_web_idle("服务未启动 · 点「启动服务」后将在浏览器打开")
+            else:
+                self._show_web_idle("正在连接 DeepSeek Harness…")
+                QTimer.singleShot(0, lambda v=self._visit_gen: self._refresh_status_http_if(v))
+            return
         if not self._web_ready:
             return
-        if self._web_embedded_ok and self._view is not None:
-            self._show_web_embed()
-            if not self._status_is_fresh():
-                QTimer.singleShot(0, self._refresh_status_http)
+        # 离页已销毁 View：每次进页新建，勿复用旧 HWND（二次回电闪退）
+        # 略延迟，等上一轮 deleteLater 走完事件循环
+        self._show_web_idle("正在准备 DeepSeek Harness…")
+        QTimer.singleShot(280, lambda v=self._visit_gen: self._ensure_view_after_chrome(v))
+
+    def _refresh_status_http_if(self, visit: int) -> None:
+        if not self._page_active(visit):
+            return
+        self._refresh_status_http()
+
+    def _ensure_view_after_chrome(self, visit: int | None = None) -> None:
+        if not self._page_active(visit):
+            return
+        if prefer_browser():
             return
         if self._view is None:
             self._ensure_view()
+        if not self._page_active(visit):
+            return
         if self._status_is_fresh() and self._status is not None and self._status.running:
             self._load_web(force=False)
         else:
             self._show_web_idle("正在连接 DeepSeek Harness…")
-            QTimer.singleShot(0, self._refresh_status_http)
+            QTimer.singleShot(0, lambda v=self._visit_gen: self._refresh_status_http_if(v))
 
     def _prewarm_view_shell(self) -> None:
-        """启动后预建 WebEngine 控件，把首次进页的重活移出导航瞬间。"""
-        if not self._web_ready or self._view is not None:
-            return
-        self._refresh_setup_sync()
-        if self._setup_state in (HarnessPageState.NOT_INSTALLED, HarnessPageState.NEEDS_KEY):
-            return
-        self._ensure_view()
-        self._show_web_idle("正在准备 DeepSeek Harness…")
+        """已禁用：后台预建 WebView 与离页销毁策略冲突，且易二次进页闪退。"""
+        return
 
     def prewarm_embed(self) -> None:
-        """壳层后台预建：WebView + 静默探测/加载，减轻首次点开大闪。"""
-        self._prewarm_view_shell()
-        if not self._web_ready or self._prewarm_done or self._view is None:
-            return
+        """已禁用：见 _prewarm_view_shell。"""
+        return
 
-        def _on_status(status: HarnessStatus) -> None:
-            self._status = status
-            self._status_checked_at = time.time()
-            self._install_line.setText(f"安装：{status.install_label}")
-            self._service_line.setText(f"服务：{status.service_label}")
-            self._sync_service_bar()
-            if status.running and self._view is not None:
-                url = web_url()
-                current = (self._view.url().toString() or "").rstrip("/")
-                target = url.rstrip("/")
-                if not current.startswith(target):
-                    self._web_nav_overlay = True
-                    self._web_embedded_ok = False
-                    self._show_web_idle("DeepSeek Harness 加载中…")
-                    self._view.setUrl(QUrl(url))
-            self._prewarm_done = True
+    def soft_leave(self) -> None:
+        """切走顶栏时先停定时器、作废回调；WebEngine 由壳层延迟销毁。"""
+        self._auto_start_tried = False
+        self._cred_heal_tried = False
+        self._visit_gen += 1
+        self._reveal_token += 1
+        try:
+            self._load_web_timer.stop()
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWidgets import QApplication
 
-        self.run_safe(
-            lambda: read_harness_status(probe_http=True, http_timeout=0.5),
-            on_success=_on_status,
-        )
+            fw = QApplication.focusWidget()
+            if fw is not None and self._view is not None:
+                if fw is self._view or self._view.isAncestorOf(fw):
+                    fw.clearFocus()
+        except Exception:
+            pass
+        self._show_web_idle("已切走 · 返回本页后重新嵌入")
 
     def on_leave(self) -> None:
-        pass
+        # 下次进页若仍停着，允许再走一次自动启动 / 密钥修复
+        self.soft_leave()
+        self._park_web_embed()
+
+    def _park_web_embed(self) -> None:
+        """兼容旧名：实际改为销毁 View。"""
+        self._destroy_web_embed()
+
+    def _destroy_web_embed(self) -> None:
+        """离页销毁内嵌 View（保留 Profile），二次进页再新建。"""
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            fw = QApplication.focusWidget()
+            if fw is not None and self._view is not None:
+                if fw is self._view or self._view.isAncestorOf(fw):
+                    fw.clearFocus()
+        except Exception:
+            pass
+        view = self._view
+        self._view = None
+        self._web_embedded_ok = False
+        self._web_nav_overlay = False
+        self._show_web_idle("已切走 · 返回本页后重新嵌入")
+        if view is None:
+            return
+        try:
+            view.hide()
+        except Exception:
+            pass
+        try:
+            view.loadStarted.disconnect(self._on_web_load_started)
+        except Exception:
+            pass
+        try:
+            view.loadFinished.disconnect(self._on_web_loaded)
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWebEngineCore import QWebEnginePage
+
+            page = view.page()
+            if page is not None:
+                page.triggerAction(QWebEnginePage.WebAction.Stop)
+            # 勿在销毁路径 setUrl(about:blank)：与 deleteLater 竞态易二次回电闪退
+            view.setPage(None)
+        except Exception:
+            pass
+        try:
+            view.setParent(None)
+        except Exception:
+            pass
+        # 延迟 deleteLater：与壳层切页重叠时同步销毁易闪退
+        QTimer.singleShot(320, lambda v=view: self._delete_view_later(v))
+
+    @staticmethod
+    def _delete_view_later(view) -> None:
+        try:
+            view.deleteLater()
+        except Exception:
+            pass
 
     def _should_keep_embed_on_enter(self) -> bool:
         if not self._web_embedded_ok or self._view is None:
@@ -364,9 +483,7 @@ class HarnessAgentPage(BasePage):
     def _status_is_fresh(self) -> bool:
         if self._status is None:
             return False
-        if time.time() - self._status_checked_at > self._STATUS_STALE_S:
-            return False
-        return bool(self._web_embedded_ok and self._status.running)
+        return (time.time() - self._status_checked_at) <= self._STATUS_STALE_S
 
     def _status_web_equivalent(self, prev: HarnessStatus, cur: HarnessStatus) -> bool:
         return (
@@ -375,6 +492,47 @@ class HarnessAgentPage(BasePage):
             and prev.service == cur.service
             and (prev.url or "").rstrip("/") == (cur.url or "").rstrip("/")
         )
+
+    def _maybe_auto_start(self, status: HarnessStatus) -> bool:
+        """进页自动启动：设置勾选且已安装就绪、服务未跑时拉起一次。"""
+        if self._action_busy or self._auto_start_tried:
+            return False
+        if status.install != InstallState.READY or status.running:
+            return False
+        if status.service == ServiceState.PORT_CONFLICT:
+            return False
+        cfg = load_harness_config()
+        if not bool(cfg.get("auto_start", True)):
+            return False
+        self._auto_start_tried = True
+        self.report_status("正在自动启动 DeepSeek Harness…", level=StatusLevel.INFO)
+        self._run_sidecar_start(busy_label="正在启动…")
+        return True
+
+    def _maybe_heal_credentials(self, status: HarnessStatus) -> bool:
+        """外部实例 / 脏环境变量导致历史会话接不上模型时，自动接管并注入密钥。"""
+        if self._action_busy or self._cred_heal_tried:
+            return False
+        if status.install != InstallState.READY:
+            return False
+        try:
+            from services.harness_credentials import needs_credential_takeover
+        except Exception:
+            return False
+        need, reason = needs_credential_takeover(
+            running=bool(status.running), owned=bool(status.owned)
+        )
+        if not need:
+            return False
+        self._cred_heal_tried = True
+        self.report_status(f"{reason}正在接管并重启…", level=StatusLevel.WARNING)
+        self._set_action_busy(True, "正在修复密钥…")
+        QTimer.singleShot(0, self._takeover_restart_on_main)
+        return True
+
+    def _on_heal_credentials(self) -> None:
+        """兼容旧入口：与「接管并重启」同路径。"""
+        self._on_takeover_restart()
 
     def _refresh_setup_sync(self) -> None:
         state, msg = probe_page_state(check_running=False)
@@ -392,19 +550,32 @@ class HarnessAgentPage(BasePage):
         self._body_stack.setCurrentIndex(1)
 
     def _apply_status(self, status: HarnessStatus) -> None:
+        if not self._page_active():
+            # 离页后的异步探测只缓存状态，不碰 WebEngine UI
+            self._status = status
+            self._status_checked_at = time.time()
+            return
         prev = self._status
         self._status = status
         self._status_checked_at = time.time()
         self._install_line.setText(f"安装：{status.install_label}")
-        self._service_line.setText(f"服务：{status.service_label}")
-        if not self._action_busy:
-            self._sync_service_bar()
-        if (
-            prev is not None
-            and self._web_embedded_ok
-            and self._status_web_equivalent(prev, status)
-        ):
+        # 操作进行中：保留忙碌文案，避免仍显示「运行中/冲突」造成按钮与状态错位
+        if self._action_busy:
             return
+        svc = f"服务：{status.service_label}"
+        if "⚠" in (status.detail or ""):
+            svc += " · 需检查 API Key"
+        self._service_line.setText(svc)
+        self._sync_service_bar()
+        if self._maybe_auto_start(status):
+            return
+        if self._maybe_heal_credentials(status):
+            return
+        if prev is not None and self._status_web_equivalent(prev, status):
+            if self._web_embedded_ok or (
+                prefer_browser() and self._browser_surface_opened
+            ):
+                return
         self._sync_web_for_status(status)
 
     def _sync_service_bar(self) -> None:
@@ -417,13 +588,23 @@ class HarnessAgentPage(BasePage):
             self._start_stop_stack.setCurrentIndex(0)
             self._btn_start.setEnabled(st.install == InstallState.READY)
         self._rebuild_more_menu()
-        for btn in (self._btn_start, self._btn_stop, self._btn_refresh, self._btn_more):
-            btn.setEnabled(not self._action_busy)
+        self._btn_start.setEnabled(
+            (not st.running) and st.install == InstallState.READY and not self._action_busy
+        )
+        self._btn_stop.setEnabled(st.running and not self._action_busy)
+        self._btn_refresh.setEnabled(True)
+        self._btn_more.setEnabled(True)
+        self._btn_refresh.setToolTip("重新探测状态并刷新内嵌页")
+        self._btn_more.setToolTip("")
+        self._btn_stop.setToolTip("停止 Harness 服务")
 
     def _sync_web_for_status(self, status: HarnessStatus) -> None:
         if status.install != InstallState.READY:
             return
         if status.running:
+            if prefer_browser():
+                self._apply_browser_surface(status)
+                return
             if not self._web_ready:
                 self._show_web_idle("服务已运行 · 请用「更多 → 在浏览器打开」")
                 return
@@ -445,21 +626,72 @@ class HarnessAgentPage(BasePage):
             else:
                 self._show_web_idle("服务未启动 · 点「启动服务」后加载界面")
 
+    def _apply_browser_surface(self, status: HarnessStatus) -> None:
+        """surface_mode=browser：同一 URL 开系统浏览器，页内仅占位。
+
+        注意：仅用户显式选「系统浏览器」时走此路径；dsh 侧已加 --no-open，
+        避免启动时再弹一次外部浏览器。
+        """
+        url = status.url or web_url()
+        first = not self._browser_surface_opened
+        if first:
+            open_in_system_browser()
+            self._browser_surface_opened = True
+        self._web_embedded_ok = False
+        self._show_web_idle(
+            f"已在系统浏览器打开 · {url}\n"
+            "点「更多 → 改回套件内嵌显示」可收回 WebEngine。"
+        )
+        if first:
+            self.report_status("已在系统浏览器打开 Harness", level=StatusLevel.SUCCESS)
+
     def _set_action_busy(self, busy: bool, label: str = "") -> None:
         self._action_busy = busy
         if busy and label:
             self._status_label.setText(label)
+            self._service_line.setText(f"服务：处理中 · {label}")
+            # 操作中：禁启停与更多，避免叠操作；刷新仍可用以便强制看状态
+            self._btn_start.setEnabled(False)
+            self._btn_stop.setEnabled(False)
+            self._btn_more.setEnabled(False)
+            self._btn_refresh.setEnabled(True)
+            tip = f"正在执行：{label}（完成后可操作）"
+            self._btn_start.setToolTip(tip)
+            self._btn_stop.setToolTip(tip)
+            self._btn_more.setToolTip(tip)
+            self._btn_refresh.setToolTip("强制刷新状态/页面（当前操作仍在后台进行）")
         elif not busy:
             self._status_label.setText("DeepSeek Harness")
             self._sync_service_bar()
-        for btn in (self._btn_start, self._btn_stop, self._btn_refresh, self._btn_more):
-            btn.setEnabled(not busy)
+            if self._status is not None:
+                svc = f"服务：{self._status.service_label}"
+                if "⚠" in (self._status.detail or ""):
+                    svc += " · 需检查 API Key"
+                self._service_line.setText(svc)
 
     def _show_web_idle(self, text: str) -> None:
         if isinstance(self._host, _HarnessWebHost):
             self._host.set_overlay_text(text)
 
     def _show_web_embed(self) -> None:
+        # 晚一帧再揭遮罩，等 Chromium 首帧画完，减轻大闪
+        self._reveal_token += 1
+        token = self._reveal_token
+        visit = self._visit_gen
+        QTimer.singleShot(80, lambda: self._reveal_web_embed(token, visit))
+
+    def _reveal_web_embed(self, token: int | None = None, visit: int | None = None) -> None:
+        if token is not None and token != self._reveal_token:
+            return
+        if not self._page_active(visit):
+            return
+        if not self._web_embedded_ok:
+            return
+        if self._view is not None and not self._view.isVisible():
+            try:
+                self._view.show()
+            except Exception:
+                pass
         if isinstance(self._host, _HarnessWebHost):
             self._host.set_overlay_text(None)
 
@@ -467,7 +699,12 @@ class HarnessAgentPage(BasePage):
         if self._action_busy:
             QTimer.singleShot(400, self._refresh_status_async)
             return
-        if self._status_is_fresh():
+        if (
+            self._status_is_fresh()
+            and self._status is not None
+            and self._status.running
+            and (self._web_embedded_ok or prefer_browser())
+        ):
             return
         if self._should_keep_embed_on_enter():
             self._install_line.setText("安装：已安装")
@@ -475,7 +712,16 @@ class HarnessAgentPage(BasePage):
         QTimer.singleShot(0, self._refresh_status_http)
 
     def _refresh_status_http(self) -> None:
-        if self._action_busy or self._status_is_fresh():
+        if self._action_busy:
+            return
+        # 仅当「已在跑且刚探过」才跳过；停着时必须再探，才能触发 auto_start
+        if (
+            self._status_is_fresh()
+            and self._status is not None
+            and self._status.running
+        ):
+            if not self._web_embedded_ok and prefer_embed():
+                self._sync_web_for_status(self._status)
             return
 
         def _on_ok(status: HarnessStatus) -> None:
@@ -492,8 +738,10 @@ class HarnessAgentPage(BasePage):
     def _ensure_view(self) -> None:
         if not self._web_ready or self._view is not None:
             return
-        from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings
+        from PySide6.QtWebEngineCore import QWebEngineProfile
         from PySide6.QtWebEngineWidgets import QWebEngineView
+
+        from services.webengine_host import apply_webengine_view_defaults
 
         class _HarnessWebView(QWebEngineView):
             def keyPressEvent(self, event) -> None:  # noqa: N802
@@ -508,33 +756,26 @@ class HarnessAgentPage(BasePage):
                         return
                 super().keyPressEvent(event)
 
-        profile_dir = module_data_dir("harness_agent", create=True) / "browser_profile"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        self._profile = QWebEngineProfile("toa3_harness_agent", self)
-        self._profile.setPersistentStoragePath(str(profile_dir))
-        self._profile.setCachePath(str(profile_dir / "cache"))
+        # 禁止整窗 setUpdatesEnabled(False)：顶栏会像「一点就退」
+        self._show_web_idle("正在准备 DeepSeek Harness…")
+
+        # 必须复用同一 Profile：同名再建会在二次进页时原生崩
+        if self._profile is None:
+            profile_dir = module_data_dir("harness_agent", create=True) / "browser_profile"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            self._profile = QWebEngineProfile("toa3_harness_agent", self)
+            self._profile.setPersistentStoragePath(str(profile_dir))
+            self._profile.setCachePath(str(profile_dir / "cache"))
 
         self._view = _HarnessWebView(self._host)
         page = _make_harness_web_page(self._profile, self._view, base_url=web_url())
         self._view.setPage(page)
+        apply_webengine_view_defaults(self._view)
         self._view.installEventFilter(self._f11_filter)
         self._view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._view.loadStarted.connect(self._on_web_load_started)
         self._view.loadFinished.connect(self._on_web_loaded)
-
-        settings = self._view.settings()
-        settings.setAttribute(QWebEngineSettings.WebAttribute.ShowScrollBars, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.ScrollAnimatorEnabled, False)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.Accelerated2dCanvasEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, True)
-        settings.setFontFamily(QWebEngineSettings.FontFamily.StandardFont, "Microsoft YaHei UI")
-        settings.setFontFamily(QWebEngineSettings.FontFamily.SansSerifFont, "Microsoft YaHei UI")
-        settings.setFontSize(QWebEngineSettings.FontSize.DefaultFontSize, 14)
-        settings.setFontSize(QWebEngineSettings.FontSize.MinimumFontSize, 10)
 
         self._host.embed_view(self._view)
         self._show_web_idle("正在连接 DeepSeek Harness…")
@@ -573,6 +814,9 @@ class HarnessAgentPage(BasePage):
         st = self._status
         if not self._web_ready or st is None or not st.running:
             return
+        if prefer_browser():
+            self._apply_browser_surface(st)
+            return
         self._ensure_view()
         if self._view is None:
             return
@@ -585,16 +829,21 @@ class HarnessAgentPage(BasePage):
         self._web_nav_overlay = True
         self._web_embedded_ok = False
         self._show_web_idle("DeepSeek Harness 加载中…")
-        if force:
+        # URL 已正确但尚未标记就绪时必须 reload，否则遮罩会永久卡住
+        if force or current.startswith(target):
             self._view.reload()
             return
-        if not current.startswith(target):
-            self._view.setUrl(QUrl(url))
+        self._view.setUrl(QUrl(url))
 
     def _reload_web(self) -> None:
         st = self._status
         if st is None or not st.running:
             self.report_status("请先启动 Harness 服务", level=StatusLevel.WARNING)
+            return
+        if prefer_browser():
+            open_in_system_browser()
+            self._browser_surface_opened = True
+            self.report_status("已在浏览器刷新打开", level=StatusLevel.INFO)
             return
         self._web_embedded_ok = False
         self._schedule_load_web(force=True, delay_ms=0)
@@ -607,6 +856,9 @@ class HarnessAgentPage(BasePage):
 
     def _on_web_loaded(self, ok: bool) -> None:
         self._web_nav_overlay = False
+        if not self._page_active():
+            self._web_embedded_ok = bool(ok)
+            return
         self._apply_web_zoom()
         if self._view is not None:
             self._view.page().runJavaScript(
@@ -671,6 +923,23 @@ class HarnessAgentPage(BasePage):
             self.report_status(msg, level=StatusLevel.WARNING)
             return
         if already:
+            # 绝不能把「外部实例还在跑」当成启动成功——否则密钥未注入
+            st = read_harness_status(probe_http=True, http_timeout=0.6)
+            try:
+                from services.harness_credentials import needs_credential_takeover
+
+                need, reason = needs_credential_takeover(
+                    running=bool(st.running), owned=bool(st.owned)
+                )
+            except Exception:
+                need, reason = (bool(st.running and not st.owned), "外部实例未注入密钥")
+            if need:
+                self.report_status(
+                    f"{reason}正在接管…",
+                    level=StatusLevel.WARNING,
+                )
+                QTimer.singleShot(0, self._takeover_restart_on_main)
+                return
             self._set_action_busy(False)
             self._after_sidecar_started(True, msg)
             return
@@ -738,12 +1007,57 @@ class HarnessAgentPage(BasePage):
         QTimer.singleShot(0, self._takeover_restart_on_main)
 
     def _takeover_restart_on_main(self) -> None:
+        """主线程：先强杀端口占用，等空闲后再 spawn（避免假成功复用外部）。"""
+        try:
+            from services.harness_model_defaults import ensure_official_default_model
+
+            changed, msg = ensure_official_default_model()
+            if changed:
+                self.report_status(msg, level=StatusLevel.INFO)
+        except Exception:
+            pass
+        from services.harness_config import load_harness_config
+        from services.harness_sidecar import _find_listener_pids, _kill_pids, _port_open
+
         ok, msg = stop(force=True)
-        if not ok and read_harness_status(probe_http=True).running:
+        if not ok:
+            # 仍尝试继续清端口
+            self.report_status(msg, level=StatusLevel.WARNING)
+        port = int(load_harness_config().get("web_port") or 3081)
+        self._heal_port = port
+        self._heal_deadline = time.monotonic() + 12.0
+        self._status_label.setText("正在释放端口…")
+        self._service_line.setText("服务：处理中 · 正在释放端口…")
+        self._show_web_idle("正在结束外部 Harness 并注入 API Key…")
+        QTimer.singleShot(150, self._heal_wait_port_then_spawn)
+
+    def _heal_wait_port_then_spawn(self) -> None:
+        from services.harness_sidecar import _find_listener_pids, _kill_pids, _port_open
+
+        port = int(getattr(self, "_heal_port", 3081) or 3081)
+        still = _port_open(port) or is_running(timeout=0.35)
+        if still:
+            if time.monotonic() > float(getattr(self, "_heal_deadline", 0) or 0):
+                _kill_pids(_find_listener_pids(port))
+                if _port_open(port) or is_running(timeout=0.35):
+                    self._set_action_busy(False)
+                    self.report_status(
+                        f"端口 {port} 仍被占用，无法注入密钥。请结束 node.exe 后点「接管并重启」。",
+                        level=StatusLevel.WARNING,
+                    )
+                    return
+            else:
+                QTimer.singleShot(200, self._heal_wait_port_then_spawn)
+                return
+        ok, msg = spawn_sidecar_process()
+        if not ok:
             self._set_action_busy(False)
             self.report_status(msg, level=StatusLevel.WARNING)
             return
-        self._run_sidecar_start(busy_label="正在接管…", allow_busy=True)
+        self._start_deadline = time.monotonic() + 25.0
+        self._status_label.setText("正在用设置页密钥启动…")
+        self._service_line.setText("服务：处理中 · 正在用设置页密钥启动…")
+        QTimer.singleShot(350, self._poll_sidecar_start)
 
     def _on_restart(self) -> None:
         st = self._status or read_harness_status(probe_http=True)
@@ -758,7 +1072,30 @@ class HarnessAgentPage(BasePage):
         self._run_sidecar_start(busy_label="正在重启…", allow_busy=True)
 
     def _open_external(self) -> None:
-        QDesktopServices.openUrl(QUrl(web_url()))
+        open_in_system_browser()
+        self._browser_surface_opened = True
+        self.report_status("已在系统浏览器打开", level=StatusLevel.INFO)
+
+    def _switch_to_browser_surface(self) -> None:
+        set_surface_mode("browser")
+        self._more_menu_signature = None
+        self._rebuild_more_menu()
+        st = self._status
+        if st is not None and st.running:
+            self._browser_surface_opened = False
+            self._apply_browser_surface(st)
+        else:
+            self.report_status("已改为浏览器优先 · 启动后将打开系统浏览器", level=StatusLevel.INFO)
+
+    def _switch_to_embed_surface(self) -> None:
+        set_surface_mode("embed")
+        self._browser_surface_opened = False
+        self._more_menu_signature = None
+        self._rebuild_more_menu()
+        self.report_status("已改回套件内嵌", level=StatusLevel.INFO)
+        st = self._status
+        if st is not None and st.running:
+            self._schedule_load_web(force=True, delay_ms=0)
 
     def _open_settings(self) -> None:
         w = self.window()

@@ -126,7 +126,15 @@ class HarnessSection(QWidget):
             }
         )
         set_surface_mode(str(self._surface.currentData() or "embed"))
-        show_info(self, "已保存。工作区/插件请在 Harness Web 内配置。")
+        from services.harness_credentials import diagnose_llm_access
+
+        key_ok, key_msg = diagnose_llm_access()
+        tip = "已保存。工作区/插件请在 Harness Web 内配置。"
+        if key:
+            tip += "\n密钥已写入 DSH；若会话仍接不上模型，请到编码智能体「更多 → 接管并重启」。"
+        elif not key_ok:
+            tip += f"\n{key_msg}"
+        show_info(self, tip)
         self._page.report_status("Harness 路径已保存")
 
     def _test_start(self) -> None:

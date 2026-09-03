@@ -216,13 +216,21 @@ def brand_logo_pixmap(
     *,
     parent=None,
 ) -> QPixmap:
-    """品牌 Logo：优先 SVG 矢量，其次高清位图 HiDPI 缩放。"""
+    """品牌 Logo：优先 SVG 矢量（圆角无白边），其次高清位图 HiDPI 缩放。"""
+    from services.config_service import project_root
+
+    dpr = device_pixel_ratio(parent)
+    svg = project_root() / "resources" / "icons" / "brand_logo.svg"
+    if svg.is_file():
+        try:
+            return _render_svg_to_pixmap(svg.read_text(encoding="utf-8"), logical_w, logical_h, dpr)
+        except OSError:
+            pass
     from services.system_info import logo_path
 
     path = logo_path()
     if path is None:
         return QPixmap()
-    dpr = device_pixel_ratio(parent)
     if path.suffix.lower() == ".svg":
         try:
             return _render_svg_to_pixmap(path.read_text(encoding="utf-8"), logical_w, logical_h, dpr)

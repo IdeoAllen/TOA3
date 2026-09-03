@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 def prepare_app_exit() -> None:
     """在 QApplication 退出前调用：卸载内嵌页、处理 pending 事件。"""
     try:
+        from services.webengine_prewarm import release_prewarm_hold
+
+        release_prewarm_hold()
+    except Exception:
+        pass
+    try:
         from PySide6.QtCore import QUrl
         from PySide6.QtWidgets import QApplication
     except ImportError:

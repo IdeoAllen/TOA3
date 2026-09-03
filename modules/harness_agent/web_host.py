@@ -19,8 +19,6 @@ class HarnessWebHost(QWidget):
 
         self._embed_slot = QWidget()
         self._embed_slot.setObjectName("HarnessWebEmbedSlot")
-        self._embed_slot.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-        self._embed_slot.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         lay.addWidget(self._embed_slot, 1)
 
         self._external_hint = HintLabel("已在浏览器打开 · 点工具栏「内嵌」收回套件内")

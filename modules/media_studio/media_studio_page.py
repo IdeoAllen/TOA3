@@ -5,7 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal, QSize, QTimer
-from PySide6.QtGui import QFontMetrics, QGuiApplication, QImageReader, QPixmap, QWheelEvent
+from PySide6.QtGui import (
+    QFontMetrics,
+    QGuiApplication,
+    QImageReader,
+    QPainter,
+    QPixmap,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
@@ -35,6 +42,7 @@ from services.model_presentation import (
 )
 from services.model_ready_registry import list_ready
 from services.storage_paths import module_output_dir
+from widgets.empty_preview import paint_empty_preview_canvas
 from widgets import (
     ComboBox,
     FormRow,
@@ -320,10 +328,10 @@ class _VResizeHandle(QFrame):
 
 
 class _ImagePreviewPane(QLabel):
-    """图片预览：滚轮缩放，窗口变化时保持比例。"""
+    """图片预览：滚轮缩放，窗口变化时保持比例；无图时空态同去水印画布。"""
 
     def __init__(self, text: str = "", parent=None) -> None:
-        super().__init__(text, parent)
+        super().__init__(parent)
         self.setObjectName("MediaPreviewImagePane")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setScaledContents(False)
@@ -332,16 +340,32 @@ class _ImagePreviewPane(QLabel):
         self.setToolTip("滚轮缩放预览 · 双击恢复原始大小")
         self._source: QPixmap | None = None
         self._zoom = 1.0
+        self._empty_title = "媒体预览"
+        self._empty_subtitle = text or "生成完成后，图片或视频将显示在这里"
         self._fit_timer = QTimer(self)
         self._fit_timer.setSingleShot(True)
         self._fit_timer.setInterval(16)
         self._fit_timer.timeout.connect(self._paint_fit)
+        self.setText("")
 
     def set_placeholder(self, text: str) -> None:
         self._source = None
         self._zoom = 1.0
         self.setPixmap(QPixmap())
-        self.setText(text)
+        self.setText("")
+        # 失败/视频提示：整段作副标题；默认空态用固定标题
+        tip = (text or "").strip()
+        if tip and "\n" in tip:
+            lines = [ln.strip() for ln in tip.splitlines() if ln.strip()]
+            self._empty_title = lines[0] if lines else "媒体预览"
+            self._empty_subtitle = "\n".join(lines[1:]) if len(lines) > 1 else ""
+        elif tip:
+            self._empty_title = "媒体预览"
+            self._empty_subtitle = tip
+        else:
+            self._empty_title = "媒体预览"
+            self._empty_subtitle = "生成完成后，图片或视频将显示在这里"
+        self.update()
 
     def set_image_path(self, path: Path) -> None:
         reader = QImageReader(str(path))
@@ -369,6 +393,20 @@ class _ImagePreviewPane(QLabel):
             return
         self._zoom = 1.0
         self._paint_fit()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if self._source is None or self._source.isNull():
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            paint_empty_preview_canvas(
+                self,
+                painter,
+                title=self._empty_title,
+                subtitle=self._empty_subtitle,
+            )
+            painter.end()
+            return
+        super().paintEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
         if self._source is None or self._source.isNull():
@@ -972,7 +1010,7 @@ class MediaStudioPage(BasePage):
         self._stage.setObjectName("MediaStudioStage")
         stage_lay = QVBoxLayout(self._stage)
         stage_lay.setContentsMargins(8, 8, 8, 8)
-        self._preview = _PreviewCanvas("生成结果将显示在这里")
+        self._preview = _PreviewCanvas("生成完成后，图片或视频将显示在这里")
         stage_lay.addWidget(self._preview, 1)
         top_lay.addWidget(self._stage, 1)
 
@@ -1119,21 +1157,70 @@ class MediaStudioPage(BasePage):
     def _init_models_once(self) -> None:
         if self._enter_models_ready:
             return
-        self._reload_models(select_active=True, refresh_cache=True)
+        # 先进图片模型（当前默认 tab），视频模型滞后，减轻首进卡顿
+        self._reload_models(
+            select_active=True,
+            refresh_cache=True,
+            capabilities=("image_gen",),
+            persist_pick=False,
+        )
         self._enter_models_ready = True
+        QTimer.singleShot(350, self._deferred_load_video_models)
+
+    def _deferred_load_video_models(self) -> None:
+        if not self._page_is_active():
+            return
+        self._reload_models(
+            select_active=True,
+            refresh_cache=True,
+            capabilities=("video_gen",),
+            persist_pick=True,
+        )
 
     def prewarm_enter(self) -> None:
-        """壳层空闲预建：首次点开不再等整页初始化 + 模型列表。"""
+        """壳层空闲预建：仅轻量刷图片模型，作品与视频模型仍进页再挂。"""
         if self._enter_models_ready:
             return
-        self._bootstrap_enter()
+        self._init_models_once()
 
     def on_enter(self) -> None:
         self.report_status("媒体工坊")
         if self._enter_models_ready:
             QTimer.singleShot(2400, self._ensure_video_posters_if_active)
+            # 作品条滞后刷新，不挡首帧
+            QTimer.singleShot(450, self._deferred_reload_works_if_active)
             return
-        QTimer.singleShot(0, self._bootstrap_enter)
+        # 分批：先让页面出帧 → 模型 → 再历史
+        QTimer.singleShot(50, self._bootstrap_models_deferred)
+        QTimer.singleShot(420, self._bootstrap_works_deferred)
+
+    def _bootstrap_models_deferred(self) -> None:
+        if not self._page_is_active() or self._enter_models_ready:
+            return
+        self._init_models_once()
+
+    def _bootstrap_works_deferred(self) -> None:
+        if not self._page_is_active():
+            return
+        self._show_works_loading_hint()
+        self._reload_works_if_needed()
+
+    def _deferred_reload_works_if_active(self) -> None:
+        if not self._page_is_active():
+            return
+        self._reload_works_if_needed()
+
+    def _show_works_loading_hint(self) -> None:
+        if self._work_tiles or self._works_sig_cache is not None:
+            return
+        while self._works_lay.count():
+            item = self._works_lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self._works_lay.addWidget(HintLabel("正在加载最近作品…"))
+        self._works_lay.addStretch(1)
 
     def _page_is_active(self) -> bool:
         shell = self.window()
@@ -1160,10 +1247,11 @@ class MediaStudioPage(BasePage):
         QTimer.singleShot(600, lambda g=gen: self._run_next_video_poster_job(g))
 
     def _bootstrap_enter(self) -> None:
+        """兼容旧调用：模型 + 作品分批。"""
         if self._enter_models_ready:
             return
         self._init_models_once()
-        QTimer.singleShot(0, self._reload_works_if_needed)
+        QTimer.singleShot(350, self._bootstrap_works_deferred)
 
     def on_leave(self) -> None:
         self._preview.stop_media()
@@ -1364,14 +1452,24 @@ class MediaStudioPage(BasePage):
                 combo.setToolTip(combo.itemText(idx))
         self._model_combo_width_applied = True
 
-    def _reload_models(self, *, select_active: bool = False, refresh_cache: bool = True) -> None:
+    def _reload_models(
+        self,
+        *,
+        select_active: bool = False,
+        refresh_cache: bool = True,
+        capabilities: tuple[str, ...] | None = None,
+        persist_pick: bool = True,
+    ) -> None:
+        caps = capabilities or ("image_gen", "video_gen")
         if refresh_cache:
-            self._image_profiles = [
-                p for p in list_ready("image_gen", ready_only=True) if p.get("source") == "catalog"
-            ]
-            self._video_profiles = [
-                p for p in list_ready("video_gen", ready_only=True) if p.get("source") == "catalog"
-            ]
+            if "image_gen" in caps:
+                self._image_profiles = [
+                    p for p in list_ready("image_gen", ready_only=True) if p.get("source") == "catalog"
+                ]
+            if "video_gen" in caps:
+                self._video_profiles = [
+                    p for p in list_ready("video_gen", ready_only=True) if p.get("source") == "catalog"
+                ]
         rows = self._video_profiles if self._kind == _KIND_VIDEO else self._image_profiles
         select_id = ""
         if select_active and rows:
@@ -1381,25 +1479,40 @@ class MediaStudioPage(BasePage):
             if active in ids:
                 select_id = active
             elif refresh_cache:
-                select_id = pick_effective_profile_id(cap, persist=True)
+                select_id = pick_effective_profile_id(cap, persist=persist_pick)
             else:
                 select_id = str(rows[0].get("id") or "")
         if refresh_cache:
             img_id = ""
             vid_id = ""
-            if self._image_profiles:
+            if "image_gen" in caps and self._image_profiles:
                 cap = "image_gen"
                 ids = [str(p.get("id") or "") for p in self._image_profiles]
                 active = get_active_profile_id(cap)
-                img_id = active if active in ids else pick_effective_profile_id(cap, persist=True)
-            if self._video_profiles:
+                img_id = (
+                    active
+                    if active in ids
+                    else pick_effective_profile_id(cap, persist=persist_pick)
+                )
+                self._fill_grouped_model_combo(
+                    self._image_model_combo, self._image_profiles, select_id=img_id
+                )
+            if "video_gen" in caps and self._video_profiles:
                 cap = "video_gen"
                 ids = [str(p.get("id") or "") for p in self._video_profiles]
                 active = get_active_profile_id(cap)
-                vid_id = active if active in ids else pick_effective_profile_id(cap, persist=True)
-            self._fill_grouped_model_combo(self._image_model_combo, self._image_profiles, select_id=img_id)
-            self._fill_grouped_model_combo(self._video_model_combo, self._video_profiles, select_id=vid_id)
-            self._sync_model_combo_width()
+                vid_id = (
+                    active
+                    if active in ids
+                    else pick_effective_profile_id(cap, persist=persist_pick)
+                )
+                self._fill_grouped_model_combo(
+                    self._video_model_combo, self._video_profiles, select_id=vid_id
+                )
+            if caps == ("image_gen", "video_gen") or set(caps) >= {"image_gen", "video_gen"}:
+                self._sync_model_combo_width()
+            elif "image_gen" in caps or "video_gen" in caps:
+                self._sync_model_combo_width()
         else:
             combo = self._active_model_combo()
             self._fill_grouped_model_combo(combo, rows, select_id=select_id)

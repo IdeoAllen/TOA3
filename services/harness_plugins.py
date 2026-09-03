@@ -33,6 +33,42 @@ def dsh_vendored_node_modules(dsh: Path) -> Path | None:
     return None
 
 
+def find_external_vendored_node_modules() -> Path | None:
+    """从本机 WorkBuddy 等已装 dsh 中找完整 vendored 目录（公开 npm 无私有 UI 包）。"""
+    home = Path.home()
+    roots = [home / ".workbuddy", home / "WorkBuddy"]
+    for root in roots:
+        binaries = root / "binaries" / "node" / "versions"
+        if not binaries.is_dir():
+            continue
+        versions = sorted(binaries.iterdir(), key=lambda p: p.name, reverse=True)
+        for ver in versions:
+            vendored = ver / "node_modules" / "@deepseek-ai" / "dsh" / "node_modules"
+            if vendored.is_dir() and (vendored / "@deepseek-ai" / "dsh-web-app").is_dir():
+                return vendored
+    return None
+
+
+def seed_dsh_vendored_node_modules(dsh: Path) -> tuple[bool, str]:
+    """若 TOA 的 dsh 缺内置组件，从本机已装 dsh 复制一份（卸载 WorkBuddy 前需先做）。"""
+    if dsh_vendored_node_modules(dsh) is not None:
+        return True, "dsh 内置组件已存在"
+    src = find_external_vendored_node_modules()
+    if src is None:
+        return False, "未找到可复制的 Web 组件源（需本机曾装过带完整 dsh 的 WorkBuddy，或官方发行包）"
+    pkg_root = dsh.resolve().parent.parent
+    dst = pkg_root / "node_modules"
+    try:
+        if dst.exists():
+            shutil.rmtree(dst, ignore_errors=True)
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+    except OSError as exc:
+        return False, str(exc)
+    if dsh_vendored_node_modules(dsh) is None:
+        return False, "复制后仍缺少 dsh 内置组件"
+    return True, "已从本机已装 dsh 复制 Web 组件"
+
+
 def profile_dir_for(home: Path) -> Path:
     return home / "profiles" / _PROFILE
 
@@ -174,6 +210,11 @@ def ensure_web_profile_bundles(
 
     if web_profile_ready(home):
         return True, "web profile 已就绪"
+
+    if dsh_vendored_node_modules(dsh) is None:
+        ok_seed, seed_msg = seed_dsh_vendored_node_modules(dsh)
+        if not ok_seed:
+            logger.warning("seed dsh vendored failed: %s", seed_msg)
 
     ok_link, link_msg = link_web_profile_node_modules(dsh, home)
     if ok_link:

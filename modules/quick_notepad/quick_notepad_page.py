@@ -79,6 +79,7 @@ from modules.quick_notepad.note_store import (
     save_settings,
     update_note,
 )
+from modules.quick_notepad.design_edit import DesignTextEdit
 from modules.quick_notepad.rich_body import (
     export_body_from,
     insert_image,
@@ -325,6 +326,7 @@ class _OutlineTree(TreeWidget):
     """Outline：拖放只发意图，由存储落盘后重载；Tab / Enter 交给页面。"""
 
     drop_resolved = Signal(str, object, int)  # nid, parent_id|None, order
+    files_dropped = Signal(object)  # list[str] 本地路径
     indent_requested = Signal()
     outdent_requested = Signal()
     create_below_requested = Signal()
@@ -460,12 +462,25 @@ class _OutlineTree(TreeWidget):
             self.viewport().update()
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if event.mimeData().hasUrls() and any(
+            u.isLocalFile() for u in event.mimeData().urls()
+        ):
+            event.acceptProposedAction()
+            return
         if event.mimeData().hasFormat("application/x-toa-outline-note") or event.source() is self:
             event.acceptProposedAction()
         else:
             super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:  # noqa: N802
+        if event.mimeData().hasUrls() and any(
+            u.isLocalFile() for u in event.mimeData().urls()
+        ):
+            event.acceptProposedAction()
+            self._drop_item = None
+            self._drop_where = QAbstractItemView.DropIndicatorPosition.OnViewport
+            self.viewport().update()
+            return
         if not (
             event.mimeData().hasFormat("application/x-toa-outline-note") or event.source() is self
         ):
@@ -563,6 +578,19 @@ class _OutlineTree(TreeWidget):
         p.end()
 
     def dropEvent(self, event) -> None:  # noqa: N802
+        if event.mimeData().hasUrls():
+            paths = [
+                u.toLocalFile()
+                for u in event.mimeData().urls()
+                if u.isLocalFile() and u.toLocalFile()
+            ]
+            if paths:
+                event.acceptProposedAction()
+                self._drop_item = None
+                self._dragging = False
+                self.viewport().update()
+                self.files_dropped.emit(paths)
+                return
         dragged = self.currentItem()
         if dragged is None:
             event.ignore()
@@ -738,6 +766,7 @@ class QuickNotepadPage(BasePage):
         self._tree.currentItemChanged.connect(self._on_tree_select)
         self._tree.itemDoubleClicked.connect(self._on_tree_double_clicked)
         self._tree.drop_resolved.connect(self._on_drop_resolved)
+        self._tree.files_dropped.connect(self._on_files_dropped)
         self._tree.indent_requested.connect(self._on_indent)
         self._tree.outdent_requested.connect(self._on_outdent)
         self._tree.create_below_requested.connect(self._on_new_below)
@@ -938,11 +967,12 @@ class QuickNotepadPage(BasePage):
         self._plain.setMinimumHeight(160)
         self._view_stack.addWidget(self._plain)
 
-        self._rich = TextEdit()
+        self._rich = DesignTextEdit()
         self._rich.setObjectName("MarkdownDesignEdit")
         self._rich.setMinimumHeight(160)
         self._rich.setAcceptRichText(True)
-        self._rich.setAutoFormatting(TextEdit.AutoFormattingFlag.AutoBulletList)
+        self._rich.setAutoFormatting(DesignTextEdit.AutoFormattingFlag.AutoBulletList)
+        self._rich.setToolTip("悬停图片右下角蓝色手柄，拖动可缩放")
         self._view_stack.addWidget(self._rich)
 
         self._md_source = PlainTextEdit()
@@ -982,6 +1012,12 @@ class QuickNotepadPage(BasePage):
         outer.addWidget(splitter, 1)
         self._body_host = splitter
 
+        # 外部 .md/.txt 拖入整页即可导入（大纲 / 正文均接受）
+        self.setAcceptDrops(True)
+        self._editor_surface.setAcceptDrops(True)
+        for w in (self._plain, self._rich, self._md_source, self._md_preview, self._editor_surface):
+            w.installEventFilter(self)
+
         self._plain.textChanged.connect(self._on_body_changed)
         self._rich.textChanged.connect(self._on_body_changed)
         self._md_source.textChanged.connect(self._on_md_source_changed)
@@ -992,6 +1028,8 @@ class QuickNotepadPage(BasePage):
         self._fs_esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self._fs_esc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._fs_esc.activated.connect(self._exit_editor_fullscreen)
+        # 默认关闭：避免未全屏时吞掉壳层 Esc（退出沉浸）
+        self._fs_esc.setEnabled(False)
         sanitize_tree()
         self._reload_tree()
         self.apply_page_focus_policy()
@@ -1229,6 +1267,9 @@ class QuickNotepadPage(BasePage):
         act = getattr(self, "_act_fullscreen", None)
         if act is not None:
             act.setText("退出全屏" if self._editor_fullscreen else "全屏写作")
+        fs_esc = getattr(self, "_fs_esc", None)
+        if fs_esc is not None:
+            fs_esc.setEnabled(bool(self._editor_fullscreen))
         self.report_status(
             "编辑区全屏 · Esc 退出" if self._editor_fullscreen else "已退出全屏",
             level=StatusLevel.INFO,
@@ -1661,6 +1702,25 @@ class QuickNotepadPage(BasePage):
             self._tree.setCurrentItem(item)
             self._tree.scrollToItem(item)
 
+    def reveal_note(self, note_id: str) -> None:
+        """外部导入后定位到指定记事并载入正文。"""
+        nid = str(note_id or "").strip()
+        if not nid:
+            return
+        self._autosave_timer.stop()
+        self._reload_tree(keep_selection=nid)
+        n = find_note(nid)
+        if not n:
+            return
+        self._current_id = nid
+        self._title_label.setText(str(n.get("title") or "导入的记事"))
+        self._load_note_body(str(n.get("body") or ""))
+        self._set_save_badge("saved")
+        self._update_word_count()
+        self._sync_view_chrome()
+        self.schedule_primary_focus()
+        self.report_status(f"已打开导入记事：{n.get('title') or nid}", level=StatusLevel.SUCCESS)
+
     def _on_drop_resolved(self, nid: str, parent_id: object, order: int) -> None:
         pid = None if parent_id in (None, "") else str(parent_id)
 
@@ -1898,6 +1958,71 @@ class QuickNotepadPage(BasePage):
         stem = path.stem.strip() or "导入的记事"
         return stem[:80]
 
+    _IMPORT_SUFFIXES = frozenset({".md", ".markdown", ".mdown", ".mkd", ".txt", ".text"})
+
+    @classmethod
+    def _is_importable_path(cls, path: Path) -> bool:
+        if not path.is_file():
+            return False
+        suf = path.suffix.lower()
+        if suf in cls._IMPORT_SUFFIXES:
+            return True
+        # 无扩展名：仍尝试当文本导入（体积上限在读取侧）
+        return suf == ""
+
+    def _paths_from_mime(self, mime) -> list[Path]:
+        if mime is None or not mime.hasUrls():
+            return []
+        out: list[Path] = []
+        for u in mime.urls():
+            if not u.isLocalFile():
+                continue
+            p = Path(u.toLocalFile())
+            if self._is_importable_path(p):
+                out.append(p)
+        return out
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        et = event.type()
+        if et in (
+            QEvent.Type.DragEnter,
+            QEvent.Type.DragMove,
+        ):
+            paths = self._paths_from_mime(event.mimeData())
+            if paths:
+                event.acceptProposedAction()
+                return True
+        if et == QEvent.Type.Drop:
+            paths = self._paths_from_mime(event.mimeData())
+            if paths:
+                event.acceptProposedAction()
+                self._import_paths(paths)
+                return True
+        return super().eventFilter(obj, event)
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if self._paths_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802
+        if self._paths_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        paths = self._paths_from_mime(event.mimeData())
+        if paths:
+            event.acceptProposedAction()
+            self._import_paths(paths)
+            return
+        super().dropEvent(event)
+
+    def _on_files_dropped(self, paths) -> None:
+        self._import_paths([Path(p) for p in (paths or [])])
+
     @staticmethod
     def _read_text_file(path: Path) -> str:
         raw = path.read_bytes()
@@ -1917,6 +2042,13 @@ class QuickNotepadPage(BasePage):
         )
         if not paths:
             return
+        self._import_paths([Path(p) for p in paths])
+
+    def _import_paths(self, paths: list[Path]) -> None:
+        files = [p for p in paths if self._is_importable_path(p)]
+        if not files:
+            show_warning(self, "请拖入 Markdown / 文本文件（.md / .txt）。")
+            return
         # 先落盘当前编辑器，避免稍后选中新笔记时把旧正文冲掉导入内容
         self._flush_autosave()
         # 导入后便于编辑/预览：切到多功能 Markdown
@@ -1934,10 +2066,7 @@ class QuickNotepadPage(BasePage):
         last_title = ""
         ok = 0
         parent_id = self._sibling_parent_id()
-        for p in paths:
-            path = Path(p)
-            if not path.is_file():
-                continue
+        for path in files:
             try:
                 body = self._read_text_file(path)
             except OSError as exc:
@@ -1967,7 +2096,7 @@ class QuickNotepadPage(BasePage):
             self._sync_view_chrome()
         self.schedule_primary_focus()
         self.report_status(
-            f"已导入 {ok} 个 Markdown 文件",
+            f"已导入 {ok} 个文件",
             level=StatusLevel.SUCCESS,
         )
 

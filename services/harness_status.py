@@ -164,7 +164,10 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
     elif http_ok and not owned:
         service = ServiceState.RUNNING_EXTERNAL
         summary = "已安装 · 外部实例运行中"
-        detail = f"端口已有 Harness（如 WorkBuddy）。TOA 可复用或「接管并重启」。"
+        detail = (
+            "端口已有 Harness（如 WorkBuddy / 其它实例）。"
+            "要用设置页 API Key，请点「更多 → 接管并重启」。"
+        )
     elif port_busy and not http_ok:
         service = ServiceState.PORT_CONFLICT
         summary = "已安装 · 端口占用"
@@ -173,6 +176,23 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
         service = ServiceState.STOPPED
         summary = "已安装 · 服务未启动"
         detail = "点「启动服务」由 TOA 拉起 Sidecar，或「在浏览器打开」使用已有实例。"
+
+    try:
+        from services.harness_credentials import diagnose_llm_access
+
+        # 外部实例：文案已提示接管，勿再叠「Key 冲突」（父进程脏 env 易误报）
+        if service == ServiceState.RUNNING_EXTERNAL:
+            pass
+        elif service == ServiceState.STOPPED:
+            key_ok, key_msg = diagnose_llm_access(sidecar_owned=True)
+            if not key_ok:
+                detail = f"{detail}\n⚠ {key_msg}"
+        else:
+            key_ok, key_msg = diagnose_llm_access(sidecar_owned=bool(http_ok and owned))
+            if not key_ok:
+                detail = f"{detail}\n⚠ {key_msg}"
+    except Exception:
+        pass
 
     return HarnessStatus(
         install=install,

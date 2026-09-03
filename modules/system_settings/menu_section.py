@@ -326,7 +326,7 @@ class MenuSection(QWidget):
         edit = FormSection("编辑选中项")
         edit.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self._group_title = LineEdit()
-        self._group_title.setPlaceholderText("顶栏子模块名称，如 办公、编码智能体")
+        self._group_title.setPlaceholderText("顶栏子模块名称，如 办公、引擎、文件")
         self._name = LineEdit()
         self._id = LineEdit()
         self._id.setReadOnly(True)

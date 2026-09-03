@@ -131,8 +131,12 @@ def _build_env() -> dict[str, str]:
     home.mkdir(parents=True, exist_ok=True)
     env["DSH_HOME"] = str(home)
     env["DSH_WEB_URL"] = web_url()
+    # dsh 凭证优先级：进程 env > .credentials.yaml。脏 env（WorkBuddy/系统）会盖住设置页密钥。
     if bool(_cfg().get("clear_env_api_key", True)):
-        env.pop("DEEPSEEK_API_KEY", None)
+        from services.harness_credentials import apply_credentials_to_env, strip_llm_env
+
+        strip_llm_env(env)
+        apply_credentials_to_env(env)
     return env
 
 
@@ -195,9 +199,11 @@ def spawn_sidecar_process() -> tuple[bool, str]:
         "web",
         "--port",
         str(port),
+        "--no-open",  # 禁止 dsh 自开系统浏览器；界面由套件内嵌
     ]
     log_path = _sidecar_log_path()
     try:
+        # 子进程存活期间保持句柄打开，避免 Windows 上日志丢失
         log_f = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
     except OSError:
         log_f = subprocess.DEVNULL
@@ -214,15 +220,16 @@ def spawn_sidecar_process() -> tuple[bool, str]:
             _PROCESS = proc
             _OWNED = True
             _LAST_START_LOG = log_path
+            if log_f is not subprocess.DEVNULL:
+                setattr(proc, "_toa_log_f", log_f)
     except OSError as exc:
         logger.exception("启动 Harness 失败")
-        return False, str(exc)
-    finally:
         if log_f is not subprocess.DEVNULL:
             try:
                 log_f.close()
             except OSError:
                 pass
+        return False, str(exc)
     return True, "Harness 进程已拉起"
 
 
@@ -336,6 +343,7 @@ def stop(*, force: bool = False) -> tuple[bool, str]:
     """停止 Sidecar；force=True 时结束占用 Web 端口的外部进程。"""
     global _PROCESS, _OWNED
     if _PROCESS is not None and _PROCESS.poll() is None:
+        log_f = getattr(_PROCESS, "_toa_log_f", None)
         try:
             _PROCESS.terminate()
             _PROCESS.wait(timeout=8)
@@ -344,6 +352,11 @@ def stop(*, force: bool = False) -> tuple[bool, str]:
         except OSError as exc:
             return False, str(exc)
         finally:
+            if log_f is not None:
+                try:
+                    log_f.close()
+                except OSError:
+                    pass
             _PROCESS = None
             _OWNED = False
         if is_running():
@@ -378,16 +391,70 @@ def stop(*, force: bool = False) -> tuple[bool, str]:
 
 def restart_owned() -> tuple[bool, str]:
     """强制结束端口占用后由 TOA 重新拉起（获得托管）。"""
-    ok, msg = stop(force=True)
-    if not ok and is_running():
-        return False, msg
-    return start()
+    return ensure_owned_with_credentials()
+
+
+def ensure_owned_with_credentials(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, str]:
+    """结束外部/脏实例，用 .credentials.yaml 注入后由 TOA 托管启动。
+
+    专治：WorkBuddy 等外部进程占用端口、或本机 DEEPSEEK_API_KEY 盖住设置页密钥，
+    导致历史会话接不上大模型。
+    """
+    port = int(_cfg().get("web_port") or 3081)
+    stop(force=True)
+    # 再扫一轮，避免 taskkill 后端口仍短暂占用
+    if _port_open(port) or is_running(timeout=0.4):
+        _kill_pids(_find_listener_pids(port))
+    if not _wait_port_quiet(port, timeout_sec=12.0):
+        return (
+            False,
+            f"端口 {port} 仍被占用，无法用设置页密钥重启。"
+            "请在任务管理器结束 node.exe 后重试「接管并重启」。",
+        )
+    ok_spawn, spawn_msg = spawn_sidecar_process()
+    if not ok_spawn:
+        return False, spawn_msg
+    with _LOCK:
+        owned = _OWNED and _PROCESS is not None and _PROCESS.poll() is None
+    if not owned:
+        return False, "Sidecar 未进入 TOA 托管状态，密钥可能未注入。"
+    key_hint = "凭证已注入"
+    try:
+        from services.harness_credentials import load_credential_map, mask_api_key
+
+        creds = load_credential_map()
+        ds = creds.get("DEEPSEEK_API_KEY", "")
+        if ds:
+            key_hint = f"已注入 {mask_api_key(ds)}"
+    except Exception:
+        pass
+    if wait_ready:
+        ok, msg = wait_sidecar_ready(timeout_sec=timeout_sec)
+        if not ok:
+            return False, msg
+        return True, f"{msg} · {key_hint} · TOA 托管"
+    return True, f"{spawn_msg} · {key_hint}"
+
+
+def _wait_port_quiet(port: int, *, timeout_sec: float = 10.0) -> bool:
+    """等到端口空闲且 HTTP 不再响应。"""
+    deadline = time.monotonic() + max(1.0, float(timeout_sec))
+    while time.monotonic() < deadline:
+        busy = _port_open(port)
+        alive = is_running(timeout=0.35)
+        if not busy and not alive:
+            # 再确认一帧，避免杀进程后立刻被其它程序抢回
+            time.sleep(0.25)
+            if not _port_open(port) and not is_running(timeout=0.35):
+                return True
+        time.sleep(0.2)
+    return (not _port_open(port)) and (not is_running(timeout=0.35))
 
 
 def restart() -> tuple[bool, str]:
     st = health_status()
     if st.get("running") and not st.get("owned"):
-        return restart_owned()
+        return ensure_owned_with_credentials()
     stop(force=False)
     return start()
 

@@ -147,7 +147,7 @@ def _section_buttons(scroll: ScrollPage) -> None:
 def _section_tool_cards(scroll: ScrollPage) -> None:
     from widgets.tool_cards import ToolLaunchCard
 
-    box = FormSection("工具启动卡（首页办公增效）")
+    box = FormSection("工具启动卡（首页办公入口）")
     box.add_widget(HintLabel("图标 + 标题 + 快捷键提示；点击即跳转模块。"))
     row = QHBoxLayout()
     for title, sub, hk, icon in (

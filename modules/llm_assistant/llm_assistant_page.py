@@ -101,7 +101,7 @@ class LlmAssistantPage(BasePage):
             PageHeader(
                 "大模型助手",
                 "轻量「问一句、得一段文字」：润色邮件/通知、写提纲、试提示词。"
-                "写代码、改项目、多轮 Agent → 请用「编码智能体」。",
+                "写代码、改项目、多轮 Agent → 请用顶栏「引擎」→ 编码智能体（Harness）。",
             )
         )
 

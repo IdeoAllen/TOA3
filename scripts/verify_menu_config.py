@@ -68,8 +68,8 @@ def main() -> int:
             if "ocr_tool" in items_by_id:
                 items_by_id["ocr_tool"]["show"] = False
             gl = dict(get_group_labels())
-            gl["ai"] = "测试智能体"
-            custom_order = ["home", "system", "office", "ai", "image", "directory", "file", "business"]
+            gl["engines"] = "测试引擎"
+            custom_order = ["home", "system", "office", "engines", "image", "files", "business"]
             save_menu_items(items, group_labels=gl, group_order=custom_order)
 
             doc = _read_user_menu_doc()
@@ -83,8 +83,8 @@ def main() -> int:
                 errors.append("ocr_tool show override not applied")
 
             gl2 = get_group_labels()
-            if gl2.get("ai") != "测试智能体":
-                errors.append(f"group label ai expected 测试智能体 got {gl2.get('ai')}")
+            if gl2.get("engines") != "测试引擎":
+                errors.append(f"group label engines expected 测试引擎 got {gl2.get('engines')}")
 
             from services.config_service import get_group_order as cfg_group_order
 

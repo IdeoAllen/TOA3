@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QObject, Qt, QSize, QEvent
+from pathlib import Path
+
+from PySide6.QtCore import QObject, Qt, QSize, QEvent, QUrl
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -52,6 +55,17 @@ logger = logging.getLogger(__name__)
 _HEADER_LOGO = 44
 _HEADER_ICON = 18
 _HEADER_BTN = 30
+# 离开这些页时需冷却再进下一页，避免 WebEngine 销毁与设置页构建撞车闪退
+_WEBENGINE_MODULE_IDS = frozenset(
+    {
+        "harness_agent",
+        "open_pencil",
+        "drawio_web",
+        "comfyui_web",
+        "web_workspace",
+        "media_studio",
+    }
+)
 _NAV_ICON = 22
 _QUICK_ICON = 20
 _MENU_ICON = 18
@@ -94,7 +108,7 @@ class _ThemeToolButton(QToolButton):
 
 
 class _ShellNavKeyFilter(QObject):
-    """Esc 退出沉浸；F11 由应用级过滤器优先于 WebEngine / 系统热键。"""
+    """Esc 退出沉浸；F11 应用内切换（不经 RegisterHotKey，避免双开互抢）。"""
 
     def __init__(self, shell: "MainShell") -> None:
         super().__init__(shell)
@@ -102,46 +116,52 @@ class _ShellNavKeyFilter(QObject):
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
         et = event.type()
-        if et == QEvent.Type.KeyPress:
-            if (
-                event.key() == Qt.Key.Key_Escape
-                and self._shell.is_immersive()
-                and self._shell_key_target()
-            ):
-                try:
-                    from services.screenshot_overlay import is_screenshot_session_active
-
-                    if is_screenshot_session_active():
-                        return False
-                except Exception:
-                    pass
-                self._shell.set_immersive(False)
-                return True
+        if et == QEvent.Type.ShortcutOverride:
+            if not self._shell_key_target():
+                return False
             if (
                 event.key() == Qt.Key.Key_F11
                 and event.modifiers() == Qt.KeyboardModifier.NoModifier
-                and self._shell_key_target()
-            ):
-                self._shell._toggle_fullscreen()
-                return True
-        elif et == QEvent.Type.ShortcutOverride:
-            if (
-                event.key() == Qt.Key.Key_F11
-                and event.modifiers() == Qt.KeyboardModifier.NoModifier
-                and self._shell_key_target()
             ):
                 event.accept()
                 return True
+            if event.key() == Qt.Key.Key_Escape and self._shell.is_immersive():
+                event.accept()
+                return True
+            return False
+        if et != QEvent.Type.KeyPress:
+            return False
+        if not self._shell_key_target():
+            return False
+        if (
+            event.key() == Qt.Key.Key_Escape
+            and self._shell.is_immersive()
+        ):
+            try:
+                from services.screenshot_overlay import is_screenshot_session_active
+
+                if is_screenshot_session_active():
+                    return False
+            except Exception:
+                pass
+            self._shell.set_immersive(False)
+            return True
+        if (
+            event.key() == Qt.Key.Key_F11
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
+            self._shell._toggle_fullscreen()
+            return True
         return False
 
     def _shell_key_target(self) -> bool:
-        """主壳前台且无模态弹窗（WebEngine 焦点不在 Qt 树内时也拦截 F11）。"""
+        """主壳可见且无截图/模态挡路（WebEngine 焦点时也要能接到 F11/Esc）。"""
         from PySide6.QtWidgets import QApplication
 
         if QApplication.activeModalWidget() is not None:
             return False
         shell = self._shell
-        if not shell.isVisible() or not shell.isActiveWindow():
+        if not shell.isVisible():
             return False
         try:
             from services.screenshot_overlay import is_screenshot_session_active
@@ -150,7 +170,15 @@ class _ShellNavKeyFilter(QObject):
                 return False
         except Exception:
             pass
-        return True
+        aw = QApplication.activeWindow()
+        if aw is shell:
+            return True
+        if aw is not None and (shell.isAncestorOf(aw) or aw is shell.window()):
+            return True
+        # 已沉浸全屏时，部分环境 activeWindow 异常，仍放行 Esc/F11
+        if shell.is_immersive():
+            return True
+        return bool(shell.isActiveWindow())
 
 
 class MainShell(QMainWindow):
@@ -178,6 +206,9 @@ class MainShell(QMainWindow):
         self._module_groups: dict[str, str] = {}
         self._current_domain: str = "home"
         self._domain_buttons: dict[str, QToolButton] = {}
+        self._domain_btn_group: QButtonGroup | None = None
+        self._domain_nav_token: int = 0
+        self._nav_seq: int = 0
         self._menu_meta: dict[str, dict] = {}  # 懒加载：仅登记元数据
         self._current_id: str = ""
         self._status_user_label: QLabel | None = None
@@ -212,8 +243,70 @@ class MainShell(QMainWindow):
         mb.setNativeMenuBar(False)
 
         self._close_to_tray = bool(get_hotkeys_config().get("close_to_background", True))
+        self.setAcceptDrops(True)
         if not defer_startup:
             self.complete_startup()
+
+    def open_drop_paths(self, paths: list[str] | list[Path]) -> None:
+        """拖入/启动参数：进 MACOS 桌面，根=文件父目录并预览。"""
+        cleaned: list[str] = []
+        for raw in paths or []:
+            s = str(raw or "").strip()
+            if not s:
+                continue
+            try:
+                p = Path(s).expanduser()
+                if p.exists():
+                    cleaned.append(str(p.resolve()))
+            except OSError:
+                continue
+        if not cleaned:
+            self.show_status("拖入路径无效或不可读", level=StatusLevel.WARNING)
+            return
+        from services.win_foreground import force_widget_foreground
+
+        force_widget_foreground(self)
+        self.navigate("column_preview")
+        page = self._pages.get("column_preview")
+        if page is not None and hasattr(page, "open_paths"):
+            page.open_paths(cleaned)
+        else:
+            self.show_status("无法打开 MACOS 桌面", level=StatusLevel.WARNING)
+
+    def _paths_from_mime(self, mime) -> list[str]:
+        if mime is None or not mime.hasUrls():
+            return []
+        out: list[str] = []
+        for u in mime.urls():
+            if not isinstance(u, QUrl) or not u.isLocalFile():
+                continue
+            p = Path(u.toLocalFile())
+            try:
+                if p.exists():
+                    out.append(str(p.resolve()))
+            except OSError:
+                continue
+        return out
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if self._paths_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802
+        if self._paths_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        paths = self._paths_from_mime(event.mimeData())
+        if paths:
+            event.acceptProposedAction()
+            self.open_drop_paths(paths)
+            return
+        super().dropEvent(event)
 
     def complete_startup(self) -> None:
         """托盘/热键/首页：先 show 主窗再调用，避免登录后长时间无界面。"""
@@ -232,6 +325,28 @@ class MainShell(QMainWindow):
         from PySide6.QtCore import QTimer
 
         QTimer.singleShot(600, self._maybe_prompt_renew_on_start)
+        # pandas 另线程；WebEngine 已在 main.show 前锚定主壳，勿再挂主壳预热
+        QTimer.singleShot(2800, self._idle_prewarm_pandas)
+
+    def _idle_prewarm_pandas(self) -> None:
+        def _warm() -> None:
+            import pandas  # noqa: F401
+
+            from modules.schedule_reminder.schedule_reminder_service import (
+                data_file_path,
+                query_all_scenes,
+            )
+
+            if data_file_path().is_file():
+                query_all_scenes()
+
+        try:
+            from services.harness_task_runner import HarnessTaskRunner
+
+            runner = HarnessTaskRunner(self)
+            runner.run(_warm, on_done=lambda *_: None)
+        except Exception:
+            logger.debug("pandas/课表预热失败", exc_info=True)
 
     def _maybe_prompt_renew_on_start(self) -> None:
         try:
@@ -682,6 +797,8 @@ class MainShell(QMainWindow):
         lay.setSpacing(2)
 
         self._domain_buttons.clear()
+        self._domain_btn_group = QButtonGroup(bar)
+        self._domain_btn_group.setExclusive(True)
         for group_id in get_group_order():
             label = group_label(group_id)
             btn = QToolButton()
@@ -689,7 +806,10 @@ class MainShell(QMainWindow):
             btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
             btn.setText(label)
             btn.setCheckable(True)
+            btn.setAutoExclusive(False)  # 交由 QButtonGroup 互斥，避免点一下又弹回
             btn.setToolTip(f"{label}（子模块 · 子系统）")
+            self._domain_btn_group.addButton(btn)
+            # 用 pressed+强制选中，避免 checkable 自切换造成「一点就推」
             btn.clicked.connect(lambda _=False, g=group_id: self.select_domain(g))
             lay.addWidget(btn)
             self._domain_buttons[group_id] = btn
@@ -715,8 +835,11 @@ class MainShell(QMainWindow):
         label = group_label(gid)
         btn.setText(label)
         btn.setCheckable(True)
+        btn.setAutoExclusive(False)
         btn.setToolTip(f"{label}（子模块 · 子系统）")
         btn.clicked.connect(lambda _=False, g=gid: self.select_domain(g))
+        if self._domain_btn_group is not None:
+            self._domain_btn_group.addButton(btn)
         self._domain_buttons[gid] = btn
         return btn
 
@@ -735,14 +858,20 @@ class MainShell(QMainWindow):
         if lay is not None:
             while lay.count():
                 lay.takeAt(0)
+            # 重建互斥组，避免旧按钮残留
+            self._domain_btn_group = QButtonGroup(bar)
+            self._domain_btn_group.setExclusive(True)
             for gid in get_group_order():
                 btn = self._ensure_domain_button(gid)
+                if self._domain_btn_group is not None and btn.group() is not self._domain_btn_group:
+                    self._domain_btn_group.addButton(btn)
                 lay.addWidget(btn)
             lay.addStretch(1)
 
         for gid, btn in self._domain_buttons.items():
             btn.setVisible(gid in visible_groups)
         self._refresh_domain_tab_labels()
+        self._update_domain_tab_checks()
 
     def _refresh_domain_tab_labels(self) -> None:
         for gid, btn in self._domain_buttons.items():
@@ -752,10 +881,15 @@ class MainShell(QMainWindow):
 
     def _update_domain_tab_checks(self) -> None:
         for gid, btn in self._domain_buttons.items():
+            btn.blockSignals(True)
             btn.setChecked(gid == self._current_domain)
+            btn.blockSignals(False)
 
     def select_domain(self, group_id: str, *, navigate_first: bool = True) -> None:
         """顶栏子模块（子系统）切换：侧栏只展示该子系统下的功能模块。"""
+        # 防止此前 WebEngine 冻窗未恢复导致顶栏「点了没反应」
+        if not self.updatesEnabled():
+            self.setUpdatesEnabled(True)
         gid = str(group_id or "home").strip().lower()
         allowed = set(get_group_order()) | {"other"}
         if gid not in allowed:
@@ -768,10 +902,12 @@ class MainShell(QMainWindow):
         cur_gid = self._module_groups.get(self._current_id)
         if cur_gid == gid:
             return
-        # 先刷新侧栏，下一帧再打开首项，避免切 Tab 时界面卡住
+        # 先刷新侧栏，下一帧再打开首项；代次作废快切时的过期导航
         from PySide6.QtCore import QTimer
 
-        QTimer.singleShot(0, lambda g=gid: self._navigate_first_in_domain(g))
+        self._domain_nav_token += 1
+        token = self._domain_nav_token
+        QTimer.singleShot(0, lambda g=gid, t=token: self._navigate_first_in_domain(g, t))
 
     def _sync_nav_checks(self, module_id: str | None = None) -> None:
         mid = self._current_id if module_id is None else module_id
@@ -783,30 +919,49 @@ class MainShell(QMainWindow):
     def _on_nav_clicked(self, module_id: str) -> None:
         self.navigate(module_id)
 
-    def _navigate_first_in_domain(self, gid: str) -> None:
+    def _navigate_first_in_domain(self, gid: str, token: int | None = None) -> None:
         """打开当前子模块下侧栏首个可见且可打开的二级页。"""
+        if token is not None and token != self._domain_nav_token:
+            return
         if self._current_domain != gid:
             return
-        for mid in self._nav_group_members.get(gid, []):
+        # 系统域固定优先系统设置（壳必备，避免成员表异常时被打回首页）
+        preferred = {
+            "home": "home",
+            "system": "system_settings",
+            "engines": "harness_agent",
+        }.get(gid)
+        members = list(self._nav_group_members.get(gid, []))
+        ordered: list[str] = []
+        if preferred:
+            ordered.append(preferred)
+        for mid in members:
+            if mid not in ordered:
+                ordered.append(mid)
+
+        for mid in ordered:
             item = self._nav_items.get(mid) or self._menu_meta.get(mid) or {}
-            if not self._nav_item_want_show(mid, item):
+            # preferred 即使未进侧栏也可开
+            if mid != preferred and not self._nav_item_want_show(mid, item):
                 continue
             ok, _ = can_open(mid)
             if ok:
                 self.navigate(mid)
                 return
+
         if gid == "home":
             self.navigate("home")
             return
+
+        # 切子模块失败时不要推回首页（否则顶栏「系统」一点就弹回）
         reason = ""
-        for mid in self._nav_group_members.get(gid, []):
+        for mid in ordered:
             item = self._nav_items.get(mid) or {}
-            if not self._nav_item_want_show(mid, item):
+            if mid != preferred and not self._nav_item_want_show(mid, item):
                 continue
             ok, reason = can_open(mid)
             if not ok:
                 break
-        self.navigate("home")
         try:
             from services.user_plan_presentation import user_access_block_message
 
@@ -814,9 +969,10 @@ class MainShell(QMainWindow):
         except Exception:
             block_msg = "该功能需正式版"
         self.show_status(
-            reason or block_msg,
+            reason or block_msg or "该子模块暂无可用功能",
             level=StatusLevel.WARNING,
         )
+        self._update_domain_tab_checks()
 
     def _sync_domain_for_module(self, module_id: str) -> None:
         gid = self._module_groups.get(module_id)
@@ -880,29 +1036,31 @@ class MainShell(QMainWindow):
             mapping[fs_key] = self._toggle_fullscreen
         if fs_key.upper() != "F11":
             mapping["F11"] = self._toggle_fullscreen
-        from services.module_hotkeys import get_module_shortcut, normalize_module_id
+        from services.module_hotkeys import (
+            get_module_shortcut,
+            global_module_bindings,
+            normalize_module_id,
+        )
 
-        for mid in (
-            "quick_notepad",
-            "pomodoro",
-            "ocr_tool",
-            "clipboard_history",
-            "harness_agent",
-            "column_preview",
-        ):
-            seq = get_module_shortcut(mid)
-            if not seq or seq.lower() == "none":
-                continue
-            if mid == "column_preview" and seq.upper() in (fs_key.upper(), "F11"):
+        # 应用前台快捷键与 OS 全局绑定同源，避免双开跳过 RegisterHotKey 后 Alt+T 等失效
+        for seq, mid in global_module_bindings().items():
+            if not seq or seq in mapping:
                 continue
             if mid == "ocr_tool":
                 mapping[seq] = self._run_ocr_hotkey
             elif mid == "clipboard_history":
                 mapping[seq] = self._open_clipboard_quick
-            elif mid == "column_preview":
-                mapping[seq] = self.toggle_immersive
             else:
                 mapping[seq] = lambda _checked=False, m=mid: self._summon_module(m)
+
+        # 沉浸/列预览：不进 RegisterHotKey，仅应用级
+        for mid in ("column_preview",):
+            seq = get_module_shortcut(mid)
+            if not seq or seq.lower() == "none" or seq in mapping:
+                continue
+            if mid == "column_preview" and seq.upper() in (fs_key.upper(), "F11"):
+                continue
+            mapping[seq] = self.toggle_immersive
 
         # 截图只走全局 RegisterHotKey（_wire_platform），勿再挂 QAction，否则前台双开多层
 
@@ -1173,7 +1331,13 @@ class MainShell(QMainWindow):
         self.set_nav_collapsed(nav_default_collapsed(), show_rail=True)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        # F11 仅走全局热键 → _toggle_fullscreen，此处不再处理以免双触发
+        if (
+            event.key() == Qt.Key.Key_F11
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
+            self._toggle_fullscreen()
+            event.accept()
+            return
         if event.key() == Qt.Key.Key_Escape and self._chrome_focus:
             try:
                 from services.screenshot_overlay import is_screenshot_session_active
@@ -1470,26 +1634,26 @@ class MainShell(QMainWindow):
                     show_warning(self, reason or "当前模块已不可用")
                 self.navigate("home")
 
+    def _clear_webengine_focus(self) -> None:
+        """切页前卸掉 WebEngine 焦点，减轻 Windows 上栈切换原生闪退。"""
+        try:
+            from PySide6.QtWidgets import QApplication
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+        except Exception:
+            return
+        fw = QApplication.focusWidget()
+        while fw is not None:
+            if isinstance(fw, QWebEngineView):
+                fw.clearFocus()
+                self.setFocus(Qt.FocusReason.OtherFocusReason)
+                return
+            fw = fw.parentWidget()
+
     def _open_module_direct(self, module_id: str) -> bool:
         """授权已通过校验后直接打开模块（避免 navigate 递归）。"""
-        page = self._ensure_page(module_id)
-        if page is None:
-            return False
-        if self._current_id and self._current_id in self._pages:
-            self._pages[self._current_id].on_leave()
-        self.set_page_shortcuts(None)
-        self._current_id = module_id
-        self._stack.setCurrentWidget(page)
-        self._st.set_module(module_id)
-        self._sync_domain_for_module(module_id)
-        for mid, btn in self._nav_buttons.items():
-            btn.setChecked(mid == module_id)
-        page.on_enter()
-        if hasattr(page, "schedule_primary_focus"):
-            page.schedule_primary_focus()
-        title = page.page_title or module_id
-        self.show_status(f"当前：{title}", level=StatusLevel.INFO)
-        return True
+        # 与 navigate 同一套离开 WebEngine 逻辑
+        self.navigate(module_id)
+        return self._current_id == module_id
 
     def _try_purchase_and_open(self, module_id: str, reason: str) -> bool:
         from app.commerce_dialog import open_purchase_dialog
@@ -1546,9 +1710,69 @@ class MainShell(QMainWindow):
             self._sync_nav_checks()
             return
 
-        if self._current_id and self._current_id in self._pages:
-            self._pages[self._current_id].on_leave()
+        self._clear_webengine_focus()
+        leaving = self._current_id
+        leaving_page = self._pages.get(leaving) if leaving else None
+        web_heavy = leaving in _WEBENGINE_MODULE_IDS
+        if web_heavy and leaving_page is not None:
+            # 浏览器表面（如 Comfy 默认）未挂 WebEngine → 不当作重页
+            check = getattr(leaving_page, "uses_webengine_embed", None)
+            if callable(check) and not bool(check()):
+                web_heavy = False
 
+        if web_heavy and leaving_page is not None:
+            # 先软离页（停定时器），再切栈，再延迟销毁 WebEngine——同步销毁易与「系统」页构建撞车闪退
+            if hasattr(leaving_page, "soft_leave"):
+                leaving_page.soft_leave()
+            else:
+                leaving_page.on_leave()
+            from PySide6.QtCore import QTimer
+            from PySide6.QtWidgets import QApplication
+
+            self._nav_seq = getattr(self, "_nav_seq", 0) + 1
+            seq = self._nav_seq
+            if not self.updatesEnabled():
+                self.setUpdatesEnabled(True)
+            self.set_page_shortcuts(None)
+            self._current_id = mid
+            self._stack.setCurrentWidget(page)
+            self._st.set_module(mid)
+            self._sync_domain_for_module(mid)
+            for nav_mid, btn in self._nav_buttons.items():
+                btn.setChecked(nav_mid == mid)
+            title = page.page_title or mid
+            self.show_status(f"当前：{title}", level=StatusLevel.INFO)
+
+            def _purge_web(lp=leaving_page, lid=leaving) -> None:
+                try:
+                    if hasattr(lp, "_destroy_web_embed"):
+                        lp._destroy_web_embed()
+                except Exception:
+                    logger.debug("延迟销毁 WebEngine 失败", exc_info=True)
+                try:
+                    app = QApplication.instance()
+                    if app is not None:
+                        app.processEvents()
+                except Exception:
+                    pass
+
+            def _drop_page(lid=leaving) -> None:
+                if self._current_id != lid and lid in self._pages:
+                    try:
+                        self._invalidate_cached_page(lid)
+                    except Exception:
+                        logger.debug("丢弃引擎页失败", exc_info=True)
+
+            QTimer.singleShot(100, _purge_web)
+            QTimer.singleShot(450, _drop_page)
+            QTimer.singleShot(500, lambda s=seq, m=mid: self._deferred_page_enter(s, m))
+            return
+
+        if leaving and leaving in self._pages:
+            self._pages[leaving].on_leave()
+
+        if not self.updatesEnabled():
+            self.setUpdatesEnabled(True)
         self.set_page_shortcuts(None)
         self._current_id = mid
         self._stack.setCurrentWidget(page)
@@ -1563,6 +1787,18 @@ class MainShell(QMainWindow):
             page.schedule_primary_focus()
         title = page.page_title or mid
         self.show_status(f"当前：{title}", level=StatusLevel.INFO)
+
+    def _deferred_page_enter(self, seq: int, mid: str) -> None:
+        if getattr(self, "_nav_seq", 0) != seq:
+            return
+        if self._current_id != mid:
+            return
+        page = self._pages.get(mid)
+        if page is None:
+            return
+        page.on_enter()
+        if hasattr(page, "schedule_primary_focus"):
+            page.schedule_primary_focus()
 
     def _open_system_settings(self) -> None:
         self.navigate("system_settings")

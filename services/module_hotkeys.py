@@ -192,10 +192,19 @@ def global_module_bindings() -> dict[str, str]:
     """需 RegisterHotKey 的模块：seq -> module_id（带 Alt/Ctrl 修饰）。
 
     同键先到先得；调用方应先写入截图键，再合并本表并跳过已占用键。
+    含侧栏隐藏但仍需唤起的模块（如 ocr_tool）。
     """
+    mids: set[str] = set(_DEFAULT_SHORTCUTS.keys())
+    mids.update(get_configured_module_shortcuts().keys())
+    for mid, _name, _seq in list_shortcut_modules():
+        mids.add(mid)
+
     out: dict[str, str] = {}
-    for mid, _name, seq in list_shortcut_modules():
-        if not seq or mid in _GLOBAL_EXCLUDE_MODULES:
+    for mid in sorted(mids):
+        if mid in _GLOBAL_EXCLUDE_MODULES:
+            continue
+        seq = get_module_shortcut(mid)
+        if not seq:
             continue
         upper = seq.upper()
         if "ALT" not in upper and "CTRL" not in upper and "META" not in upper:

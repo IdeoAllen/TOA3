@@ -5,10 +5,10 @@ brand:
   author_email: chengchengzhao@eautosh.com
   brand_abbreviation: TOA
   brand_alias: 运营宝
-  brand_name: 赋能培训运营助手（运营宝）
-  brand_name_en: Training Operations Assistant, TOA
-  slogan: 让培训运营数字化变得简单而高效
-  slogan_subtitle: 高效、稳定、易用的培训运营解决方案
+  brand_name: 运营宝 · 桌面办公套件
+  brand_name_en: TOA — Desktop Office Suite
+  slogan: 打开就能用 · 用完不想换
+  slogan_subtitle: 少点一下，多干一件事——剪贴板、截图、记事与文件一站集成，培训业务也能顺手做完
 brand_and_system:
   app_logo_path: avatars/logo.png
   app_version: 3.0.0  # 已废弃：运行时以 app/version.py APP_VERSION 为准，勿在此处发版
@@ -16,10 +16,10 @@ brand_and_system:
   author_email: chengchengzhao@eautosh.com
   brand_abbreviation: TOA
   brand_alias: 运营宝
-  brand_name: 赋能培训运营助手（运营宝）
-  brand_name_en: Training Operations Assistant, TOA
-  slogan: 让培训运营数字化变得简单而高效
-  slogan_subtitle: 高效、稳定、易用的培训运营解决方案
+  brand_name: 运营宝 · 桌面办公套件
+  brand_name_en: TOA — Desktop Office Suite
+  slogan: 打开就能用 · 用完不想换
+  slogan_subtitle: 少点一下，多干一件事——剪贴板、截图、记事与文件一站集成，培训业务也能顺手做完
 color:
   header_bg_color: ''
   status_bar_bg: ''
@@ -70,7 +70,6 @@ hotkeys:
     - quadrant_tasks
     - ocr_tool
     - harness_agent
-  enable_global_toggle: true
   enable_global_toggle: true
   enable_screenshot: true
   exit_app: Ctrl+Q
@@ -142,29 +141,29 @@ menu:
     id: web_workspace
     module_path: modules.web_workspace.web_workspace_page
     name: 网页工作台
-    order: 4
+    order: 60
     feature_id: web_workspace
     requires_license: false
     show: true
   - class_name: QuickNotepadPage
-    desc: 办公片段、会议纪要草稿，本地保存随时编辑
+    desc: 会中速记、草稿，本地自动保存
     group: office
     icon: quick_notepad
     id: quick_notepad
     module_path: modules.quick_notepad.quick_notepad_page
     name: 快速记事
-    order: 5
+    order: 30
     feature_id: quick_notepad
     requires_license: false
     show: true
   - class_name: QuadrantTasksPage
-    desc: Eisenhower 四象限看板，拖拽换象限与本地持久
+    desc: 重要×紧急日计划看板
     group: office
     icon: quadrant_tasks
     id: quadrant_tasks
     module_path: modules.quadrant_tasks.quadrant_tasks_page
     name: 四象限任务
-    order: 6
+    order: 40
     feature_id: quadrant_tasks
     requires_license: false
     show: true
@@ -175,18 +174,18 @@ menu:
     id: pomodoro
     module_path: modules.pomodoro.pomodoro_page
     name: 番茄钟
-    order: 7
+    order: 70
     feature_id: pomodoro
     requires_license: false
     show: true
   - class_name: ScreenshotToolPage
-    desc: 全屏框选切图 · S 重选 · 微信风格标注 · 保存并复制
+    desc: 开会截图、标注、OCR/翻译入口
     group: office
     icon: camera
     id: screenshot_tool
     module_path: modules.screenshot_tool.screenshot_tool_page
     name: 截图工具
-    order: 8
+    order: 20
     feature_id: screenshot_tool
     requires_license: false
     show: true
@@ -197,13 +196,13 @@ menu:
     id: ocr_tool
     module_path: modules.ocr_tool.ocr_tool_page
     name: 图片转文字
-    order: 9
+    order: 80
     feature_id: ocr_tool
     requires_license: false
     # 入口已挂截图工具栏 OCR/翻译；独立页保留但不占侧栏
     show: false
   - class_name: ClipboardHistoryPage
-    desc: 捕获与回写剪贴板文本历史
+    desc: 会中反复粘贴 · 文本/图历史与热键速贴
     group: office
     icon: clipboard_history
     id: clipboard_history
@@ -214,35 +213,68 @@ menu:
     requires_license: false
     show: true
   - class_name: HarnessAgentPage
-    desc: DeepSeek Harness · 与 Codex 并肩的编码智能体指挥台
-    group: ai
+    desc: DeepSeek Harness 开源编码智能体 · 写代码/改仓库/多轮 Agent
+    group: engines
     icon: harness_agent
     id: harness_agent
     module_path: modules.harness_agent.harness_agent_page
-    name: DeepSeek Harness
-    order: 1
+    name: 编码智能体（Harness）
+    order: 10
     feature_id: harness_agent
     requires_license: false
     show: true
   - class_name: LlmAssistantPage
-    desc: 提示词生成与剪贴板润色（OpenAI 兼容）
-    group: ai
+    desc: 润色、摘要、写通知草稿（短文本，非编码 Agent）
+    group: office
     icon: llm_assistant
     id: llm_assistant
     module_path: modules.llm_assistant.llm_assistant_page
     name: 大模型助手
-    order: 2
+    order: 50
     feature_id: llm_assistant
     requires_license: false
     show: true
+  - class_name: OpenPencilPage
+    desc: 开源设计编辑器 · 检查安装、启动本地服、内嵌使用（与 Harness 同构）
+    group: engines
+    icon: image_creator
+    id: open_pencil
+    module_path: modules.open_pencil.open_pencil_page
+    name: OpenPencil 设计
+    order: 15
+    feature_id: open_pencil
+    requires_license: false
+    show: true
+  - class_name: DrawioWebPage
+    desc: 开源 draw.io / diagrams.net · 本机托管内嵌
+    group: engines
+    icon: image_creator
+    id: drawio_web
+    module_path: modules.drawio_web.drawio_web_page
+    name: Draw.io 绘图
+    order: 16
+    feature_id: drawio_web
+    requires_license: false
+    show: true
+  - class_name: ComfyUiWebPage
+    desc: ComfyUI 原版后台 · 大成哥-2 实例（8189）· 检测/启停/内嵌
+    group: engines
+    icon: image_creator
+    id: comfyui_web
+    module_path: modules.comfyui_web.comfyui_web_page
+    name: ComfyUI（大成哥-2）
+    order: 18
+    feature_id: comfyui_web
+    requires_license: false
+    show: true
   - class_name: MediaStudioPage
-    desc: 文生图（本机简易 / ComfyUI / 云端）
-    group: ai
+    desc: ComfyUI / 本机 / 云端 · 文生图与媒体生成宿主
+    group: image
     icon: image_creator
     id: media_studio
     module_path: modules.media_studio.media_studio_page
-    name: 媒体工坊
-    order: 3
+    name: 媒体工坊（ComfyUI）
+    order: 5
     feature_id: media_studio
     requires_license: false
     show: true
@@ -253,7 +285,7 @@ menu:
     id: image_creator
     module_path: modules.image_creator.image_creator_page
     name: 创建图片
-    order: 8
+    order: 70
     feature_id: image_creator
     requires_license: false
     show: false
@@ -264,51 +296,51 @@ menu:
     id: image_adjust
     module_path: modules.image_adjust.image_adjust_page
     name: 调整图片
-    order: 9
+    order: 60
     feature_id: image_adjust
     requires_license: false
     show: false
   - class_name: BatchRenamePage
     desc: 交付照片/课件编号批量重命名（预设、冲突门禁、可撤销）
-    group: directory
+    group: files
     icon: batch_rename
     id: batch_rename
     module_path: modules.batch_rename.batch_rename_page
     name: 批量重命名
-    order: 22
+    order: 30
     feature_id: batch_rename
     requires_license: true
     show: true
   - class_name: PdfToolkitPage
     desc: PDF 合并、拆分、按页提取（仅 PDF；多图合成请用文档合成器）
-    group: file
+    group: files
     icon: pdf_toolkit
     id: pdf_toolkit
     module_path: modules.pdf_toolkit.pdf_toolkit_page
     name: PDF 工具
-    order: 23
+    order: 40
     feature_id: pdf_toolkit
     requires_license: true
     show: true
   - class_name: FilePackagerPage
     desc: 选文件/文件夹预览后规范命名打包 zip（可剔空目录与后缀，可选清单）
-    group: file
+    group: files
     icon: file_packager
     id: file_packager
     module_path: modules.file_packager.file_packager_page
     name: 文件打包归档
-    order: 24
+    order: 50
     feature_id: file_packager
     requires_license: true
     show: true
   - class_name: MigrationPlaceholderPage
     desc: Excel 空行/重复行清洗与格式规范化（本波不做，占位）
-    group: file
+    group: files
     icon: excel_cleaner
     id: excel_cleaner
     module_path: modules.stub.migration_placeholder_page
     name: Excel 清洗
-    order: 25
+    order: 90
     feature_id: excel_cleaner
     requires_license: true
     show: false
@@ -319,7 +351,7 @@ menu:
     id: watermark_photo_generator
     module_path: modules.watermark_photo_generator.watermark_photo_generator_page
     name: 生成水印照片
-    order: 37
+    order: 60
     feature_id: watermark_photo_generator
     requires_license: true
     show: true
@@ -330,7 +362,7 @@ menu:
     id: image_watermark
     module_path: modules.image_watermark.image_watermark_page
     name: 添加水印
-    order: 14
+    order: 50
     feature_id: image_watermark
     requires_license: false
     show: false
@@ -341,7 +373,7 @@ menu:
     id: image_to_scan
     module_path: modules.image_to_scan.image_to_scan_page
     name: 图片转扫描件
-    order: 12
+    order: 20
     feature_id: image_to_scan
     requires_license: true
     show: true
@@ -352,7 +384,7 @@ menu:
     id: image_format_convert
     module_path: modules.image_format_convert.image_format_convert_page
     name: 图转文件
-    order: 15
+    order: 40
     feature_id: image_format_convert
     requires_license: true
     show: true
@@ -363,7 +395,7 @@ menu:
     id: watermark_remover
     module_path: modules.watermark_remover.watermark_remover_page
     name: 去除图片水印
-    order: 11
+    order: 10
     feature_id: watermark_remover
     requires_license: false
     show: true
@@ -374,13 +406,13 @@ menu:
     id: photo_extractor
     module_path: modules.photo_extractor.photo_extractor_page
     name: 照片提取器
-    order: 13
+    order: 30
     feature_id: photo_extractor
     requires_license: true
     show: true
   - class_name: DirectoryInspectorPage
     desc: 目录透视：路径清单、空目录/命名，文件类型占比饼图（不做 Word 贴图/交付统计）
-    group: directory
+    group: files
     icon: directory_inspector
     id: directory_inspector
     module_path: modules.directory_inspector.directory_inspector_page
@@ -390,24 +422,24 @@ menu:
     requires_license: true
     show: true
   - class_name: ColumnPreviewPage
-    desc: MACOS风格桌面：分栏/图标/列表、彩色文件夹标签、预览与就地新建
+    desc: 分栏/图标/列表浏览本地文件夹，标签与预览
     group: home
     icon: column_preview
     id: column_preview
     module_path: modules.column_preview.column_preview_page
-    name: MACOS风格桌面
+    name: 桌面浏览
     order: 2
     feature_id: column_preview
     requires_license: false
     show: true
   - class_name: DirectoryGeneratorPage
     desc: 粘贴名单或选模板，预览后批量创建文件夹（已存在跳过）
-    group: directory
+    group: files
     icon: directory_generator
     id: directory_generator
     module_path: modules.directory_generator.directory_generator_page
-    name: 批量文件夹生成
-    order: 19
+    name: 批量建文件夹
+    order: 10
     feature_id: directory_generator
     requires_license: false
     show: true
@@ -418,40 +450,40 @@ menu:
     id: excel_row_to_column
     module_path: modules.excel_row_to_column.excel_row_to_column_page
     name: 行转列工具
-    order: 36
+    order: 80
     feature_id: excel_row_to_column
     requires_license: true
     show: true
   - class_name: GenericGeneratorSimplePage
     desc: 模板驱动的通用文档生成
-    group: file
+    group: files
     icon: generic_generator_simple
     id: generic_generator_simple
     module_path: modules.generic_generator_simple.generic_generator_simple_page
     name: 通用生成工具
-    order: 31
+    order: 70
     feature_id: generic_generator_simple
     requires_license: true
     show: true
   - class_name: MigrationPlaceholderPage
     desc: Excel 映射驱动批量生成（TOA2 完整版，待迁移）
-    group: file
+    group: files
     icon: generic_generator
     id: generic_generator
     module_path: modules.stub.migration_placeholder_page
     name: 通用生成（Excel）
-    order: 32
+    order: 80
     feature_id: generic_generator
     requires_license: true
     show: false
   - class_name: DocumentComposerPage
     desc: 按模板快速合成文档
-    group: file
+    group: files
     icon: document_composer
     id: document_composer
     module_path: modules.document_composer.document_composer_page
     name: 文档合成器
-    order: 32
+    order: 60
     feature_id: document_composer
     requires_license: true
     show: true
@@ -462,7 +494,7 @@ menu:
     id: table_card_generator
     module_path: modules.table_card_generator.table_card_generator_page
     name: 桌卡生成工具
-    order: 46
+    order: 30
     feature_id: table_card_generator
     requires_license: true
     show: true
@@ -473,7 +505,7 @@ menu:
     id: teaching_assistant_resume
     module_path: modules.teaching_assistant_resume.teaching_assistant_resume_generator_page
     name: 助教简历生成
-    order: 45
+    order: 40
     feature_id: teaching_assistant_resume
     requires_license: true
     show: true
@@ -484,7 +516,7 @@ menu:
     id: resume_extractor
     module_path: modules.resume_extractor.resume_extractor_page
     name: 简历信息提取
-    order: 42
+    order: 50
     feature_id: resume_extractor
     requires_license: true
     show: true
@@ -495,7 +527,7 @@ menu:
     id: schedule_reminder
     module_path: modules.schedule_reminder.schedule_reminder_page
     name: 班级日程提醒
-    order: 41
+    order: 10
     feature_id: schedule_reminder
     requires_license: true
     show: true
@@ -506,7 +538,7 @@ menu:
     id: schedule_format_converter
     module_path: modules.schedule_format_converter.schedule_format_converter_page
     name: 排程格式转换
-    order: 43
+    order: 20
     feature_id: schedule_format_converter
     requires_license: true
     show: true
@@ -517,7 +549,7 @@ menu:
     id: enhanced_directory_inspector
     module_path: modules.enhanced_directory_inspector.enhanced_directory_inspector_page
     name: 交付材料生成
-    order: 44
+    order: 90
     feature_id: enhanced_directory_inspector
     requires_license: true
     show: true
@@ -528,7 +560,7 @@ menu:
     id: deliverable_directory_check
     module_path: modules.deliverable_directory_check.deliverable_directory_check_page
     name: 生成交付报告
-    order: 45
+    order: 100
     feature_id: deliverable_directory_check
     requires_license: true
     show: true
@@ -539,7 +571,7 @@ menu:
     id: deduction_note_formatter
     module_path: modules.deduction_note_formatter.deduction_note_page
     name: 扣分备注整理
-    order: 40
+    order: 70
     feature_id: deduction_note_formatter
     requires_license: true
     show: true
@@ -550,7 +582,7 @@ menu:
     id: system_settings
     module_path: modules.system_settings.settings_page
     name: 系统设置
-    order: 90
+    order: 10
     feature_id: system_settings
     requires_license: false
     show: true
@@ -561,7 +593,7 @@ menu:
     id: user_extensions
     module_path: modules.user_extensions.user_extensions_page
     name: 扩展
-    order: 91
+    order: 20
     feature_id: user_extensions
     requires_license: true
     show: true
@@ -572,7 +604,7 @@ menu:
     id: job_scheduler
     module_path: modules.job_scheduler.job_scheduler_page
     name: 定时任务
-    order: 92
+    order: 30
     feature_id: job_scheduler
     requires_license: false
     show: true
@@ -583,7 +615,7 @@ menu:
     id: notifications
     module_path: modules.notifications.notifications_page
     name: 通知
-    order: 93
+    order: 40
     feature_id: notifications
     requires_license: false
     show: true
@@ -594,7 +626,7 @@ menu:
     id: theme_preview
     module_path: modules.gallery.control_library_page
     name: 控件库
-    order: 94
+    order: 50
     feature_id: theme_preview
     requires_license: false
     show: true
@@ -698,13 +730,13 @@ performance_config:
 splash: {}
 system_info: &id001
   app_logo_path: avatars/logo.png
-  app_name: 赋能培训运营助手（运营宝）
-  app_name_en: Training Operations Assistant, TOA
+  app_name: 运营宝 · 桌面办公套件
+  app_name_en: TOA — Desktop Office Suite
   app_version: 3.0.0  # 已废弃：运行时以 app/version.py APP_VERSION 为准，勿在此处发版
   author: 大成哥
   author_contact: chengchengzhao@eautosh.com
-  main_slogan: 让培训运营数字化变得简单而高效
-  sub_slogan: 高效、稳定、易用的培训运营解决方案
+  main_slogan: 打开就能用 · 用完不想换
+  sub_slogan: 少点一下，多干一件事——剪贴板、截图、记事与文件一站集成，培训业务也能顺手做完
 system_info_config: *id001
 template:
   data_dir: ./data
@@ -755,4 +787,4 @@ window:
   - 800
   - 600
   theme: dms_blue
-  window_title: 赋能培训运营助手（运营宝）
+  window_title: 运营宝 TOA

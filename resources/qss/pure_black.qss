@@ -1788,9 +1788,21 @@ QLabel#MediaWorkPlayBadge {
     font-weight: 600;
 }
 
+QWidget#HarnessWebHost {
+    background: #0A0A0A;
+    border: none;
+}
+
+QLabel#HarnessWebPlaceholder {
+    background: #0A0A0A;
+    color: #A3A3A3;
+    padding: 16px;
+}
+
 QLabel#HarnessWebOverlay {
-    background: rgba(0, 0, 0, 0.45);
-    color: #F5F5F7;
+    /* 不透明遮罩：半透明会透出 Chromium 白底大闪 */
+    background: #0A0A0A;
+    color: #F5F5F5;
     padding: 12px 16px;
 }
 

@@ -137,16 +137,79 @@ def _relaunch_command() -> str:
     )
 
 
-def _relaunch_icon() -> str:
-    try:
-        from services.app_branding import resolve_app_icon_ico
+def _staged_relaunch_ico() -> str | None:
+    """拷到 %LOCALAPPDATA%\\YCZH\\TOA3：短 ASCII 路径，Explorer 跳转列表才能稳定吃到 .ico。
 
-        ico = resolve_app_icon_ico()
-        if ico is not None and ico.is_file():
-            return f"{ico},0"
+    源码跑在 python.exe 上时，若直接指向仓库 Desktop 路径，右键顶项常仍显示 Python 图标。
+    """
+    try:
+        from services.app_branding import is_development_profile, resolve_app_icon_ico
+
+        src = resolve_app_icon_ico()
+        if src is None or not src.is_file():
+            return None
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or ""
+        if not base:
+            return str(src.resolve())
+        name = "relaunch_dev.ico" if is_development_profile() else "relaunch.ico"
+        dest_dir = os.path.join(base, "YCZH", "TOA3")
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, name)
+        try:
+            src_stat = src.stat()
+            need = True
+            if os.path.isfile(dest):
+                dst_stat = os.stat(dest)
+                need = (
+                    dst_stat.st_size != src_stat.st_size
+                    or int(dst_stat.st_mtime) < int(src_stat.st_mtime)
+                )
+            if need:
+                import shutil
+
+                shutil.copy2(str(src), dest)
+        except Exception:
+            logger.debug("stage relaunch ico failed", exc_info=True)
+            return str(src.resolve())
+        return dest
     except Exception:
-        pass
-    return f"{sys.executable},0"
+        logger.debug("resolve staged relaunch ico failed", exc_info=True)
+        return None
+
+
+def _relaunch_icon() -> str:
+    staged = _staged_relaunch_ico()
+    if staged:
+        # IconResource：路径 + 索引；须反斜杠
+        return f"{os.path.normpath(staged)},0"
+    return f"{os.path.normpath(sys.executable)},0"
+
+
+def _apply_native_window_icons(hwnd: int, ico_path: str) -> None:
+    """WM_SETICON：任务栏按钮已跟 Qt，跳转列表顶项在 Win11 仍常吃进程图标，再强制挂一次。"""
+    if hwnd <= 0 or not ico_path:
+        return
+    path = ico_path.split(",", 1)[0].strip().strip('"')
+    if not path or not os.path.isfile(path):
+        return
+    from ctypes import c_wchar_p
+
+    user32 = windll.user32
+    IMAGE_ICON = 1
+    LR_LOADFROMFILE = 0x0010
+    WM_SETICON = 0x0080
+    ICON_SMALL = 0
+    ICON_BIG = 1
+    user32.LoadImageW.restype = c_void_p
+    user32.LoadImageW.argtypes = [c_void_p, c_wchar_p, c_ulong, c_ulong, c_ulong, c_ulong]
+    user32.SendMessageW.argtypes = [HWND, c_ulong, c_void_p, c_void_p]
+    user32.SendMessageW.restype = c_void_p
+    h_big = user32.LoadImageW(None, path, IMAGE_ICON, 32, 32, LR_LOADFROMFILE)
+    h_sm = user32.LoadImageW(None, path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+    if h_big:
+        user32.SendMessageW(HWND(hwnd), WM_SETICON, ICON_BIG, h_big)
+    if h_sm:
+        user32.SendMessageW(HWND(hwnd), WM_SETICON, ICON_SMALL, h_sm)
 
 
 def apply_windows_app_identity(*, display_name: str | None = None) -> None:
@@ -253,7 +316,7 @@ def _set_window_propstore(hwnd: int, *, display_name: str, aumid: str, command: 
 
 
 def apply_window_taskbar_identity(widget: Any, *, display_name: str | None = None) -> None:
-    """在窗口已有 HWND 后调用（show 之后），把跳转列表「Python」改成应用名。"""
+    """在窗口已有 HWND 后调用（show 之后），把跳转列表「Python」改成应用名+品牌图标。"""
     if sys.platform != "win32" or widget is None:
         return
     try:
@@ -264,17 +327,22 @@ def apply_window_taskbar_identity(widget: Any, *, display_name: str | None = Non
         return
     name = _taskbar_display_name(display_name)
     aumid = str(_STORED.get("aumid") or _resolve_aumid())
+    icon = _relaunch_icon()
+    try:
+        _apply_native_window_icons(wid, icon)
+    except Exception:
+        logger.debug("WM_SETICON failed", exc_info=True)
     try:
         _set_window_propstore(
             wid,
             display_name=name,
             aumid=aumid,
             command=_relaunch_command(),
-            icon=_relaunch_icon(),
+            icon=icon,
         )
-        logger.debug("taskbar identity applied hwnd=%s name=%s", wid, name)
+        logger.debug("taskbar identity applied hwnd=%s name=%s icon=%s", wid, name, icon)
         if not getattr(widget, "_toa_taskbar_id_logged", False):
-            logger.info("任务栏身份: %s (AUMID=%s)", name, aumid)
+            logger.info("任务栏身份: %s (AUMID=%s) icon=%s", name, aumid, icon)
             try:
                 widget._toa_taskbar_id_logged = True
             except Exception:
@@ -290,13 +358,14 @@ def wire_taskbar_activate(shell) -> None:
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
-    # show 前后各刷一次：避免 HWND 未就绪或资源管理器仍缓存「Python」
+    # 多次刷：HWND / Explorer 缓存；图标尤其容易卡在 python.exe
     def _apply() -> None:
         apply_window_taskbar_identity(shell)
 
     _apply()
     QTimer.singleShot(0, _apply)
     QTimer.singleShot(300, _apply)
+    QTimer.singleShot(1200, _apply)
 
     app = QApplication.instance()
     if app is None:

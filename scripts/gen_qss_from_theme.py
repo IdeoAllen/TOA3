@@ -2017,9 +2017,21 @@ QLabel#MediaWorkPlayBadge {{
     font-weight: 600;
 }}
 
+QWidget#HarnessWebHost {{
+    background: {_p(pal, "surface", "#FFFCF8")};
+    border: none;
+}}
+
+QLabel#HarnessWebPlaceholder {{
+    background: {_p(pal, "surface", "#FFFCF8")};
+    color: {_p(pal, "text_secondary", "#5C4D3C")};
+    padding: 16px;
+}}
+
 QLabel#HarnessWebOverlay {{
-    background: rgba(0, 0, 0, 0.45);
-    color: #F5F5F7;
+    /* 不透明遮罩：半透明会透出 Chromium 白底大闪 */
+    background: {_p(pal, "surface", "#FFFCF8")};
+    color: {_p(pal, "text_primary", "#241C14")};
     padding: 12px 16px;
 }}
 

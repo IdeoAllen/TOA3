@@ -1,0 +1,21 @@
+# 引擎宿主扩展包样例
+# 复制整目录到 data/user/engine_packs/demo_static_engine/
+# 将 menu_show 改为 true 后重启 → 顶栏「引擎」可见
+
+engine:
+  id: demo_static_engine
+  title: 样例静态引擎
+  description: 引擎扩展包演示 · Host 只做安装/启停/内嵌，Guest 为本地静态页
+  icon: image_creator
+  order: 90
+  port: 8765
+  health_path: /
+  auto_start: true
+  menu_show: false
+  marker_files:
+    - index.html
+  default_roots: []
+  install:
+    hint: 本样例自带 app/；点「指定目录」选本包下的 app 文件夹即可。
+  start:
+    - ["python", "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "."]

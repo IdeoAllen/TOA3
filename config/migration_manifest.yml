@@ -185,6 +185,39 @@ modules:
     toa2_ref: —
     note: Harness Host+Guest v2；全宽 Web + 办公链投喂 + 导出；无重复侧栏
 
+  open_pencil:
+    status: mvp
+    priority: P1
+    office_freq: medium
+    toa2_ref: —
+    note: 本地 Web 引擎范式首例；检测/启停/内嵌 OpenPencil
+    gaps:
+      - Top3 + 三独到处待主理人确认（docs/research/open_pencil-top3.md）
+      - 一键 bun install / 依赖修复未做
+      - 专属图标未入库
+
+  drawio_web:
+    status: mvp
+    priority: P1
+    office_freq: medium
+    toa2_ref: —
+    note: 本地 Web 引擎范式·draw.io（C:/AI/Draw.io · 8080）
+    gaps:
+      - Top3 + 三独到处待主理人确认（docs/research/drawio_web-top3.md）
+      - 专属图标未入库
+      - 导出/文件默认目录与 TOA data 联动未做
+
+  comfyui_web:
+    status: mvp
+    priority: P1
+    office_freq: medium
+    toa2_ref: —
+    note: 本地 Web 引擎范式·大成哥-2（8189）；与 media_studio API 并存
+    gaps:
+      - Top3 + 三独到处待主理人确认（docs/research/comfyui_web-top3.md）
+      - 专属图标未入库
+      - Comfy Desktop 共享模型路径若缺失需手配 extra_model_paths
+
   media_studio:
     status: mvp
     priority: P1
@@ -291,9 +324,10 @@ modules:
     status: mvp
     priority: P1
     toa2_ref: —
-    note: MACOS风格桌面；三模式+标签+新建；Top3 approved
+    note: MACOS风格桌面；三模式+标签+新建；拖入 handoff approved
     gaps:
       - 主理人点验三模式/标签/折叠/新建后清 gaps
+      - 主理人点验拖入图标/主窗→父目录为根+预览+导入记事本
       - PDF/Office 内嵌预览（可选）
 
   enhanced_directory_inspector:

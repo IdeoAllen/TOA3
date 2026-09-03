@@ -152,8 +152,7 @@ class SettingsPage(BasePage):
         body.addWidget(self._stack, 1)
         outer.addLayout(body, 1)
 
-        QTimer.singleShot(0, lambda: self._select_menu(TAB_SYSTEM))
-
+        # 勿在 __init__ 里 ensure_built：与引擎页 WebEngine 销毁重叠时易闪退
         ui = get_ui_config()
         cur = str(ui.get("theme") or "dms_blue")
         if self._theme_picker is not None:
@@ -219,7 +218,11 @@ class SettingsPage(BasePage):
         self._stack.setCurrentIndex(idx)
         w = self._stack.widget(idx)
         if isinstance(w, _LazyTabHost):
-            w.ensure_built()
+            try:
+                w.ensure_built()
+            except Exception as exc:
+                self.handle_error(exc, title="打开设置页失败")
+                return
         for mk, btn in self._nav_buttons.items():
             btn.setChecked(mk == key)
         self._sync_theme_selection()
@@ -683,8 +686,14 @@ class SettingsPage(BasePage):
         self.open_tab(TAB_SYSTEM)
 
     def on_enter(self) -> None:
-        self._select_menu(self._current_menu_key or TAB_SYSTEM)
+        # 先让顶栏「系统」选中态稳住，再刷设置内容（构建约 0.5s）
         self.report_status("系统设置")
+        QTimer.singleShot(0, self._on_enter_deferred)
+
+    def _on_enter_deferred(self) -> None:
+        if self.window() is not None and getattr(self.window(), "_current_id", None) != self.page_id:
+            return
+        self._select_menu(self._current_menu_key or TAB_SYSTEM)
 
     def open_preferences_tab(self) -> None:
         self.open_tab(TAB_PREFERENCES)

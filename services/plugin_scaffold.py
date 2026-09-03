@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from services.menu_registry import GROUP_ORDER, MIGRATED_MODULES
+from services.menu_registry import GROUP_ORDER, MIGRATED_MODULES, normalize_menu_group_id
 from services.plugin_pack import parse_plugin_root
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -558,7 +558,7 @@ def create_plugin_scaffold(
         raise ValueError("plugin_id 须为小写 snake_case（字母开头）")
     if pid in MIGRATED_MODULES:
         raise ValueError(f"id「{pid}」与内置模块冲突")
-    g = str(group or "business").strip().lower()
+    g = normalize_menu_group_id(group or "business")
     if g not in GROUP_ORDER:
         raise ValueError(f"group 须为 {GROUP_ORDER} 之一")
     surf = str(surface or "qt").strip().lower()

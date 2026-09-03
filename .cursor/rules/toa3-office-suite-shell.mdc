@@ -11,13 +11,13 @@ alwaysApply: true
 
 | 子模块（子系统） | 代表能力 | 功能模块示例 |
 |----|----------|----------|
-| 剪贴板 | 历史、搜索、钉选、快速粘贴 | `clipboard_history` |
-| 截图 | 区域/全屏、标注、翻译、OCR 链 | `screenshot_tool` + `services/screenshot_*` |
-| 目录 | 生成、检查、交付结构 | `directory_generator`, `directory_inspector`, `enhanced_directory_inspector` |
-| 文件 | 重命名、合成、表格转换 | `batch_rename`, `document_composer`, `excel_row_to_column` |
-| 桌面 | Finder 式浏览、标签、预览 | `column_preview` |
-| 办公增效 | 记事、任务、剪贴板、截图入口 | `quick_notepad`, `quadrant_tasks`, Wave★ 八件套 |
+| 办公 | 剪贴板、截图、记事、任务、大模型润色 | `clipboard_history`, `screenshot_tool`, `quick_notepad`, `llm_assistant` |
+| 图片 | 去水印、扫描件、提取、格式转换、媒体生成 | `watermark_remover`, `image_to_scan`, `photo_extractor`, `media_studio` |
+| 文件 | 建夹、透视、重命名、PDF、打包、合成 | `directory_generator`, `pdf_toolkit`, `file_packager`, `batch_rename` |
+| 引擎 | Harness / ComfyUI / Draw.io 等开源宿主 | `harness_agent`, `comfyui_web`, `drawio_web`, `open_pencil` |
+| 首页 | 总览与桌面浏览 | `home`, `column_preview` |
 | 业务 | 培训运营专属 | `table_card_generator`, `schedule_reminder`, … |
+| 系统 | 设置、扩展、控件库 | `system_settings`, `user_extensions` |
 
 **集成承诺**（与 `config/product.yml` `vision` 同源）：
 
@@ -45,13 +45,13 @@ alwaysApply: true
 
 | group_id | 展示名 | 子系统说明 |
 |----------|--------|------------|
-| `home` | 首页 | 总览与快捷入口 |
-| `office` | 办公 | 记事、剪贴板、截图、任务、番茄钟 |
-| `image` | 图片 | 水印、格式、扫描件等 |
-| `directory` | 目录 | 目录生成/检查/交付 |
-| `file` | 文件 | 重命名、合成、表格 |
-| `business` | 业务 | 培训运营 |
-| `system` | 系统 | 设置、控件库 |
+| `home` | 首页 | 总览与桌面浏览 |
+| `office` | 办公 | 剪贴板、截图、记事、任务、大模型润色、网页 |
+| `image` | 图片 | 去水印、扫描件、提取、格式转换 |
+| `files` | 文件 | 建夹、透视、重命名、PDF、打包、文档合成 |
+| `engines` | 引擎 | Harness / ComfyUI 等重量级开源宿主 |
+| `business` | 业务 | 培训运营（排课→材料→检核→交付） |
+| `system` | 系统 | 设置、扩展、控件库 |
 
 **硬规则**：
 

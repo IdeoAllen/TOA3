@@ -1,0 +1,76 @@
+# 本地 Web 引擎目录（Host + Guest）
+
+# 每个引擎：探测根目录 →（可一键安装）→ 启动 → 健康 URL → 内嵌
+# 进页策略：未装→一键安装(进度)；已装→判启动；已启→加载；未启→启动并加载
+
+engines:
+  open_pencil:
+    title: OpenPencil 设计
+    description: 开源设计编辑器 · 本地 Vite 开发服嵌入
+    default_roots:
+      - "C:/AI/OpenPencil/open-pencil"
+      - "C:/AI/open-pencil"
+      - "~/OpenPencil/open-pencil"
+      - "~/open-pencil"
+    marker_files:
+      - package.json
+    port: 1420
+    health_path: /
+    auto_start: true
+    install:
+      git: https://github.com/open-pencil/open-pencil.git
+      post:
+        - ["bun", "install"]
+        - ["npm", "install"]
+    start:
+      - ["bun", "run", "dev", "--", "--host", "127.0.0.1", "--port", "1420"]
+      - ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "1420"]
+      - ["npx", "vite", "--host", "127.0.0.1", "--port", "1420"]
+    stop_on_leave: false
+    prefer_embed: true
+
+  comfyui_web:
+    title: ComfyUI（大成哥-2）
+    description: 本机 ComfyUI 原版 Web · 默认系统浏览器（外壳隔离）· 端口 8189 · 可改回内嵌
+    default_roots:
+      - "D:/Comfy-Desktop/ComfyUI-Installs/大成哥-2/ComfyUI"
+      - "D:/Comfy-Desktop/ComfyUI-Installs/大成哥-2"
+      - "C:/AI/ComfyUI"
+      - "~/ComfyUI"
+    marker_files:
+      - main.py
+    port: 8189
+    health_path: /
+    auto_start: true
+    install:
+      hint: "ComfyUI 体积大，请安装 Comfy Desktop「大成哥-2」后点「指定目录」，或选已有含 main.py 的 ComfyUI 根。"
+    start:
+      # 仅用 Comfy Desktop 自带解释器；勿回落系统/其它 venv（易缺 torch）
+      - ["../standalone-env/python.exe", "main.py", "--listen", "127.0.0.1", "--port", "8189", "--disable-auto-launch"]
+      - [".venv/Scripts/python.exe", "main.py", "--listen", "127.0.0.1", "--port", "8189", "--disable-auto-launch"]
+    stop_on_leave: false
+    # 默认浏览器表面：不把 Chromium 嵌进主窗，避免拖垮壳层；可在页内「改用内嵌」
+    prefer_embed: false
+    menu_show: true
+
+  drawio_web:
+    title: Draw.io 绘图
+    description: 开源 diagrams.net / draw.io · 本机静态托管内嵌（Apache-2.0）
+    default_roots:
+      - "C:/AI/Draw.io"
+      - "~/Draw.io"
+      - "~/drawio"
+    marker_files:
+      - src/main/webapp/index.html
+    port: 8080
+    health_path: /
+    auto_start: true
+    install:
+      git: https://github.com/jgraph/drawio.git
+    start:
+      - ["npx", "--yes", "serve", "src/main/webapp", "-l", "tcp://127.0.0.1:8080", "--no-port-switching"]
+      - ["npx", "--yes", "http-server", "src/main/webapp", "-a", "127.0.0.1", "-p", "8080", "-c-1"]
+      - ["python", "-m", "http.server", "8080", "--bind", "127.0.0.1", "--directory", "src/main/webapp"]
+    stop_on_leave: false
+    prefer_embed: true
+    menu_show: true

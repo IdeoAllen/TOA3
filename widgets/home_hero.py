@@ -81,31 +81,9 @@ class HomeHeroBand(QFrame):
     @staticmethod
     def _brand_pixmap(logical: int) -> QPixmap:
         try:
-            from PySide6.QtGui import QGuiApplication
-            from services.app_branding import resolve_app_icon_png, resolve_brand_logo_png
+            from services.icon_registry import brand_logo_pixmap
 
-            path = None
-            for resolver in (resolve_brand_logo_png, resolve_app_icon_png):
-                candidate = resolver()
-                if candidate is not None and candidate.is_file():
-                    path = candidate
-                    break
-            if path is None:
-                return QPixmap()
-            screen = QGuiApplication.primaryScreen()
-            dpr = float(screen.devicePixelRatio()) if screen is not None else 1.0
-            src = QPixmap(str(path))
-            if src.isNull():
-                return QPixmap()
-            target = max(1, int(logical * dpr))
-            out = src.scaled(
-                target,
-                target,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            out.setDevicePixelRatio(dpr)
-            return out
+            return brand_logo_pixmap(logical, logical)
         except Exception:
             return QPixmap()
 

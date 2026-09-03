@@ -487,8 +487,34 @@ def _merge_user_plugins(items: list[dict]) -> list[dict]:
     return out
 
 
+def _merge_engine_packs(items: list[dict]) -> list[dict]:
+    """追加引擎宿主扩展包菜单（顶栏「引擎」）。"""
+    try:
+        from services.local_web_engine.packs import engine_pack_menu_items
+    except Exception:
+        return items
+    try:
+        extras = engine_pack_menu_items()
+    except Exception:
+        return items
+    if not extras:
+        return items
+    seen = {str(i.get("id") or "").strip() for i in items}
+    out = list(items)
+    for extra in extras:
+        mid = str(extra.get("id") or "").strip()
+        if not mid or mid in seen:
+            continue
+        out.append(extra)
+        seen.add(mid)
+    out.sort(key=lambda x: int(x.get("order") or 0))
+    return out
+
+
 def get_all_menu_items() -> list[dict]:
     """出厂菜单 app.yml + 本机 menu.yml overrides + 用户业务插件。"""
+    from services.menu_registry import normalize_menu_group_id
+
     base = _default_menu_items_from_app()
     doc = _read_user_menu_doc()
     merged = base
@@ -503,7 +529,12 @@ def get_all_menu_items() -> list[dict]:
                     merged = migrated
         except Exception:
             merged = base
-    return _merge_user_plugins(merged)
+    out = _merge_user_plugins(merged)
+    out = _merge_engine_packs(out)
+    for item in out:
+        if isinstance(item, dict) and "group" in item:
+            item["group"] = normalize_menu_group_id(item.get("group"))
+    return out
 
 
 def get_menu_item_by_id(module_id: str) -> dict | None:

@@ -23,24 +23,33 @@ logger = logging.getLogger("TOA3")
 
 
 def _configure_webengine_env() -> None:
-    """内嵌 Chromium 在 125%/150% 缩放下易发虚：提前设字体渲染标志。"""
+    """内嵌 Chromium：保留 GPU（跟手），用 Angle/D3D11 稳一点，去掉会卡死交互的 disable-gpu。"""
     import os
+    import sys
 
     from services.qt_webengine_bootstrap import configure_frozen_qt_webengine
 
     configure_frozen_qt_webengine()
 
     key = "QTWEBENGINE_CHROMIUM_FLAGS"
-    # 灰度抗锯齿 + 完整 hinting，减轻分数倍缩放下的发糊
-    extras = (
+    extras = [
         "--disable-lcd-text",
         "--font-render-hinting=full",
         "--enable-font-antialiasing",
-        # Windows 嵌入 WebEngine 时父窗重绘易闪白；禁用原生遮挡计算
+        # Windows 嵌入时父窗重绘易闪白
         "--disable-features=CalculateNativeWinOcclusion",
-    )
+    ]
+    if sys.platform == "win32":
+        # D3D11 路径比默认更容易稳，减轻悬停闪烁；仍走 GPU，不回软件光栅
+        extras.append("--use-angle=d3d11")
+    # 历史版本为减闪退曾写入 disable-gpu*，会让引擎页点哪都卡
+    strip = {
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-gpu-rasterization",
+    }
     cur = (os.environ.get(key) or "").strip()
-    parts = [p for p in cur.split() if p]
+    parts = [p for p in cur.split() if p and p not in strip]
     for flag in extras:
         if flag not in parts:
             parts.append(flag)
@@ -97,6 +106,8 @@ def main() -> int:
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
+    # WebEngine 须共享 GL 上下文，否则首次嵌入易整窗闪白
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
     app = QApplication(sys.argv)
     app.setApplicationName("TOA3")
     try:
@@ -128,16 +139,29 @@ def main() -> int:
     apply_theme(app, theme_id)
 
     shell_holder: list = []
+    from services.drop_handoff import collect_launch_paths
 
-    def _activate_existing() -> None:
-        if shell_holder:
-            from services.win_foreground import force_widget_foreground
+    launch_paths = collect_launch_paths()
+    launch_path_strs = [str(p) for p in launch_paths]
 
-            force_widget_foreground(shell_holder[0])
+    def _on_second_instance(paths: list[str]) -> None:
+        if not shell_holder:
+            return
+        from services.win_foreground import force_widget_foreground
+
+        shell = shell_holder[0]
+        force_widget_foreground(shell)
+        if paths:
+            try:
+                shell.open_drop_paths(paths)
+            except Exception:
+                logger.debug("open_drop_paths from second instance failed", exc_info=True)
 
     from services.single_instance import try_acquire_single_instance
 
-    if not try_acquire_single_instance(app, on_second=_activate_existing):
+    if not try_acquire_single_instance(
+        app, on_second=_on_second_instance, launch_paths=launch_path_strs
+    ):
         logger.info("已有实例运行，退出本进程")
         return 0
 
@@ -149,6 +173,7 @@ def main() -> int:
         shell = MainShell(defer_startup=True)
         shell_holder.append(shell)
         shell.complete_startup()
+        # 禁止在主壳上挂 WebEngine 锚点：引擎/业务/系统来回切会原生闪退
         shell.show()
         try:
             from services.windows_app_identity import apply_window_taskbar_identity
@@ -156,6 +181,18 @@ def main() -> int:
             apply_window_taskbar_identity(shell)
         except Exception:
             pass
+        # 离屏预热 Chromium，减轻首次进引擎页的大闪（不挂主壳）
+        try:
+            from PySide6.QtCore import QTimer
+            from services.webengine_prewarm import prewarm_chromium_process
+
+            QTimer.singleShot(400, lambda: prewarm_chromium_process(shell))
+        except Exception:
+            pass
+        if launch_path_strs:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(0, lambda: shell.open_drop_paths(launch_path_strs))
     except Exception:
         logger.exception("主壳启动失败")
         from services.single_instance import release_single_instance

@@ -2,18 +2,19 @@
 # 个人路径与开关请写 data/user/harness.yml（发版不会带出本机配置）
 
 harness:
-  enabled: false
+  # 发版默认空路径；本机以 data/user/harness.yml 覆盖。未覆盖时进页走一键安装引导。
+  enabled: true
   dsh_home: ""
   node_exe: ""
   dsh_bin: ""
-  web_port: 3081
+  web_port: 3082
   dshm_port: 8787
-  auto_start: false
+  auto_start: true
   stop_on_app_exit: false
   clear_env_api_key: true
   dshm_script: vendor/dshm/bin/dshm.js
   default_workspace: ""
-  surface_mode: browser
+  surface_mode: embed
   web_zoom: 1.0
   web_readability_boost: false
   theme_harmonize: false

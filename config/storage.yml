@@ -54,6 +54,9 @@ modules:
   ocr_tool: {}
   llm_assistant: {}
   harness_agent: {}
+  open_pencil: {}
+  drawio_web: {}
+  comfyui_web: {}
   # 用户业务插件数据仍走 module_data_dir(<plugin_id>)；样例见 assets/samples/toa_plugin_pack/
   media_studio: {}
   quick_notepad: {}

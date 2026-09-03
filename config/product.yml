@@ -13,7 +13,7 @@ vision:
   # 套件定位（安装叙事 · 与壳层规则同源）
   suite_positioning: 办公室人员安装本软件，即等于集成剪贴板、截图、目录、文件、桌面、业务等常用办公效率工具——一站替代多软件来回切换。
   # 命名
-  naming_note: 正式俏皮名稍后共创；现阶段以「运营宝 / TOA」示人，先把每天离不开的体验做实。
+  naming_note: 对外以「运营宝 / TOA」示人；全称「运营宝 · 桌面办公套件」，气质是一站式办公效率，培训业务是加分能力而非唯一叙事。
   audience: 培训运营、教务、行政与通用白领
   promises:
     - 高频刚需做强，不做功能凑数；每项对标品类头部，宁少勿滥
@@ -33,7 +33,7 @@ vision:
 # 首页展示（curated · 不随 app.yml 菜单整表渲染）
 home:
   search_hint: 顶栏 ⌂ 或 Ctrl+K，关键字直达任一工作。
-  advanced_note: 文生图、视频、Harness 等请到「系统设置 → 模型管理」绑定；向导配置，无需手改文件。
+  advanced_note: 文生图、视频、Harness 等请到顶栏「引擎」或「系统设置 → 模型管理」；向导配置，无需手改文件。
   office_pins:
     - id: quick_notepad
       title: 快速记事
@@ -66,15 +66,14 @@ home:
     # Wave F 模块已露出；watermark_remover 仍在办公/图片线
 
 module_groups:
-  # 顶栏一级 = 子模块（子系统）；侧栏二级 = 功能模块（见 shell 术语表）
-  home: 首页与导航
-  office: 办公增效（记事、番茄钟、截图、图片转文字、剪贴板等）
-  ai: AI 智能体（Harness 编码智能体 / 大模型助手）
-  image: 图片处理
-  directory: 文件与目录
-  file: 办公文件与表格
-  business: 培训业务
-  system: 系统与控件库
+  # 顶栏一级 = 子模块（子系统）；侧栏二级 = 功能模块（办公室场景）
+  home: 首页与桌面浏览
+  office: 日常办公（剪贴板、截图、记事、任务、大模型润色、网页）
+  image: 图片处理与媒体生成（去水印、媒体工坊、扫描件、提取、格式转换）
+  files: 文件与目录（建夹、透视、重命名、PDF、打包、合成）
+  engines: 开源引擎（Harness、OpenPencil、Draw.io、ComfyUI 后台；可继续扩展）
+  business: 培训业务（排课→材料→检核→交付）
+  system: 系统与扩展
 
 roadmap:
   p0_done:

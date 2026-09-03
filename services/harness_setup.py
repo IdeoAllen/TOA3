@@ -21,8 +21,20 @@ def _workbuddy_roots() -> list[Path]:
 
 
 def discover_runtime() -> dict[str, str]:
-    """扫描 WorkBuddy / 常见路径，返回 node_exe、dsh_bin、dsh_home 候选。"""
+    """扫描运行时：优先 TOA 独立目录，其次本机 Node，再次 WorkBuddy。"""
     found: dict[str, str] = {}
+    toa_root = default_install_root()
+    toa_dsh = toa_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+    toa_home = toa_root / ".dsh"
+    if toa_dsh.is_file():
+        found["dsh_bin"] = str(toa_dsh)
+    if toa_home.is_dir():
+        found["dsh_home"] = str(toa_home)
+
+    sys_node = find_system_node()
+    if sys_node is not None:
+        found.setdefault("node_exe", str(sys_node))
+
     for root in _workbuddy_roots():
         binaries = root / "binaries" / "node" / "versions"
         if binaries.is_dir():
@@ -30,16 +42,25 @@ def discover_runtime() -> dict[str, str]:
             for ver in versions:
                 node = ver / "node.exe"
                 dsh = ver / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
-                if node.is_file() and dsh.is_file():
+                if node.is_file():
                     found.setdefault("node_exe", str(node))
+                if dsh.is_file():
                     found.setdefault("dsh_bin", str(dsh))
+                if found.get("node_exe") and found.get("dsh_bin"):
                     break
-        for child in root.iterdir():
+        if found.get("dsh_home"):
+            continue
+        try:
+            children = list(root.iterdir())
+        except OSError:
+            continue
+        for child in children:
             if not child.is_dir():
                 continue
             dsh_home = child / ".dsh"
             if dsh_home.is_dir():
                 found.setdefault("dsh_home", str(dsh_home))
+                break
     return found
 
 
@@ -127,7 +148,7 @@ def runtime_report(node: Path, dsh: Path, home: Path) -> dict[str, Any]:
 def install_harness_runtime() -> tuple[bool, str]:
     """
     一键安装 / 检测 Harness 运行环境（Node + @deepseek-ai/dsh + DSH 目录）。
-    优先复用 WorkBuddy；否则用本机 Node 装到 ~/.toa3/harness-runtime。
+    优先 TOA 独立目录 ~/.toa3/harness-runtime；可回落本机 Node / WorkBuddy。
     """
     from services.harness_plugins import ensure_web_profile_bundles
     from services.harness_config import load_harness_config, save_harness_config
@@ -141,12 +162,19 @@ def install_harness_runtime() -> tuple[bool, str]:
         if sys_node is not None:
             node_s = str(sys_node)
 
+    # 已有 dsh：登记到 TOA 数据目录（勿再绑 WorkBuddy 脏 home，除非用户显式配置）
     if node_s and dsh_s and Path(node_s).is_file() and Path(dsh_s).is_file():
         node_p = Path(node_s)
         dsh_p = Path(dsh_s)
         cfg = load_harness_config()
-        home_s = str(found.get("dsh_home") or cfg.get("dsh_home") or "").strip()
-        home = Path(home_s) if home_s else default_install_root() / ".dsh"
+        home_s = str(cfg.get("dsh_home") or "").strip()
+        # 配置若仍指向 WorkBuddy/.dsh，自动切到 TOA 干净目录
+        if (not home_s) or ("WorkBuddy" in home_s.replace("\\", "/")) or (
+            ".workbuddy" in home_s.replace("\\", "/").lower()
+        ):
+            home = default_install_root() / ".dsh"
+        else:
+            home = Path(home_s)
         ok_home, _ = init_dsh_home(home)
         if not ok_home:
             return False, "无法创建 DSH 数据目录"
@@ -155,6 +183,12 @@ def install_harness_runtime() -> tuple[bool, str]:
             return False, f"Web 界面组件安装失败：{prof_msg}"
         save_harness_config({"node_exe": str(node_p), "dsh_bin": str(dsh_p), "dsh_home": str(home)})
         load_harness_config(force=True)
+        try:
+            from services.harness_model_defaults import ensure_official_default_model
+
+            ensure_official_default_model()
+        except Exception:
+            pass
         return True, "已登记本机 Harness 环境并完成 Web 组件检查"
 
     if node_s and Path(node_s).is_file():
@@ -164,9 +198,7 @@ def install_harness_runtime() -> tuple[bool, str]:
         if not ok:
             return False, msg
         dsh_p = root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
-        cfg = load_harness_config()
-        home_s = str(cfg.get("dsh_home") or "").strip()
-        home = Path(home_s) if home_s else root / ".dsh"
+        home = root / ".dsh"
         ok_home, _ = init_dsh_home(home)
         if not ok_home:
             return False, "无法创建 DSH 数据目录"
@@ -177,6 +209,12 @@ def install_harness_runtime() -> tuple[bool, str]:
             {"node_exe": str(node_p), "dsh_bin": str(dsh_p), "dsh_home": str(home)}
         )
         load_harness_config(force=True)
+        try:
+            from services.harness_model_defaults import ensure_official_default_model
+
+            ensure_official_default_model()
+        except Exception:
+            pass
         return True, "DeepSeek Harness 安装完成，请保存 API Key 后启动服务"
 
     return (
@@ -187,8 +225,10 @@ def install_harness_runtime() -> tuple[bool, str]:
 
 
 def repair_harness_runtime() -> tuple[bool, str]:
-    """修复：重建 DSH 目录并补装 web profile 组件（不重复 npm 装 dsh）。"""
+    """修复：重建 DSH 目录、补装 web profile，并检查 API Key 冲突。"""
     from services.harness_config import load_harness_config, save_harness_config
+    from services.harness_credentials import diagnose_llm_access, has_api_key
+    from services.harness_model_defaults import ensure_official_default_model
     from services.harness_plugins import (
         ensure_web_profile_bundles,
         link_web_profile_node_modules,
@@ -207,18 +247,33 @@ def repair_harness_runtime() -> tuple[bool, str]:
     ok_home, _ = init_dsh_home(home)
     if not ok_home:
         return False, "无法创建 DSH 数据目录"
+
+    notes: list[str] = []
+    changed_model, model_msg = ensure_official_default_model()
+    if changed_model:
+        notes.append(model_msg)
     if web_profile_ready(home):
-        save_harness_config({"node_exe": str(node_p), "dsh_bin": str(dsh_p), "dsh_home": str(home)})
-        load_harness_config(force=True)
-        return True, "Web 组件已就绪，请点「启动服务」"
-    ok_link, link_msg = link_web_profile_node_modules(dsh_p, home)
-    if ok_link:
-        save_harness_config({"node_exe": str(node_p), "dsh_bin": str(dsh_p), "dsh_home": str(home)})
-        load_harness_config(force=True)
-        return True, "已修复 Web 组件，请点「启动服务」"
-    ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
-    if not ok_prof:
-        return False, prof_msg
+        notes.append("Web 组件已就绪")
+    else:
+        ok_link, link_msg = link_web_profile_node_modules(dsh_p, home)
+        if ok_link:
+            notes.append("已修复 Web 组件")
+        else:
+            ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
+            if not ok_prof:
+                return False, prof_msg
+            notes.append("已补装 Web 组件")
+
     save_harness_config({"node_exe": str(node_p), "dsh_bin": str(dsh_p), "dsh_home": str(home)})
     load_harness_config(force=True)
-    return True, "环境已修复，请保存 API Key 后点「启动服务」"
+
+    key_ok, key_msg = diagnose_llm_access()
+    if not has_api_key():
+        return False, "环境组件已检查，但未配置 API Key。请到系统设置 → 能力接入 → Harness 保存密钥后「接管并重启」。"
+    if not key_ok:
+        notes.append(key_msg)
+        notes.append("请点「更多 → 接管并重启」，由 TOA 用正确密钥重新拉起（勿继续用外部脏环境实例）。")
+        return True, "\n".join(notes)
+    notes.append(key_msg)
+    notes.append("若历史会话仍接不上模型：点「更多 → 接管并重启」刷新 Sidecar 凭证。")
+    return True, "\n".join(notes)

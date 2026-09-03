@@ -67,6 +67,7 @@ from services.office_preview import (
     read_office_preview,
 )
 from services.os_open import open_in_file_manager
+from services.xmind_preview import is_xmind_path, read_xmind_outline
 from widgets import (
     DataTable,
     HintLabel,
@@ -99,6 +100,31 @@ _TEXT_EXT = {
     ".bat",
     ".ps1",
     ".sql",
+    ".text",
+}
+_VIDEO_EXT = {
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".wmv",
+    ".m4v",
+    ".mpeg",
+    ".mpg",
+    ".flv",
+}
+_AUDIO_EXT = {
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".aac",
+    ".m4a",
+    ".ogg",
+    ".wma",
+    ".opus",
+    ".aiff",
+    ".aif",
 }
 _COL_WIDTH = 240
 _COL_ICON = 20
@@ -131,6 +157,8 @@ _FORMAT_IMAGE = "image"
 _FORMAT_OFFICE = "office"
 _FORMAT_PDF = "pdf"
 _FORMAT_TEXT = "text"
+_FORMAT_VIDEO = "video"
+_FORMAT_AUDIO = "audio"
 _FORMAT_OTHER = "other"
 
 _KIND_LABELS = {"all": "全部", "dirs": "文件夹", "files": "文件"}
@@ -140,6 +168,8 @@ _FORMAT_LABELS = {
     "office": "Office",
     "pdf": "PDF",
     "text": "文本",
+    "video": "视频",
+    "audio": "音频",
     "other": "其他",
 }
 _KIND_BTN = {"all": "全", "dirs": "夹", "files": "件"}
@@ -149,6 +179,8 @@ _FORMAT_BTN = {
     "office": "Off",
     "pdf": "PDF",
     "text": "文",
+    "video": "视",
+    "audio": "音",
     "other": "他",
 }
 
@@ -226,10 +258,16 @@ def _entry_format_bucket(path: Path, is_dir: bool) -> str | None:
         return _FORMAT_IMAGE
     if ext in _PDF_EXT:
         return _FORMAT_PDF
+    if ext in _VIDEO_EXT:
+        return _FORMAT_VIDEO
+    if ext in _AUDIO_EXT:
+        return _FORMAT_AUDIO
     if ext in _TEXT_EXT or ext in {".rtf"}:
         return _FORMAT_TEXT
     if ext in OFFICE_EXTENSIONS or is_office_preview_path(path):
         return _FORMAT_OFFICE
+    if is_xmind_path(path):
+        return _FORMAT_OTHER
     return _FORMAT_OTHER
 
 
@@ -754,6 +792,13 @@ class ColumnPreviewPage(BasePage):
         self._btn_reveal.clicked.connect(self._reveal_current)
         self._btn_reveal.setEnabled(False)
         btn_row.addWidget(self._btn_reveal)
+        self._btn_import_note = SecondaryButton("导入记事本")
+        self._btn_import_note.setToolTip(
+            "导入当前文件到快速记事本（Office / XMind / 图片 / 文本 / 视频 / 音频；需再点一下）"
+        )
+        self._btn_import_note.clicked.connect(self._import_current_to_notepad)
+        self._btn_import_note.setEnabled(False)
+        btn_row.addWidget(self._btn_import_note)
         btn_row.addStretch(1)
         pl.addLayout(btn_row)
         self._preview_pane = preview
@@ -770,8 +815,11 @@ class ColumnPreviewPage(BasePage):
         self._preview_pane.installEventFilter(self)
         self._stack.installEventFilter(self)
         self._preview_text.viewport().installEventFilter(self)
-        self._preview_pane.setToolTip("滚轮调节预览区宽度")
-        self._image_scroll.setToolTip("滚轮调节预览区宽度")
+        self._preview_pane.setToolTip(
+            "预览内容区：有滚动条时滚轮优先滚动；悬停在标题/按钮等控件外区域时滚轮调节预览宽度"
+        )
+        self._image_scroll.setToolTip("有滚动条时滚轮滚动预览；到顶/底后再滚可调节宽度")
+        self._preview_text.setToolTip("有滚动条时滚轮滚动正文；到顶/底后再滚可调节宽度")
 
         QShortcut(QKeySequence(Qt.Key.Key_F2), self, activated=self._rename_current)
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self, activated=self._delete_current)
@@ -867,6 +915,11 @@ class ColumnPreviewPage(BasePage):
 
     def eventFilter(self, obj, event):  # noqa: N802
         if event.type() == QEvent.Type.Wheel and self._is_under_preview(obj):
+            scroll = self._preview_content_scroll_for(obj)
+            if scroll is not None and self._scroll_can_consume_wheel(scroll, event):
+                # 内容区有可滚动余量：放行，让滚动条优先
+                return False
+            # 控件外（标题/按钮/边距）或已滚到顶底：调节预览框宽度
             self._resize_preview_by_wheel(event)
             return True
         if event.type() == QEvent.Type.Resize:
@@ -887,8 +940,52 @@ class ColumnPreviewPage(BasePage):
             w = w.parentWidget()
         return False
 
+    def _is_under_widget(self, obj, ancestor: QWidget | None) -> bool:
+        if ancestor is None:
+            return False
+        w = obj if isinstance(obj, QWidget) else None
+        while w is not None:
+            if w is ancestor:
+                return True
+            w = w.parentWidget()
+        return False
+
+    def _preview_content_scroll_for(self, obj):
+        """返回预览正文/图片滚动控件；非内容区返回 None。"""
+        text = getattr(self, "_preview_text", None)
+        if text is not None and self._is_under_widget(obj, text):
+            return text
+        img = getattr(self, "_image_scroll", None)
+        if img is not None and self._is_under_widget(obj, img):
+            return img
+        return None
+
+    @staticmethod
+    def _scroll_can_consume_wheel(area, event) -> bool:
+        """该方向上滚动条仍有行程则可消费滚轮。"""
+        dy = int(event.angleDelta().y())
+        dx = int(event.angleDelta().x())
+        if dy == 0 and dx == 0:
+            dy = int(event.pixelDelta().y())
+            dx = int(event.pixelDelta().x())
+        if dy != 0:
+            bar = area.verticalScrollBar()
+            if bar is None or bar.maximum() <= bar.minimum():
+                return False
+            if dy > 0:
+                return bar.value() > bar.minimum()
+            return bar.value() < bar.maximum()
+        if dx != 0:
+            bar = area.horizontalScrollBar()
+            if bar is None or bar.maximum() <= bar.minimum():
+                return False
+            if dx > 0:
+                return bar.value() > bar.minimum()
+            return bar.value() < bar.maximum()
+        return False
+
     def _resize_preview_by_wheel(self, event) -> None:
-        """预览区滚轮：放大/缩小右侧预览窗宽度（上滚加宽，下滚收窄）。"""
+        """预览框外/滚到尽头：放大/缩小右侧预览窗宽度（上滚加宽，下滚收窄）。"""
         split = getattr(self, "_main_split", None)
         if split is None:
             return
@@ -950,6 +1047,7 @@ class ColumnPreviewPage(BasePage):
         self._show_folder(path)
         self._btn_open.setEnabled(True)
         self._btn_reveal.setEnabled(True)
+        self._sync_import_note_btn()
         self._update_breadcrumb(path)
         self.report_status(str(path), level=StatusLevel.INFO)
 
@@ -1429,6 +1527,7 @@ class ColumnPreviewPage(BasePage):
         self._current_path = path
         self._btn_open.setEnabled(path.exists())
         self._btn_reveal.setEnabled(path.exists())
+        self._sync_import_note_btn()
         if is_dir and path.is_dir():
             self._cwd = path
             self._update_breadcrumb(path)
@@ -1438,6 +1537,89 @@ class ColumnPreviewPage(BasePage):
             self.report_status(str(path), level=StatusLevel.INFO)
         else:
             self._show_file(path)
+
+    def _sync_import_note_btn(self) -> None:
+        btn = getattr(self, "_btn_import_note", None)
+        if btn is None:
+            return
+        from modules.quick_notepad.handoff_import import is_handoff_importable
+
+        p = self._current_path
+        btn.setEnabled(bool(p and p.is_file() and is_handoff_importable(p)))
+
+    def open_paths(self, paths: list[str] | list[Path]) -> None:
+        """拖入手势：根永远=首个文件的父目录（夹则自身为根），并选中预览。"""
+        resolved: list[Path] = []
+        for raw in paths or []:
+            try:
+                p = Path(raw).expanduser().resolve()
+            except OSError:
+                continue
+            if p.exists():
+                resolved.append(p)
+        if not resolved:
+            self.report_status("拖入路径无效或不可读", level=StatusLevel.WARNING)
+            return
+
+        first = resolved[0]
+        if first.is_dir():
+            root = first
+            focus: Path | None = None
+        else:
+            root = first.parent
+            focus = first
+
+        outside = 0
+        for p in resolved[1:]:
+            try:
+                p.relative_to(root)
+            except ValueError:
+                outside += 1
+
+        self._load_root(root)
+        if focus is not None and focus.is_file():
+            self._cwd = root
+            self._update_breadcrumb(root)
+            if self._mode == _MODE_COLUMNS and self._columns:
+                self._select_path_in_column(self._columns[-1], focus)
+            elif self._mode == _MODE_DETAILS:
+                self._reselect_details(focus)
+            else:
+                self._reselect_flat(focus)
+            self._select_path(focus, is_dir=False, expand_column=False)
+        elif first.is_dir():
+            self._select_path(first, is_dir=True, expand_column=False)
+
+        msg = f"桌面 · {root.name}"
+        if outside:
+            msg += f" · 另有 {outside} 个不在当前根"
+        self.report_status(msg, level=StatusLevel.INFO)
+
+    def _import_current_to_notepad(self) -> None:
+        path = self._current_path
+        if path is None or not path.is_file():
+            show_warning(self, "请先选择一个可导入的文件。")
+            return
+        from modules.quick_notepad.handoff_import import import_path_as_note, is_handoff_importable
+
+        if not is_handoff_importable(path):
+            show_warning(
+                self,
+                "当前文件类型暂不支持导入记事本。\n"
+                "支持：Office、XMind、图片、文本、视频、音频。",
+            )
+            return
+        note_id, err = import_path_as_note(path)
+        if not note_id:
+            show_warning(self, f"导入失败：{err or '未知错误'}")
+            return
+        w = self.window()
+        if w is not None and hasattr(w, "navigate"):
+            w.navigate("quick_notepad")
+            page = getattr(w, "_pages", {}).get("quick_notepad")
+            if page is not None and hasattr(page, "reveal_note"):
+                page.reveal_note(note_id)
+        self.report_status(f"已导入记事本：{path.name}", level=StatusLevel.SUCCESS)
 
     def _refresh_current_views(self) -> None:
         self._reload_tags()
@@ -1893,6 +2075,7 @@ class ColumnPreviewPage(BasePage):
         self._stack.setCurrentIndex(_PAGE_IDLE)
         self._btn_open.setEnabled(False)
         self._btn_reveal.setEnabled(False)
+        self._sync_import_note_btn()
 
     def _show_folder(self, path: Path) -> None:
         self._raw_preview_pm = QPixmap()
@@ -1977,12 +2160,54 @@ class ColumnPreviewPage(BasePage):
                 self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
             self._stack.setCurrentIndex(_PAGE_TEXT)
             return
+        if is_xmind_path(path) and path.is_file():
+            self._raw_preview_pm = QPixmap()
+            try:
+                text = read_xmind_outline(path)
+                self._preview_text.setPlainText(text)
+                self._preview_meta.setText(f"XMind 思维导图 · {size_txt}\n{path}")
+            except OSError as e:
+                self._preview_text.setPlainText(f"读取失败：{e}")
+                self._preview_meta.setText(f"XMind · {size_txt}\n{path}")
+            except Exception as e:
+                self._preview_text.setPlainText(
+                    f"解读失败：{e}\n\n请点「打开」用 XMind / 系统程序查看。"
+                )
+                self._preview_meta.setText(f"XMind · {size_txt}\n{path}")
+            self._stack.setCurrentIndex(_PAGE_TEXT)
+            return
         if ext in _TEXT_EXT and path.is_file():
             self._raw_preview_pm = QPixmap()
             try:
                 self._preview_text.setPlainText(_read_text_preview(path))
             except OSError as e:
                 self._preview_text.setPlainText(f"读取失败：{e}")
+            self._stack.setCurrentIndex(_PAGE_TEXT)
+            return
+        if ext in _VIDEO_EXT and path.is_file():
+            self._raw_preview_pm = QPixmap()
+            self._preview_text.setPlainText(
+                f"视频文件\n\n"
+                f"名称：{path.name}\n"
+                f"大小：{size_txt}\n"
+                f"路径：{path}\n\n"
+                f"点「打开」用系统播放器查看；\n"
+                f"点「导入记事本」可保存附件副本与链接。"
+            )
+            self._preview_meta.setText(f"视频 · {ext} · {size_txt}\n{path}")
+            self._stack.setCurrentIndex(_PAGE_TEXT)
+            return
+        if ext in _AUDIO_EXT and path.is_file():
+            self._raw_preview_pm = QPixmap()
+            self._preview_text.setPlainText(
+                f"音频文件\n\n"
+                f"名称：{path.name}\n"
+                f"大小：{size_txt}\n"
+                f"路径：{path}\n\n"
+                f"点「打开」用系统播放器收听；\n"
+                f"点「导入记事本」可保存附件副本与链接。"
+            )
+            self._preview_meta.setText(f"音频 · {ext} · {size_txt}\n{path}")
             self._stack.setCurrentIndex(_PAGE_TEXT)
             return
         self._raw_preview_pm = QPixmap()

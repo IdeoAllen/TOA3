@@ -89,4 +89,23 @@ def create_page(module_id: str, menu_item: dict[str, Any] | None = None) -> Base
             load_error=f"{type(e).__name__}: {e}",
         )
 
+    # 引擎宿主扩展包（data/user/engine_packs · assets/samples/engine_packs）
+    try:
+        from services.local_web_engine.packs import is_engine_pack
+
+        if is_engine_pack(module_id) or str(item.get("source") or "") == "engine_pack":
+            from modules.local_web_host.engine_pack_page import make_engine_pack_page
+
+            page = make_engine_pack_page(module_id)
+            logger.info("加载引擎扩展包页: %s", module_id)
+            return page
+    except Exception as e:
+        logger.exception("引擎扩展包加载失败 %s: %s", module_id, e)
+        return StubPage(
+            module_id,
+            name,
+            desc,
+            load_error=f"{type(e).__name__}: {e}",
+        )
+
     return StubPage(module_id, name, desc)

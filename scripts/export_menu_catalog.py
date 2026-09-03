@@ -14,7 +14,12 @@ sys.path.insert(0, str(ROOT))
 
 from app.version import APP_VERSION  # noqa: E402
 from services.config_service import load_config  # noqa: E402
-from services.menu_registry import DOMAIN_TAB_LABELS, GROUP_LABELS  # noqa: E402
+from services.menu_registry import (  # noqa: E402
+    DOMAIN_TAB_LABELS,
+    GROUP_LABELS,
+    GROUP_ORDER,
+    normalize_menu_group_id,
+)
 
 SPECIAL_IDS = frozenset(
     {
@@ -55,7 +60,7 @@ def build_catalog() -> dict:
         if not mid or mid in seen:
             continue
         seen.add(mid)
-        group = str(raw.get("group") or "other").strip()
+        group = normalize_menu_group_id(raw.get("group") or "other")
         modules.append(
             {
                 "id": mid,
@@ -63,19 +68,24 @@ def build_catalog() -> dict:
                 "group": group,
                 "group_label": GROUP_LABELS.get(group, group),
                 "domain_tab": DOMAIN_TAB_LABELS.get(group, group),
+                "order": int(raw.get("order") or 0),
+                "group_order": int(GROUP_ORDER.index(group)) if group in GROUP_ORDER else 99,
                 "show": bool(raw.get("show", True)),
                 "requires_license": bool(raw.get("requires_license", False)),
                 "feature_id": str(raw.get("feature_id") or mid),
                 "migration_status": manifest.get(mid, ""),
             }
         )
-    modules.sort(key=lambda x: (x["group"], x["id"]))
+    modules.sort(key=lambda x: (int(x.get("group_order") or 99), int(x.get("order") or 0), x["id"]))
+    # 出厂 group_labels（不含兼容旧键）
+    labels = {gid: GROUP_LABELS[gid] for gid in GROUP_ORDER if gid in GROUP_LABELS}
     return {
         "product": "TOA3",
         "app_version": APP_VERSION,
         "exported_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "special_ids": sorted(SPECIAL_IDS),
-        "group_labels": dict(GROUP_LABELS),
+        "group_labels": labels,
+        "group_order": list(GROUP_ORDER),
         "modules": modules,
     }
 
