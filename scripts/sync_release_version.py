@@ -209,8 +209,22 @@ def git_commit_release(version: str, *, extra_paths: list[str] | None = None) ->
         print("工作区无发版相关变更可提交（可能已提交）")
         return 0
     msg = f"release: TOA3 v{version} — sync update_manifest with stable"
-    # Windows: avoid HEREDOC; use -m
-    r = subprocess.run(["git", "commit", "-m", msg], cwd=ROOT)
+    env = dict(**{k: v for k, v in __import__("os").environ.items()})
+    # 不改 git config：沿用最近一次提交的作者作为 committer
+    who = subprocess.run(
+        ["git", "log", "-1", "--format=%an%n%ae"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    lines = [ln.strip() for ln in (who.stdout or "").splitlines() if ln.strip()]
+    if len(lines) >= 2:
+        env.setdefault("GIT_AUTHOR_NAME", lines[0])
+        env.setdefault("GIT_AUTHOR_EMAIL", lines[1])
+        env.setdefault("GIT_COMMITTER_NAME", lines[0])
+        env.setdefault("GIT_COMMITTER_EMAIL", lines[1])
+    r = subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, env=env)
     return int(r.returncode)
 
 
