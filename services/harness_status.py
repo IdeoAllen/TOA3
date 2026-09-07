@@ -101,7 +101,9 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
     """
     install, node_ok, dsh_ok, home_ok, key_ok = _read_install()
     cfg = load_harness_config()
-    port = int(cfg.get("web_port") or 3081)
+    from services.harness_config import PRODUCT_WEB_PORT
+
+    port = int(cfg.get("web_port") or PRODUCT_WEB_PORT)
     url = web_url()
     port_busy = _port_open(port)
     http_ok = _probe_http(timeout=http_timeout) if probe_http else False
@@ -111,13 +113,13 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
     if install != InstallState.READY:
         if install == InstallState.NOT_INSTALLED:
             summary = "未安装"
+            if not node_ok:
+                detail = "还差运行环境：点页内「① 一键安装」。若提示缺 Node，先装官方 LTS 再重试。"
+            else:
+                detail = "点页内「① 一键安装」完成环境准备（独立目录，无需手填路径）。"
         else:
             summary = "待 API Key"
-        detail = "请完成安装或配置 API Key 后再启动服务。"
-        if install == InstallState.NOT_INSTALLED:
-            detail = "未检测到 Node、dsh 或 DSH_HOME，请先在设置中配置或一键安装。"
-        elif install == InstallState.NEEDS_KEY:
-            detail = "请填写 DeepSeek API Key 后保存。"
+            detail = "环境已就绪：粘贴 DeepSeek API Key 后点「保存并启动」。"
         return HarnessStatus(
             install=install,
             service=ServiceState.STOPPED,
@@ -165,8 +167,8 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
         service = ServiceState.RUNNING_EXTERNAL
         summary = "已安装 · 外部实例运行中"
         detail = (
-            "端口已有 Harness（如 WorkBuddy / 其它实例）。"
-            "要用设置页 API Key，请点「更多 → 接管并重启」。"
+            "端口上已有其它 Harness 实例。"
+            "要用本页密钥稳定干活，请点「更多 → 重启服务」（由 TOA 托管并注入密钥）。"
         )
     elif port_busy and not http_ok:
         service = ServiceState.PORT_CONFLICT

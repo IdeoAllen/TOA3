@@ -2,6 +2,8 @@
 """DeepSeek Harness 本地 Sidecar 配置加载。"""
 from __future__ import annotations
 
+import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +11,14 @@ import yaml
 
 from services.config_service import project_root
 
+logger = logging.getLogger("TOA3.harness_config")
+
 _CACHE: dict | None = None
+_ALIGNED_ONCE = False
+
+# 与 config/harness.yml · packaging/shipped_config/harness.yml 同源行为默认
+PRODUCT_WEB_PORT = 3082
+PRODUCT_SURFACE_MODE = "embed"
 
 
 def _user_harness_path() -> Path:
@@ -23,6 +32,19 @@ def _user_harness_path() -> Path:
     except Exception:
         pass
     return project_root() / "data" / "user" / "harness.yml"
+
+
+def is_workbuddy_home(path: str | Path) -> bool:
+    text = str(path or "").replace("\\", "/")
+    if not text.strip():
+        return False
+    lower = text.lower()
+    return ("workbuddy" in lower) or ("/.workbuddy/" in lower) or lower.endswith("/.workbuddy")
+
+
+def preferred_dsh_home() -> Path:
+    """TOA 独立 DSH 目录（勿绑 WorkBuddy）。与 harness_setup.default_install_root 同源。"""
+    return Path.home() / ".toa3" / "harness-runtime" / ".dsh"
 
 
 def load_harness_config(force: bool = False) -> dict:
@@ -59,12 +81,87 @@ def save_harness_config(updates: dict[str, Any]) -> Path:
     user_path.parent.mkdir(parents=True, exist_ok=True)
     current = load_harness_config(force=True)
     current.update({k: v for k, v in updates.items() if v is not None})
+    # 禁止把 WorkBuddy home 写回用户配置
+    home = str(current.get("dsh_home") or "").strip()
+    if is_workbuddy_home(home):
+        current["dsh_home"] = str(preferred_dsh_home())
     user_path.write_text(
         yaml.safe_dump({"harness": current}, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
     )
     _CACHE = None
     return user_path
+
+
+def _copy_credentials_if_needed(old_home: Path, new_home: Path) -> None:
+    src = old_home / ".credentials.yaml"
+    dst = new_home / ".credentials.yaml"
+    if not src.is_file() or dst.is_file():
+        return
+    try:
+        new_home.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+    except OSError:
+        logger.debug("copy credentials failed", exc_info=True)
+
+
+def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -> list[str]:
+    """
+    对齐正式版/开发版 Harness 行为：
+    - WorkBuddy/.dsh → ~/.toa3/harness-runtime/.dsh
+    - 旧发版模板把 enabled/auto_start 关掉时，若已具备 node+dsh 则恢复开启
+    - 默认端口/内嵌与产品配置一致（仅在明显为旧默认时纠正）
+    """
+    global _ALIGNED_ONCE
+    if _ALIGNED_ONCE and not force:
+        return []
+    _ALIGNED_ONCE = True
+
+    cfg = dict(load_harness_config(force=True))
+    notes: list[str] = []
+    updates: dict[str, Any] = {}
+
+    home_s = str(cfg.get("dsh_home") or "").strip()
+    if (not home_s) or is_workbuddy_home(home_s):
+        clean = preferred_dsh_home()
+        if home_s and is_workbuddy_home(home_s):
+            _copy_credentials_if_needed(Path(home_s), clean)
+            notes.append("已将 DSH_HOME 从 WorkBuddy 迁到 TOA 独立目录")
+        updates["dsh_home"] = str(clean)
+        cfg["dsh_home"] = str(clean)
+
+    node_ok = Path(str(cfg.get("node_exe") or "")).is_file()
+    dsh_ok = Path(str(cfg.get("dsh_bin") or "")).is_file()
+    if node_ok and dsh_ok:
+        if not bool(cfg.get("enabled", True)):
+            updates["enabled"] = True
+            notes.append("已恢复启用编码智能体（正式版与开发版对齐）")
+        if not bool(cfg.get("auto_start", True)):
+            updates["auto_start"] = True
+            notes.append("已恢复进页自动启动")
+
+    # 旧发版模板：3081 + browser；产品默认 3082 + embed（避开 WorkBuddy 常用 3081）
+    try:
+        port = int(cfg.get("web_port") or 0)
+    except (TypeError, ValueError):
+        port = 0
+    if port in (0, 3081) and (is_workbuddy_home(home_s) or not home_s or updates.get("dsh_home")):
+        updates["web_port"] = PRODUCT_WEB_PORT
+        notes.append(f"Web 端口对齐为 {PRODUCT_WEB_PORT}")
+
+    mode = str(cfg.get("surface_mode") or "").strip().lower()
+    if mode == "browser" and (is_workbuddy_home(home_s) or bool(updates.get("enabled"))):
+        # 仅在自愈旧脏配置时改回内嵌；用户主动选 browser 且 home 已干净则不动
+        if is_workbuddy_home(home_s) or not bool(cfg.get("enabled", True)):
+            updates["surface_mode"] = PRODUCT_SURFACE_MODE
+            notes.append("显示方式对齐为内嵌")
+
+    if updates and persist:
+        save_harness_config(updates)
+        load_harness_config(force=True)
+        if notes:
+            logger.info("Harness 配置已对齐: %s", "; ".join(notes))
+    return notes
 
 
 def resolve_harness_path(key: str, default: str = "") -> Path:
@@ -81,7 +178,7 @@ def resolve_harness_path(key: str, default: str = "") -> Path:
 
 
 def web_url() -> str:
-    port = int(load_harness_config().get("web_port") or 3081)
+    port = int(load_harness_config().get("web_port") or PRODUCT_WEB_PORT)
     return f"http://127.0.0.1:{port}"
 
 
@@ -98,4 +195,7 @@ def dsh_bin_path() -> Path:
 
 
 def dsh_home_path() -> Path:
-    return resolve_harness_path("dsh_home", "")
+    raw = resolve_harness_path("dsh_home", "")
+    if raw and not is_workbuddy_home(raw):
+        return raw
+    return preferred_dsh_home()

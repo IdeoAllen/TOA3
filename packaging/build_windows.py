@@ -21,6 +21,7 @@ sys.path.insert(0, str(PACKAGING_DIR))
 
 from app.version import APP_NAME, APP_VERSION  # noqa: E402
 from release_config_guard import (  # noqa: E402
+    FORBIDDEN_RELEASE_NAME_PREFIXES,
     FORBIDDEN_RELEASE_NAMES,
     RELEASE_CONFIG_OVERRIDES,
     assert_release_tree_safe,
@@ -201,6 +202,18 @@ def ensure_brand_assets() -> None:
         subprocess.run([sys.executable, str(script)], cwd=PROJECT_DIR, check=False)
 
 
+def _should_skip_config_name(name: str, *, is_dev: bool) -> bool:
+    if name in FORBIDDEN_RELEASE_NAMES:
+        if is_dev and name == "app.dev.yml":
+            return False
+        return True
+    if any(name.startswith(p) for p in FORBIDDEN_RELEASE_NAME_PREFIXES):
+        return True
+    if name.startswith("license.json.") and name != "license.json.example":
+        return True
+    return False
+
+
 def _copy_release_config_tree(cfg_src: Path, cfg_dst: Path, *, is_dev: bool) -> None:
     ignore = shutil.ignore_patterns(
         "__pycache__",
@@ -210,25 +223,32 @@ def _copy_release_config_tree(cfg_src: Path, cfg_dst: Path, *, is_dev: bool) -> 
         "Thumbs.db",
         "admin_bootstrap_code.txt",
         "license.json",
+        "license.json.bak*",
+        "integrations_secrets.json",
     )
-    skip_names = set(FORBIDDEN_RELEASE_NAMES)
-    if is_dev:
-        skip_names.discard("app.dev.yml")
     cfg_dst.mkdir(parents=True, exist_ok=True)
     for item in cfg_src.iterdir():
-        if item.name in skip_names:
+        if _should_skip_config_name(item.name, is_dev=is_dev):
             continue
+        dest = cfg_dst / item.name
         if not is_dev and item.name in RELEASE_CONFIG_OVERRIDES:
             override = shipped_override_path(PACKAGING_DIR, item.name)
             if override is not None:
-                shutil.copy2(override, cfg_dst / item.name)
+                if dest.exists():
+                    if dest.is_dir():
+                        shutil.rmtree(dest, ignore_errors=True)
+                    else:
+                        dest.unlink(missing_ok=True)
+                shutil.copy2(override, dest)
                 log(f"发版 config 使用模板: {item.name}")
                 continue
             log(f"警告: 缺少发版模板 shipped_config/{item.name}")
         if item.is_dir():
-            shutil.copytree(item, cfg_dst / item.name, ignore=ignore)
+            if dest.exists():
+                shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(item, dest, ignore=ignore)
         elif item.is_file():
-            shutil.copy2(item, cfg_dst / item.name)
+            shutil.copy2(item, dest)
 
 
 def prepare_release_staging(build_dir: Path, *, is_dev: bool) -> Path | None:
@@ -400,15 +420,20 @@ def build_inno_setup(
 
 
 def build(
-    onefile: bool = True,
+    onefile: bool = False,
     clean: bool = False,
     msi: bool = False,
     *,
     profile: str = "release",
     skip_verify: bool = False,
 ) -> bool:
+    """正式安装包必须 onedir：onefile 解压到 %%TEMP%%\\_MEI* 易丢 python311.dll。"""
     profile = (profile or "release").strip().lower()
     is_dev = profile == "dev"
+    # Setup/Inno 依赖 {app}\_internal\；发版禁止 onefile
+    if msi and onefile:
+        log("警告: --msi 与 onefile 不兼容，已强制改为 onedir（避免安装后 Failed to load Python DLL）")
+        onefile = False
     release_dir_name = DEV_DIR_NAME if is_dev else RELEASE_DIR_NAME
     setup_basename = DEV_SETUP_BASENAME if is_dev else SETUP_BASENAME
 
@@ -422,13 +447,16 @@ def build(
     dist_dir = PACKAGING_DIR / "dist"
     build_dir = PACKAGING_DIR / "build"
     dist_dir.mkdir(parents=True, exist_ok=True)
-    release_staging = prepare_release_staging(build_dir, is_dev=is_dev)
 
     if clean:
         for path in (build_dir, dist_dir):
             if path.exists():
                 shutil.rmtree(path, ignore_errors=True)
         dist_dir.mkdir(parents=True, exist_ok=True)
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+    # 必须在 clean 之后生成 staging，否则 --add-data 会回落开发者本机 config
+    release_staging = prepare_release_staging(build_dir, is_dev=is_dev)
 
     main_script = PROJECT_DIR / "app" / "main.py"
     icon_path = resolve_packaging_icon(is_dev=is_dev)
@@ -553,6 +581,17 @@ def build(
     elif exe_src.is_file():
         shutil.copy2(exe_src, release_dir / exe_name)
 
+    if msi or not onefile:
+        internal = release_dir / "_internal"
+        py_dll = internal / "python311.dll"
+        if not internal.is_dir() or not py_dll.is_file():
+            log(
+                "错误: onedir 产物缺少 _internal/python311.dll。"
+                "Inno 安装后若只有巨型单文件 exe，启动会 Failed to load Python DLL。"
+            )
+            return False
+        log(f"onedir 校验通过: {py_dll.name} ({py_dll.stat().st_size // 1024} KB)")
+
     for folder in ("config", "resources", "assets", "avatars", "ui", "vendor"):
         src = PROJECT_DIR / folder
         dst = release_dir / folder
@@ -577,6 +616,22 @@ def build(
             shutil.copytree(src, dst, ignore=make_release_assets_ignore(src))
         else:
             shutil.copytree(src, dst, ignore=ignore)
+
+    # onedir：PyInstaller 还会把 --add-data 的 config 打进 _internal/config；
+    # 必须再覆盖一遍干净模板，否则门禁失败且用户仍读到开发机模型清单。
+    internal_cfg = release_dir / "_internal" / "config"
+    if internal_cfg.is_dir() and not is_dev:
+        _copy_release_config_tree(PROJECT_DIR / "config", internal_cfg, is_dev=False)
+        marker = internal_cfg / "BUILD_PROFILE.release"
+        marker.write_text(f"profile=release\nversion={APP_VERSION}\n", encoding="utf-8")
+        write_clean_license(internal_cfg / "license.json")
+        for bak in internal_cfg.glob("license.json.*"):
+            if bak.name != "license.json.example":
+                try:
+                    bak.unlink()
+                except OSError:
+                    pass
+        log("已用 shipped_config 覆盖 _internal/config（防模型/密钥进包）")
 
     if is_dev:
         promote_dev_brand_assets(release_dir)
@@ -650,13 +705,39 @@ def build(
     ):
         return False
 
+    if not is_dev:
+        try:
+            sync = PROJECT_DIR / "scripts" / "sync_release_version.py"
+            if sync.is_file():
+                r = subprocess.run(
+                    [sys.executable, str(sync), "--from-app"],
+                    cwd=PROJECT_DIR,
+                    timeout=60,
+                )
+                if r.returncode == 0:
+                    log("已同步 config/update_manifest.yml ← APP_VERSION（本机/离线与安装包同号）")
+                else:
+                    log("警告: sync_release_version --from-app 未成功，请发版后手动对齐")
+        except Exception as exc:
+            log(f"警告: 同步 update_manifest 失败: {exc}")
+
     return True
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--clean", action="store_true")
-    parser.add_argument("--onedir", action="store_true")
+    parser.add_argument(
+        "--onedir",
+        action="store_true",
+        default=True,
+        help="目录模式（默认；安装包必须用此模式）",
+    )
+    parser.add_argument(
+        "--onefile",
+        action="store_true",
+        help="单文件模式（仅调试；不可与 --msi 同用）",
+    )
     parser.add_argument("--msi", action="store_true", help="打包完成后生成 Setup.exe")
     parser.add_argument("--setup-only", action="store_true", help="仅基于已有 release 目录生成 Setup.exe")
     parser.add_argument(
@@ -687,8 +768,9 @@ if __name__ == "__main__":
             is not None
         )
     else:
+        use_onefile = bool(args.onefile) and not args.msi
         ok = build(
-            onefile=not args.onedir,
+            onefile=use_onefile,
             clean=args.clean,
             msi=args.msi,
             profile=args.profile,

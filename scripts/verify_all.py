@@ -25,6 +25,18 @@ def main() -> int:
     steps = [
         "verify_mvp.py",
         "verify_gallery.py",
+        "verify_shell_hardening.py",
+        "verify_screenshot_pin.py",
+        "verify_watermark_ai.py",
+        "verify_llm_simple_paradigm.py",
+        "verify_harness_clean_restart.py",
+        "verify_harness_providers.py",
+        "verify_harness_release_align.py",
+        "verify_harness_simple_setup.py",
+        "verify_menu_promote_context.py",
+        "debug_engines_to_business.py",
+        "stress_engines_business.py",
+        "stress_all_menus.py",
         "audit_migration.py",
         "audit_architecture.py",
     ]
@@ -38,7 +50,7 @@ def main() -> int:
     if failed:
         print("VERIFY ALL FAILED:", ", ".join(failed))
         return 1
-    print("VERIFY ALL OK — 可进行人工验收（python -m app.main）")
+    print("VERIFY ALL OK")
     return 0
 
 

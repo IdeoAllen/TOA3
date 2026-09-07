@@ -26,8 +26,14 @@ class HarnessSection(QWidget):
         lay.setSpacing(12)
 
         lay.addWidget(HintLabel(PRODUCT_POSITION))
+        lay.addWidget(
+            HintLabel(
+                "小白请优先：顶栏「引擎」→「编码智能体」→ 页内三步（安装 → Key → 自动启动）。"
+                "下面路径项仅在一键安装失败或需改端口时使用。"
+            )
+        )
 
-        box = FormSection("Sidecar 路径（不含 Harness 业务配置）")
+        box = FormSection("Sidecar 路径（高级 · 不含 Harness 业务配置）")
         cfg = load_harness_config()
         form = QFormLayout()
 
@@ -51,7 +57,7 @@ class HarnessSection(QWidget):
 
         self._port = SpinBox()
         self._port.setRange(1024, 65535)
-        self._port.setValue(int(cfg.get("web_port") or 3081))
+        self._port.setValue(int(cfg.get("web_port") or 3082))
         form.addRow("Web 端口", self._port)
 
         self._surface = ComboBox()
@@ -131,7 +137,7 @@ class HarnessSection(QWidget):
         key_ok, key_msg = diagnose_llm_access()
         tip = "已保存。工作区/插件请在 Harness Web 内配置。"
         if key:
-            tip += "\n密钥已写入 DSH；若会话仍接不上模型，请到编码智能体「更多 → 接管并重启」。"
+            tip += "\n密钥已写入 DSH；若会话仍接不上模型，请到编码智能体「更多 → 重启服务」。"
         elif not key_ok:
             tip += f"\n{key_msg}"
         show_info(self, tip)

@@ -1,5 +1,5 @@
-# 发版默认：不含预置云端/本机模型清单（用户自行在「系统设置 → 模型管理」绑定或导入）
-# 开发者本机完整 catalog 见仓库 config/model_catalog.yml，勿打入安装包
+# 正式版安装包：空模型清单，不含本机密钥与默认选型
+# 用户密钥只写在本机用户目录，不进安装包；完整开发用 catalog 见仓库 config/
 capabilities:
   text_llm:
     label: 文本大模型

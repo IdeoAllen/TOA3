@@ -1,11 +1,9 @@
 # 本地回退清单（远程 manifest 不可达时使用）
-# 须与运营台当前 stable 对齐；日常发版后请同步 bump。
+# 须与运营台当前 stable 对齐；由 scripts/sync_release_version.py 在发版后同步。
 product: TOA3
-version: "3.1.4"
+version: 3.1.11
 channel: stable
-release_notes: |
-  TOA3 3.1.4 · 生成交付报告与 Word 导出修复
-  · 业务侧新增「生成交付报告」：班级交付目录 → Word 封面大纲贴图 + Excel 层级图片统计（迁自 TOA2）
-  · 修复 Word 封面后多出一页空白（分页符接到封面页脚）
+release_notes: TOA3 3.1.11
 download_page: https://www.yczh.tech/downloads/
-download_url: "https://www.yczh.tech/downloads/TOA3-Setup-v3.1.4.exe"
+download_url: https://www.yczh.tech/downloads/TOA3-Setup-v3.1.11.exe
+min_version: 3.0.0

@@ -13,6 +13,7 @@ import urllib.request
 from typing import Any
 
 from services.harness_config import (
+    PRODUCT_WEB_PORT,
     dsh_bin_path,
     dsh_home_path,
     load_harness_config,
@@ -62,7 +63,7 @@ def is_running(*, timeout: float = 1.5) -> bool:
 def sidecar_local_snapshot(*, http_ok: bool | None = None) -> dict[str, Any]:
     """本进程 Sidecar 快照。http_ok 由调用方传入时可计算 external。"""
     cfg = _cfg()
-    port = int(cfg.get("web_port") or 3081)
+    port = int(cfg.get("web_port") or PRODUCT_WEB_PORT)
     with _LOCK:
         owned = _OWNED and _PROCESS is not None and _PROCESS.poll() is None
     external = bool(http_ok) and not owned
@@ -77,7 +78,7 @@ def sidecar_local_snapshot(*, http_ok: bool | None = None) -> dict[str, Any]:
 def health_status() -> dict[str, Any]:
     running = is_running()
     cfg = _cfg()
-    port = int(cfg.get("web_port") or 3081)
+    port = int(cfg.get("web_port") or PRODUCT_WEB_PORT)
     port_busy = _port_open(port)
     with _LOCK:
         owned = _OWNED and _PROCESS is not None and _PROCESS.poll() is None
@@ -116,7 +117,7 @@ def validate_setup() -> tuple[bool, str]:
         return False, f"未找到 Node：{node}\n请在设置 → 能力接入 → Harness 配置路径。"
     if not dsh.is_file():
         return False, f"未找到 dsh：{dsh}\n请确认 @deepseek-ai/dsh 已安装。"
-    port = int(_cfg().get("web_port") or 3081)
+    port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
     if _port_open(port) and not is_running():
         return True, (
             f"端口 {port} 已被占用但 Harness 未响应。"
@@ -142,6 +143,10 @@ def _build_env() -> dict[str, str]:
 
 def prepare_sidecar_start() -> tuple[bool, str, bool]:
     """校验环境与 Web 组件；返回 (可继续, 提示, 是否已在运行)。"""
+    from services.harness_config import align_harness_runtime_config
+
+    align_harness_runtime_config(persist=True)
+
     ok_setup, setup_hint = validate_setup()
     if not ok_setup:
         return False, setup_hint, False
@@ -151,7 +156,7 @@ def prepare_sidecar_start() -> tuple[bool, str, bool]:
         if st.get("owned"):
             hint += "（TOA 托管）"
         else:
-            hint += "（外部实例，停止服务可结束或「接管并重启」）"
+            hint += "（外部实例，停止服务可结束或「更多 → 重启服务」）"
         if setup_hint:
             hint = f"{hint}\n{setup_hint}"
         return True, hint, True
@@ -179,7 +184,7 @@ def prepare_sidecar_start() -> tuple[bool, str, bool]:
 def spawn_sidecar_process() -> tuple[bool, str]:
     """拉起 dsh web 子进程。Windows + Qt 须在主线程调用。"""
     global _PROCESS, _OWNED, _LAST_START_LOG
-    port = int(_cfg().get("web_port") or 3081)
+    port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
     if is_running():
         return True, "Harness 已在运行"
     if _port_open(port):
@@ -235,7 +240,7 @@ def spawn_sidecar_process() -> tuple[bool, str]:
 
 def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
     """轮询 Sidecar HTTP 就绪（可放后台线程）。"""
-    port = int(_cfg().get("web_port") or 3081)
+    port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
     log_path = _LAST_START_LOG or _sidecar_log_path()
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
@@ -361,7 +366,7 @@ def stop(*, force: bool = False) -> tuple[bool, str]:
             _OWNED = False
         if is_running():
             if force:
-                port = int(_cfg().get("web_port") or 3081)
+                port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
                 killed = _kill_pids(_find_listener_pids(port))
                 if is_running():
                     return False, "进程已结束但端口仍被占用，请改 Web 端口或手动结束占用进程。"
@@ -381,7 +386,7 @@ def stop(*, force: bool = False) -> tuple[bool, str]:
             "点「停止服务」并在确认框中同意即可结束。",
         )
 
-    port = int(_cfg().get("web_port") or 3081)
+    port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
     killed = _kill_pids(_find_listener_pids(port))
     if is_running():
         return False, "未能结束占用端口的进程，请在任务管理器中结束 node.exe 或改 Web 端口。"
@@ -400,7 +405,7 @@ def ensure_owned_with_credentials(*, wait_ready: bool = True, timeout_sec: float
     专治：WorkBuddy 等外部进程占用端口、或本机 DEEPSEEK_API_KEY 盖住设置页密钥，
     导致历史会话接不上大模型。
     """
-    port = int(_cfg().get("web_port") or 3081)
+    port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
     stop(force=True)
     # 再扫一轮，避免 taskkill 后端口仍短暂占用
     if _port_open(port) or is_running(timeout=0.4):
@@ -409,7 +414,7 @@ def ensure_owned_with_credentials(*, wait_ready: bool = True, timeout_sec: float
         return (
             False,
             f"端口 {port} 仍被占用，无法用设置页密钥重启。"
-            "请在任务管理器结束 node.exe 后重试「接管并重启」。",
+            "请在任务管理器结束 node.exe 后重试「重启服务」。",
         )
     ok_spawn, spawn_msg = spawn_sidecar_process()
     if not ok_spawn:
@@ -452,11 +457,11 @@ def _wait_port_quiet(port: int, *, timeout_sec: float = 10.0) -> bool:
 
 
 def restart() -> tuple[bool, str]:
-    st = health_status()
-    if st.get("running") and not st.get("owned"):
-        return ensure_owned_with_credentials()
-    stop(force=False)
-    return start()
+    """干净重启：始终先强杀端口占用再拉起，禁止「只启不杀」叠多实例。
+
+    旧逻辑对「已在运行」会软复用，导致配置/密钥变更后仍看着旧进程。
+    """
+    return ensure_owned_with_credentials()
 
 
 def stop_on_app_exit_if_configured() -> None:

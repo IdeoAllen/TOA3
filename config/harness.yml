@@ -1,8 +1,9 @@
 # DeepSeek Harness Sidecar（本地 Agent · 非 integrations HTTP）
-# 个人路径与开关请写 data/user/harness.yml（发版不会带出本机配置）
+# 个人路径与开关：开发写 data/user/harness.yml；正式版写 %LOCALAPPDATA%\YCZH-TOA3\config\harness.yml
+# 发版模板 packaging/shipped_config/harness.yml 须与下列行为字段保持一致（enabled/auto_start/embed/3082）
 
 harness:
-  # 发版默认空路径；本机以 data/user/harness.yml 覆盖。未覆盖时进页走一键安装引导。
+  # 默认空路径；未覆盖时进页走一键安装引导。勿绑 WorkBuddy/.dsh（由运行时自愈迁到 ~/.toa3/harness-runtime/.dsh）
   enabled: true
   dsh_home: ""
   node_exe: ""

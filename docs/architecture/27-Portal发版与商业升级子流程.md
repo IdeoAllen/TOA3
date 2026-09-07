@@ -150,6 +150,14 @@ flowchart LR
 - [ ] `https://www.yczh.tech/downloads/` 主按钮指向同一文件
 - [ ] 首页 TOA 卡片版本标签与 manifest 一致（JS 拉取）
 - [ ] 手册只链到 `/downloads/`，不写死 Setup 文件名
-- [ ] 桌面「关于 → 检查更新」识别为最新（或本地 `update_manifest.yml` 已同步）
+- [ ] 桌面「关于 → 检查更新」识别为最新；`config/update_manifest.yml` 与线上同号
 - [ ] 终端除状态栏与关于外，无静态版本号展示
 - [ ] `packaging/dist/release_record.json` 与 `APP_VERSION` 一致
+- [ ] 发版后已跑 `python scripts/sync_release_version.py --from-live --require-match --commit`（或上传脚本已自动提交）
+
+**版本统一命令**
+
+```powershell
+# 运营台设为当前版之后（测试回退清单 = 生产 stable = APP_VERSION）
+python scripts/sync_release_version.py --from-live --require-match --commit
+```

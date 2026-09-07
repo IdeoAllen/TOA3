@@ -67,10 +67,10 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: common/wechat_screenshot.py
-    note: 个人最高频·截图；§3.5 主理人已签收；钉图/放大镜下一迭代；勿因 gaps 标 done
+    note: 个人最高频·截图；§3.5 主理人已签收；钉图已落地（2026-09-03）；放大镜=框选取景 loupe
     gaps:
-      - 放大镜（下一迭代）
-      - 桌面钉住/钉图（下一迭代，不阻塞本轮）
+      - 主理人点验钉图（工具栏钉针 → 桌面置顶可拖 · Esc/双击关）
+      - 主理人点验框选阶段放大镜/取色 loupe
 
   clipboard_history:
     status: mvp
@@ -107,20 +107,19 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: Wave★-4 MVP；四象限看板+拖拽+截止+本地JSON；进页状态栏逾期轻提醒
+    note: Wave★-4；看板+日历拖选新建/双击编辑/标题获焦
     gaps:
-      - 主理人点验拖拽/持久/逾期状态栏后清 gaps
-      - 全局热键唤起（可选 polish）
+      - 主理人点验拖拽象限/日历拖选新建/双击编辑后清 gaps
 
   watermark_remover:
     status: mvp
     priority: P0
     office_freq: high
     toa2_ref: modules/watermark_remover/
-    note: 擦除豆包/角标；产品策略「最强优先、不可用则降级」；AI=watermark_ai，未配则本地
+    note: 擦除豆包/角标；小白默认本地轻量；有条件点「安装 AI…」两步探索
     gaps:
-      - watermark_ai / LaMa 等强引擎真正接入（现为 integrations 占位）
       - 主理人点验大图预览/多选后清 gaps
+      - 点验：默认不勾 AI 时为 light；装完后勾选可为 lama；「安装 AI…」引导清晰
 
   image_watermark:
     status: mvp
@@ -146,9 +145,11 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: 能力已挂截图工具栏（OCR+LLM 对照弹窗）；有意无独立空菜单；Top3 approved
+    note: >-
+      能力已挂截图工具栏（OCR 对照窗 + 翻译原文）；有意无独立菜单页（避免空 stub）。
+      代码：services/screenshot_translate*.py · overlay 工具栏；点验后可再评估是否独立入口。
     gaps:
-      - 主理人点验工具栏翻译后可考虑是否要独立入口
+      - 主理人点验工具栏翻译主路径（OCR→对照窗→翻译原文→复制）
       - 专用翻译引擎（现走 LLM）可后续评估
 
   # —— 其它白领 ——
@@ -173,17 +174,22 @@ modules:
     priority: P1
     office_freq: high
     toa2_ref: —
-    note: 配置在系统设置·能力接入；已迁入 AI 子模块
+    note: 极简范式（应用时选模型 + 两步简单配置持久化）；Figma 已确认
     gaps:
-      - 多轮会话持久化
-      - 流式输出
+      - 主理人点验：空态两步 / 选模型下拉 / 简单配置弹窗
+      - 多轮会话持久化（非本范式范围，Hold）
 
   harness_agent:
-    status: done
+    status: mvp
     priority: P1
     office_freq: high
     toa2_ref: —
-    note: Harness Host+Guest v2；全宽 Web + 办公链投喂 + 导出；无重复侧栏
+    note: >-
+      Harness Host+Guest；全宽 Web + 办公链投喂；小白三步开用（装环境→Key→自启）；
+      独立目录/3082/embed 与发版模板对齐；冲突配置运行时自愈
+    gaps:
+      - 主理人点验：无 Node 时「去安装 Node.js」→ 重试 → Key → 自动进入内嵌
+      - 主理人点验：旧脏配置（外置目录/关启用）进页后可自愈并三步走通
 
   open_pencil:
     status: mvp
@@ -209,11 +215,12 @@ modules:
 
   comfyui_web:
     status: mvp
-    priority: P1
-    office_freq: medium
+    priority: P2
+    office_freq: low
     toa2_ref: —
-    note: 本地 Web 引擎范式·大成哥-2（8189）；与 media_studio API 并存
+    note: Hold·侧栏已隐藏（主理人裁定 2026-09-03）；文生图走 media_studio；代码保留
     gaps:
+      - 侧栏隐藏：内嵌/表面切换难稳，整项菜单不做
       - Top3 + 三独到处待主理人确认（docs/research/comfyui_web-top3.md）
       - 专属图标未入库
       - Comfy Desktop 共享模型路径若缺失需手配 extra_model_paths
@@ -324,11 +331,11 @@ modules:
     status: mvp
     priority: P1
     toa2_ref: —
-    note: MACOS风格桌面；三模式+标签+新建；拖入 handoff approved
+    note: MACOS风格桌面；三模式+标签；.md/.json 文本预览增强
     gaps:
       - 主理人点验三模式/标签/折叠/新建后清 gaps
       - 主理人点验拖入图标/主窗→父目录为根+预览+导入记事本
-      - PDF/Office 内嵌预览（可选）
+      - 主理人点验 .md / .json 右侧预览
 
   enhanced_directory_inspector:
     status: done

@@ -36,15 +36,27 @@ FORBIDDEN_RELEASE_NAMES: frozenset[str] = frozenset(
         "admin_bootstrap_code.txt",
         "app.dev.yml",
         "license.json",
+        # 验收/本机备份授权，含手机号·机器码·授权码，严禁进安装包
+        "license.json.bak.acceptance",
     }
+)
+
+# 文件名匹配即剔除（顶层 config 复制）
+FORBIDDEN_RELEASE_NAME_PREFIXES: tuple[str, ...] = (
+    "license.json.bak",
+    "integrations_secrets",
 )
 
 # 扫描文本时的敏感模式
 _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"sk-[a-zA-Z0-9_-]{16,}"),
+    re.compile(r"TOA2-eyJ[A-Za-z0-9_\-=]+"),  # 本机授权 JWT 码
     re.compile(r"api_key\s*[:=]\s*['\"]?sk-", re.IGNORECASE),
     re.compile(r"Bearer\s+sk-", re.IGNORECASE),
     re.compile(r"integrations_secrets\.json", re.IGNORECASE),
+    re.compile(r'"license_key"\s*:\s*"(?!")[^"]{8,}"'),  # 非空授权码
+    re.compile(r'"bound_machine_id"\s*:\s*"[a-f0-9]{16,}"', re.IGNORECASE),
+    re.compile(r'"phone"\s*:\s*"\d{6,}"'),
 )
 
 # 发版包内不应出现的个人本机路径（Harness / 开发机）
@@ -139,6 +151,27 @@ def _scan_text(path: Path, text: str) -> list[str]:
     return hits
 
 
+def _should_text_scan_release_path(root: Path, path: Path) -> bool:
+    """
+    文本密钥/个人路径扫描只覆盖我们自有内容。
+    PyInstaller _internal 下第三方包（如 botocore examples 的假 sk-）一律跳过，
+    仅保留 _internal/config（发版模板覆盖后的干净配置）。
+    """
+    try:
+        rel_parts = path.relative_to(root).parts
+    except ValueError:
+        return True
+    if not rel_parts:
+        return True
+    top = rel_parts[0].lower()
+    if top == "_internal":
+        return len(rel_parts) >= 2 and rel_parts[1].lower() == "config"
+    if top in {"config", "assets", "avatars", "ui", "vendor"}:
+        return True
+    # 发布根 README.txt 等
+    return len(rel_parts) == 1
+
+
 def scan_release_tree(root: Path) -> list[str]:
     """扫描发布目录；返回全部违规说明。"""
     if not root.is_dir():
@@ -163,6 +196,12 @@ def scan_release_tree(root: Path) -> list[str]:
         if name in FORBIDDEN_RELEASE_NAMES or name == "integrations_secrets.json":
             errors.append(f"禁止文件: {path.as_posix()}")
             continue
+        if any(name.startswith(p) for p in FORBIDDEN_RELEASE_NAME_PREFIXES):
+            errors.append(f"禁止文件: {path.as_posix()}")
+            continue
+        if name.startswith("license.json.") and name != "license.json.example":
+            errors.append(f"禁止打包授权备份: {path.as_posix()}")
+            continue
         parts_lower = {p.lower() for p in path.parts}
         if "vendor" in parts_lower and path.suffix.lower() in (".md", ".txt"):
             continue
@@ -171,13 +210,16 @@ def scan_release_tree(root: Path) -> list[str]:
             continue
         if path.suffix.lower() not in _TEXT_SCAN_SUFFIXES:
             continue
+        if not _should_text_scan_release_path(root, path):
+            continue
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             errors.append(f"无法读取 {path.as_posix()}: {exc}")
             continue
-        if name == "model_catalog.yml" and "profiles:" in text:
-            if "api_base:" in text or "huggingface.co" in text:
+        if name == "model_catalog.yml":
+            # 空模板允许 profiles: {}；有 api_base / 具体模型 id 一律拦
+            if re.search(r"api_base\s*:", text) or "huggingface.co" in text:
                 errors.append(
                     f"发版禁止预置模型 catalog（请用 shipped_config/model_catalog.yml）: {path.as_posix()}"
                 )
