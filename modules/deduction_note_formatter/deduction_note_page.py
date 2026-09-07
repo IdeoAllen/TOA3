@@ -139,18 +139,17 @@ class DeductionNotePage(BasePage):
             hint="双击条目可快速载入；整理结果自动写入历史。",
         )
         self._hist_panel._btn_add.setVisible(False)
-        self._hist_panel.list_widget.setMaximumHeight(140)
+        # 多露出几条历史（约 6～7 行），仍可滚动
+        self._hist_panel.list_widget.setMinimumHeight(200)
+        self._hist_panel.list_widget.setMaximumHeight(280)
         self._hist_panel.list_widget.itemDoubleClicked.connect(self._on_hist_use)
         self._hist_panel.bind_edit(self._on_hist_use)
         self._hist_panel.bind_delete(self._on_hist_delete)
         self._hist_panel.bind_refresh(self._refresh_history)
-        clear_row = QHBoxLayout()
         btn_clear_hist = DangerButton("清空历史")
         btn_clear_hist.clicked.connect(self._on_hist_clear)
-        clear_row.addWidget(btn_clear_hist)
-        clear_row.addStretch(1)
+        self._hist_panel.append_action_button(btn_clear_hist)
         hist_box.add_widget(self._hist_panel)
-        hist_box.add_layout(clear_row)
         root.addWidget(hist_box)
 
         self._bind_shortcuts()

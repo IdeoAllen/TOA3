@@ -2,7 +2,7 @@
 
 > 状态：`approved`（WYSIWYG 体验增强 · §3.5 经主理人确认）  
 > 日期：2026-08-26  
-> 关联：`docs/功能清单与优先级.md` · Wave★-3 · 用户反馈「用着还是特别难受」  
+> 关联：`docs/PROD-01-功能清单与优先级.md` · Wave★-3 · 用户反馈「用着还是特别难受」  
 > 门禁：`.cursor/rules/toa3-feature-top3-research.mdc`  
 
 ### 文档演进说明

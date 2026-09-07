@@ -36,8 +36,10 @@ python -m app.main
 app/           应用入口、主题加载
 assets/        随包模板 templates/、示例 samples/（只读）
 config/themes/ 色板 JSON（与 DMS / TOA2 同源）
-docs/standards/ 架构与开发规范
-modules/       业务模块（逐步从 TOA2 迁移）
+docs/规范/00-规范清单.md  桌面开发规范总清单（STD/SOP/Skill）
+docs/规范/STD-01-*.md     工程标准与流程
+docs/architecture/ARCH-*  架构裁定
+modules/                  业务模块（逐步从 TOA2 迁移）
 resources/qss/ 生成的 QSS（勿手改）
 scripts/       主题同步、QSS 生成、验收
 ui/            Qt Designer 文件（.ui）
@@ -52,16 +54,8 @@ widgets/       标准控件库（业务页只引用此处）
 4. 新功能 **只在本仓库** 开发
 5. **Agent 规则**：`.cursor/rules/toa3-*.mdc`（架构、授权、打包、Portal 裁定等）
 
-**架构文档**（完整）：[`docs/architecture/README.md`](docs/architecture/README.md)
-
-| 文档 | 内容 |
-|------|------|
-| [01-总览与原则](docs/architecture/01-总览与原则.md) | 目标、原则、技术选型 |
-| [04-主题与QSS](docs/architecture/04-主题与QSS.md) | Design Tokens、换肤管线 |
-| [05-控件库与Designer](docs/architecture/05-控件库与Designer.md) | 拖拽开发、widgets |
-| [06-业务模块规范](docs/architecture/06-业务模块规范.md) | 新模块与 TOA2 迁移 |
-
-规范速查：`docs/standards/UI架构.md`、`docs/standards/控件库规范.md`、**`docs/standards/Agent起手式.md`（新会话必读）**
+**文档**：`docs/规范/00-规范清单.md`（**全面上线**）· STD-01 · SOP · Skill `toa3-dev-suite`  
+旧标准已下线：`docs/_archive/OFFLINE.md`
 
 ## 版本
 

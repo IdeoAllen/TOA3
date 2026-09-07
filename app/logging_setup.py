@@ -48,6 +48,17 @@ def setup_logging(level: int | None = None) -> Path:
         sh.setFormatter(fmt)
         root.addHandler(sh)
 
-    logging.getLogger("TOA3").info("日志目录: %s", log_dir)
+    logging.getLogger("TOA3").info("日志目录: %s level=%s", log_dir, logging.getLevelName(level))
+    # 壳 / WebEngine / 引擎导航诊断：一律跟全局 DEBUG
+    for name in (
+        "TOA3",
+        "TOA3.shared_webengine",
+        "TOA3.webengine_prewarm",
+        "TOA3.local_web_engine",
+        "app.shell",
+        "app.module_loader",
+        "core.error_handler",
+    ):
+        logging.getLogger(name).setLevel(level)
     logging.getLogger("TOA3.audit").setLevel(logging.INFO)
     return log_file

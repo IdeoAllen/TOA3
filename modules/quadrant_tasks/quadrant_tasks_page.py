@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from PySide6.QtCore import Qt, QMimeData, Signal, QSize
-from PySide6.QtGui import QDrag, QAction, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QMimeData, QTimer, Signal, QSize
+from PySide6.QtGui import QDrag, QAction, QKeySequence, QShortcut, QShowEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QGridLayout,
@@ -332,6 +332,15 @@ class _TaskFormDialog(BaseDialog):
         buttons.add_primary("确定", self.accept)
         lay.addWidget(buttons)
 
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        QTimer.singleShot(0, self._focus_title)
+
+    def _focus_title(self) -> None:
+        self._title.setFocus(Qt.FocusReason.OtherFocusReason)
+        if self._title.text():
+            self._title.selectAll()
+
     def values(self) -> dict:
         return {
             "title": self._title.text().strip(),
@@ -403,10 +412,16 @@ class QuadrantTasksPage(BasePage):
         self._calendar = ScheduleMonthView()
         self._calendar.daySelected.connect(self._on_calendar_day)
         self._calendar.dayCreateRequested.connect(self._on_add_for_selected_day)
+        self._calendar.rangeCreateRequested.connect(self._on_add_for_range)
+        self._calendar.dayEditRequested.connect(self._on_day_edit)
         self._calendar.taskActivated.connect(self._on_edit)
         self._calendar.monthChanged.connect(lambda *_: self._calendar.refresh_tasks())
         cal_lay.addWidget(self._calendar, 3)
         day_box = FormSection("当日任务")
+        day_box.setToolTip(
+            "单击选日；再点同一日新建。拖选多日弹出新建。"
+            "双击有任务的日可编辑。跨日通栏显示标题。"
+        )
         day_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self._day_list = ListWidget()
         self._day_list.setMinimumHeight(280)
@@ -422,11 +437,6 @@ class QuadrantTasksPage(BasePage):
         day_row.addWidget(btn_cal_edit)
         day_row.addStretch(1)
         day_box.add_layout(day_row)
-        day_box.add_widget(
-            HintLabel(
-                "单击选日；再点同一日新建任务。点任务条编辑。跨日任务通栏显示标题。"
-            )
-        )
         cal_lay.addWidget(day_box, 2)
         self._stack.addWidget(cal_host)
         scroll.content_layout.addWidget(self._stack, 1)
@@ -537,10 +547,16 @@ class QuadrantTasksPage(BasePage):
         if not isinstance(day, date):
             day = self._calendar.selected_date()
         iso = day.isoformat()
+        self._open_add_dialog(start=iso, due=iso)
+
+    def _on_add_for_range(self, start: date, end: date) -> None:
+        self._open_add_dialog(start=start.isoformat(), due=end.isoformat())
+
+    def _open_add_dialog(self, *, start: str, due: str) -> None:
         dlg = _TaskFormDialog(
             self,
             title="添加任务",
-            initial={"start": iso, "due": iso},
+            initial={"start": start, "due": due},
             default_quadrant=Q1,
         )
         if dlg.exec() != dlg.DialogCode.Accepted:
@@ -553,11 +569,24 @@ class QuadrantTasksPage(BasePage):
         add_task(
             title,
             str(vals.get("quadrant") or Q1),
-            start=str(vals.get("start") or iso),
-            due=str(vals.get("due") or iso),
+            start=str(vals.get("start") or start),
+            due=str(vals.get("due") or due),
         )
         self._reload_all()
         self.report_status("已添加任务", level=StatusLevel.SUCCESS)
+
+    def _on_day_edit(self, day: date) -> None:
+        """双击有任务的日历日 → 打开修改（多条取当日列表第一条未完成）。"""
+        tasks = [
+            t
+            for t in load_tasks()
+            if not t.get("done") and task_covers_day(t, day)
+        ]
+        if not tasks:
+            return
+        tid = str(tasks[0].get("id") or "")
+        if tid:
+            self._on_edit(tid)
 
     def _on_calendar_edit(self) -> None:
         row = self._day_list.currentRow()

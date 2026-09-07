@@ -213,7 +213,7 @@ def diagnose_llm_access(*, sidecar_owned: bool = False) -> tuple[bool, str]:
             False,
             "检测到本机环境变量 DEEPSEEK_API_KEY 与设置页保存的密钥不一致；"
             "Harness 会优先用环境变量，导致历史会话接不上模型。"
-            "请在编码智能体页点「更多 → 接管并重启」（或「修复运行环境」后启动），"
+            "请在编码智能体页点「更多 → 重启服务」（或「修复运行环境」后启动），"
             "让 TOA 用正确密钥拉起 Sidecar。",
         )
     if file_key and not file_key.startswith("sk-"):

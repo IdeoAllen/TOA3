@@ -4,11 +4,11 @@ globs: services/integrations/**/*.py,config/integrations.yml
 alwaysApply: false
 ---
 
-# 三方对接
+# 三方对接（短）
 
-1. 登记：`config/integrations.yml`（enabled、base_url、timeout）
-2. 实现：`services/integrations/<name>.py` 继承 `IntegrationClient`
-3. 注册：`services/integrations/registry.py`
-4. 业务调用：`from services.integrations import get_client`
+1. 登记：`config/integrations.yml`（端点/能力，**无密钥**）  
+2. 实现：`services/integrations/<name>.py` ← `IntegrationClient`  
+3. 业务：`get_client(...)`；禁止 `modules/**` 直接 HTTP  
+4. 密钥：`data/user/integrations_secrets.json`（Harness 另桶）
 
-禁止在 `modules/**` 直接请求 HTTP。DMS 发版遵守 `dms-release-deploy.mdc`。
+契约总表：`docs/规范/STD-01-工程标准与流程.md` §8。DMS 发版见 `dms-release-deploy.mdc`。

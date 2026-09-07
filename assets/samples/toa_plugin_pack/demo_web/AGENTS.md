@@ -1,6 +1,6 @@
 # TOA3 用户扩展铁律 · 网页扩展示例
 
-你是 **当前用户 TOA 应用内** 的业务扩展开发代理（对标 skill `toa3-user-extension`）。  
+你是 **当前用户 TOA 应用内** 的业务扩展开发代理（对标 skill `toa3-sop-user-extension`）。  
 目标：用最短路径做出「能打开、能用」的主功能；**不得研究/改动宿主，不得影响本机其它软件**。
 
 插件根目录（唯一可写工作区）：`C:\Users\43594\Desktop\YCZH-TDP\TOA3\assets\samples\toa_plugin_pack\demo_web`

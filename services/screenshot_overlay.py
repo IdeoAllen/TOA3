@@ -703,6 +703,9 @@ class ScreenshotOverlay(QWidget):
         btn_tr = _ToolBtn(tip="翻译（OCR+译文）", icon_key="translate", parent=bar)
         btn_tr.clicked.connect(self._on_translate)
         bar_l.addWidget(btn_tr)
+        btn_pin = _ToolBtn(tip="钉到桌面（对照）", icon_key="pin", parent=bar)
+        btn_pin.clicked.connect(self._on_pin)
+        bar_l.addWidget(btn_pin)
         btn_save = _ToolBtn(tip="保存 (Ctrl+S)", icon_key="save", parent=bar)
         btn_save.clicked.connect(self._save_as)
         bar_l.addWidget(btn_save)
@@ -1425,6 +1428,59 @@ class ScreenshotOverlay(QWidget):
                 report_error(self, exc, title="截图翻译失败", context="screenshot_translate")
 
         self._with_keyboard_released(_do)
+
+    def _on_pin(self) -> None:
+        """钉图：复制选区到桌面置顶窗，并关闭截图覆盖层。"""
+        if self._text_edit is not None:
+            self._finish_text_edit()
+            return
+        pix = self._compose_result()
+        if pix is None or pix.isNull():
+            return
+
+        def _do() -> None:
+            try:
+                from services.screenshot_pin import pin_screenshot
+
+                path = _save_pixmap(pix)
+                try:
+                    from services.screenshot_history import record_screenshot
+
+                    record_screenshot(path, source="pin")
+                except Exception:
+                    pass
+                anchor = None
+                if self._sel is not None:
+                    anchor = self.mapToGlobal(self._sel.topLeft())
+                win = pin_screenshot(pix, anchor=anchor)
+                if win is None:
+                    from core.user_messages import show_warning
+
+                    show_warning(None, "钉图失败，请重试。")
+                    return
+                try:
+                    from services.notify_bus import NotifyLevel, notify
+
+                    notify(
+                        NotifyLevel.SUCCESS,
+                        title="已钉到桌面",
+                        body="拖动可移动 · Esc/双击关闭",
+                        channel="status",
+                    )
+                except Exception:
+                    pass
+                self._result_path = path
+                self._accepted = True
+                self.finished_ok.emit(path)
+                self._remove_width_filter()
+                self.close()
+            except Exception as exc:
+                from core.error_handler import report_error
+
+                report_error(self, exc, title="钉图失败", context="screenshot_pin")
+
+        self._with_keyboard_released(_do)
+
     def _on_ok(self) -> None:
         if self._text_edit is not None:
             self._finish_text_edit()

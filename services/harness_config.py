@@ -18,7 +18,7 @@ _ALIGNED_ONCE = False
 
 # 与 config/harness.yml · packaging/shipped_config/harness.yml 同源行为默认
 PRODUCT_WEB_PORT = 3082
-PRODUCT_SURFACE_MODE = "embed"
+PRODUCT_SURFACE_MODE = "browser"
 
 
 def _user_harness_path() -> Path:
@@ -140,7 +140,7 @@ def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -
             updates["auto_start"] = True
             notes.append("已恢复进页自动启动")
 
-    # 旧发版模板：3081 + browser；产品默认 3082 + embed（避开 WorkBuddy 常用 3081）
+    # 旧发版模板：3081 + 内嵌；产品默认 3082 + 浏览器优先（doc 33 / C-11）
     try:
         port = int(cfg.get("web_port") or 0)
     except (TypeError, ValueError):
@@ -150,11 +150,14 @@ def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -
         notes.append(f"Web 端口对齐为 {PRODUCT_WEB_PORT}")
 
     mode = str(cfg.get("surface_mode") or "").strip().lower()
-    if mode == "browser" and (is_workbuddy_home(home_s) or bool(updates.get("enabled"))):
-        # 仅在自愈旧脏配置时改回内嵌；用户主动选 browser 且 home 已干净则不动
-        if is_workbuddy_home(home_s) or not bool(cfg.get("enabled", True)):
-            updates["surface_mode"] = PRODUCT_SURFACE_MODE
-            notes.append("显示方式对齐为内嵌")
+    migrating_home = bool(is_workbuddy_home(home_s) or updates.get("dsh_home"))
+    if mode not in ("embed", "browser"):
+        updates["surface_mode"] = PRODUCT_SURFACE_MODE
+        notes.append("显示方式对齐为浏览器优先")
+    elif migrating_home and mode != PRODUCT_SURFACE_MODE:
+        # 仅自愈脏配置时改；干净目录下用户自选内嵌则保留
+        updates["surface_mode"] = PRODUCT_SURFACE_MODE
+        notes.append("显示方式对齐为浏览器优先")
 
     if updates and persist:
         save_harness_config(updates)

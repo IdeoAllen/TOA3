@@ -27,11 +27,12 @@ engines:
       - ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "1420"]
       - ["npx", "vite", "--host", "127.0.0.1", "--port", "1420"]
     stop_on_leave: false
+    # 默认套件内嵌：与 Draw.io 共用唯一 WebEngine，切页只换 URL
     prefer_embed: true
 
   comfyui_web:
     title: ComfyUI（大成哥-2）
-    description: 本机 ComfyUI 原版 Web · 默认系统浏览器（外壳隔离）· 端口 8189 · 可改回内嵌
+    description: 本机 ComfyUI 原版 Web · 端口 8189 · 侧栏已隐藏（主理人裁定）；代码保留供媒体工坊/后续复开
     default_roots:
       - "D:/Comfy-Desktop/ComfyUI-Installs/大成哥-2/ComfyUI"
       - "D:/Comfy-Desktop/ComfyUI-Installs/大成哥-2"
@@ -72,5 +73,6 @@ engines:
       - ["npx", "--yes", "http-server", "src/main/webapp", "-a", "127.0.0.1", "-p", "8080", "-c-1"]
       - ["python", "-m", "http.server", "8080", "--bind", "127.0.0.1", "--directory", "src/main/webapp"]
     stop_on_leave: false
+    # 默认套件内嵌：与 OpenPencil 共用唯一 WebEngine，切页只换 URL
     prefer_embed: true
     menu_show: true

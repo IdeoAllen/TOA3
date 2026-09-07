@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""终端用户口径：基础版 / 授权版 / 正式版 + 套餐（与开发构建、发行 profile 分离）。
+"""终端用户口径：基础版 / 体验版 / 授权版 / 正式版 + 套餐（与开发构建、发行 profile 分离）。
+
+分层（勿混称）：
+- 构建：开发构建 vs 安装包（不要对用户说「正式版安装」当档位）
+- 档位：基础版（离线） / 体验版（trial） / 授权版（邀请/管理员） / 正式版（付费订单）
+- 方案：feature_packs（如全功能方案）；唯一方案时不与档位叠成「正式版·体验版」
 
 软件版本号仅在「关于」弹窗与状态栏永久区展示，其它入口不得重复。
 """
@@ -8,12 +13,42 @@ from __future__ import annotations
 from typing import Tuple
 
 TRIAL_TIER_LABEL = "基础版"
+EXPERIENCE_TIER_LABEL = "体验版"
 AUTH_TIER_LABEL = "授权版"
 OFFICIAL_TIER_LABEL = "正式版"
 
 # 兼容旧引用
 FREE_TIER_LABEL = TRIAL_TIER_LABEL
 PAID_TIER_LABEL = OFFICIAL_TIER_LABEL
+
+# 与档位语义冲突、不得并排展示的方案名（含历史「体验版」SKU）
+_PACK_OMIT_WITH_TIER: dict[str, frozenset[str]] = {
+    OFFICIAL_TIER_LABEL: frozenset(
+        {
+            OFFICIAL_TIER_LABEL,
+            "付费套餐",
+            "全功能",
+            "全功能方案",
+            "体验版",
+            "体验授权",
+            "体验中",
+            "基础功能",
+        }
+    ),
+    EXPERIENCE_TIER_LABEL: frozenset(
+        {
+            EXPERIENCE_TIER_LABEL,
+            "体验授权",
+            "体验中",
+            "全功能",
+            "全功能方案",
+            "基础功能",
+            "基础版",
+        }
+    ),
+    AUTH_TIER_LABEL: frozenset({AUTH_TIER_LABEL, "基础功能"}),
+    TRIAL_TIER_LABEL: frozenset({TRIAL_TIER_LABEL, "基础功能"}),
+}
 
 
 def is_dev_build() -> bool:
@@ -78,12 +113,20 @@ def user_has_code_activation() -> bool:
 
 
 def user_plan_tier() -> str:
-    """用户档位：基础版 | 授权版 | 正式版。"""
+    """用户档位：基础版 | 体验版 | 授权版 | 正式版。"""
     lm = _license_manager()
     if user_has_paid_order():
         ok, _ = lm._activation_still_valid()
         if ok:
             return OFFICIAL_TIER_LABEL
+
+    ent = str(lm.get_entitlement() or "").strip().lower()
+    if lm.is_admin_user() or ent == "admin":
+        return AUTH_TIER_LABEL
+    if ent == "invited" and (lm.is_licensed() or lm.had_network_activation()):
+        return AUTH_TIER_LABEL
+    if ent == "trial" and (lm.is_licensed() or lm.had_network_activation()):
+        return EXPERIENCE_TIER_LABEL
     if user_has_code_activation():
         return AUTH_TIER_LABEL
     return TRIAL_TIER_LABEL
@@ -118,17 +161,23 @@ def _resolve_plan_id(lm) -> str:
         return ""
 
 
-def _plan_name(plan_id: str) -> str:
+def _plan_name(plan_id: str, *, entitlement: str = "") -> str:
+    """方案展示名。唯一 SKU tiyan 不对外叫「体验版」（体验版=试用档位）。"""
     pid = str(plan_id or "").strip()
     if not pid:
         return ""
+    ent = str(entitlement or "").strip().lower()
     if pid == "tiyan":
-        return "体验版"
+        # 默认不单独展示方案名，避免与档位叠成「正式版·体验版」
+        return ""
     try:
         from services.plan_tiers import plan_display_name
 
         name = plan_display_name(pid)
         if name and name != pid:
+            # 历史包名纠偏
+            if name.strip() == "体验版":
+                return ""
             return name
     except Exception:
         pass
@@ -136,9 +185,9 @@ def _plan_name(plan_id: str) -> str:
 
 
 def user_product_pack_label() -> str:
-    """当前方案/身份说明（与档位分离）。"""
+    """当前方案/身份说明（与档位分离；能省略则省略）。"""
     lm = _license_manager()
-    ent = lm.get_entitlement()
+    ent = str(lm.get_entitlement() or "").strip().lower()
 
     if lm.is_admin_user() or ent == "admin":
         return "管理员授权"
@@ -146,17 +195,16 @@ def user_product_pack_label() -> str:
         return "邀请授权"
 
     if user_has_paid_order():
-        name = _plan_name(_resolve_plan_id(lm))
-        return name or "付费套餐"
+        name = _plan_name(_resolve_plan_id(lm), entitlement="paid")
+        return name  # 唯一方案时常为空，由档位「正式版」表达
 
     if ent == "trial" and lm.is_licensed() and not lm.is_expired_trial():
-        name = _plan_name(_resolve_plan_id(lm))
-        return name or "体验授权"
+        return ""  # 档位已是「体验版」
 
     if lm.is_standalone_mode():
         return "基础功能"
     if lm.is_licensed() and not user_plan_expired():
-        name = _plan_name(_resolve_plan_id(lm))
+        name = _plan_name(_resolve_plan_id(lm), entitlement=ent)
         if name:
             return name
     return "基础功能"
@@ -189,6 +237,16 @@ def _expiry_date_line(lm) -> str:
     return f"有效期至 {exp}"
 
 
+def _pack_for_join(tier: str, pack: str) -> str:
+    text = str(pack or "").strip()
+    if not text or text == tier:
+        return ""
+    omit = _PACK_OMIT_WITH_TIER.get(tier, frozenset())
+    if text in omit:
+        return ""
+    return text
+
+
 def user_validity_line(*, date_only: bool = False) -> str:
     """账号/状态用有效期摘要。"""
     lm = _license_manager()
@@ -197,7 +255,7 @@ def user_validity_line(*, date_only: bool = False) -> str:
         return date_line
 
     tier = user_plan_tier()
-    pack = user_product_pack_label()
+    pack = _pack_for_join(tier, user_product_pack_label())
 
     if user_plan_expired():
         if lm.is_expired_paid():
@@ -207,26 +265,22 @@ def user_validity_line(*, date_only: bool = False) -> str:
         return f"{TRIAL_TIER_LABEL}已到期 · 升级{OFFICIAL_TIER_LABEL}解锁付费模块"
 
     if tier == OFFICIAL_TIER_LABEL:
-        head = pack if pack and pack not in (OFFICIAL_TIER_LABEL, "付费套餐") else OFFICIAL_TIER_LABEL
-        return _join_unique_labels(head, date_line)
+        return _join_unique_labels(tier, pack, date_line)
+
+    if tier == EXPERIENCE_TIER_LABEL:
+        return _join_unique_labels(tier, pack, date_line)
 
     if tier == AUTH_TIER_LABEL:
-        head = pack if pack and pack not in (AUTH_TIER_LABEL, "基础功能") else AUTH_TIER_LABEL
-        return _join_unique_labels(head, date_line)
+        return _join_unique_labels(tier, pack, date_line)
 
-    return _join_unique_labels(TRIAL_TIER_LABEL, pack if pack not in (TRIAL_TIER_LABEL, "基础功能") else "", date_line)
+    return _join_unique_labels(TRIAL_TIER_LABEL, pack, date_line)
 
 
 def user_account_subtitle() -> str:
     tier = user_plan_tier()
-    pack = user_product_pack_label()
+    pack = _pack_for_join(tier, user_product_pack_label())
     date_line = user_validity_line(date_only=True)
-    if tier == AUTH_TIER_LABEL and pack not in ("基础功能", AUTH_TIER_LABEL):
-        head = pack
-    elif tier == OFFICIAL_TIER_LABEL and pack not in ("付费套餐", OFFICIAL_TIER_LABEL):
-        head = _join_unique_labels(tier, pack)
-    else:
-        head = tier
+    head = _join_unique_labels(tier, pack) if pack else tier
     return _join_unique_labels(head, date_line)
 
 
@@ -253,18 +307,10 @@ def user_status_bar_version_label() -> str:
 
 
 def user_status_plan_label() -> str:
-    """托盘等次要入口：档位与套餐，不含版本号。"""
+    """托盘/状态栏档位：与顶栏 Chip 同口径，不含版本号。"""
     tier = user_plan_tier()
-    pack = user_product_pack_label()
-    if tier == OFFICIAL_TIER_LABEL:
-        if pack and pack not in (OFFICIAL_TIER_LABEL, "付费套餐", tier):
-            return _join_unique_labels(tier, pack)
-        return tier
-    if tier == AUTH_TIER_LABEL:
-        if pack and pack not in (AUTH_TIER_LABEL, "基础功能", tier):
-            return _join_unique_labels(tier, pack)
-        return tier
-    if pack and pack not in (TRIAL_TIER_LABEL, "基础功能", tier):
+    pack = _pack_for_join(tier, user_product_pack_label())
+    if pack:
         return _join_unique_labels(tier, pack)
     return tier
 
@@ -272,7 +318,6 @@ def user_status_plan_label() -> str:
 def user_status_version_label() -> str:
     """兼容旧名：等同状态栏版本标签。"""
     return user_status_bar_version_label()
-
 
 def user_offline_grace_hint() -> str:
     """L12：断网宽限期说明（配置 offline_grace_days）。"""
@@ -387,17 +432,21 @@ def user_entitlement_status_line() -> str:
 def user_chip_display() -> Tuple[str, str, str]:
     """顶栏 Chip：文案、语义 kind、tooltip。"""
     tier = user_plan_tier()
+    pack = user_product_pack_label()
+    pack_line = pack if pack else "—"
     l2 = user_entitlement_status_line()
     tooltip = (
         f"档位：{tier}\n"
         f"云状态：{l2}\n"
-        f"身份/套餐：{user_product_pack_label()}\n"
+        f"身份/套餐：{pack_line}\n"
         f"{user_validity_line()}"
     )
     if user_plan_expired():
         return "续费", "warning", tooltip
     if tier == OFFICIAL_TIER_LABEL:
         return OFFICIAL_TIER_LABEL, "success", tooltip
+    if tier == EXPERIENCE_TIER_LABEL:
+        return EXPERIENCE_TIER_LABEL, "info", tooltip
     if tier == AUTH_TIER_LABEL:
         return AUTH_TIER_LABEL, "success", tooltip
     return TRIAL_TIER_LABEL, "info", tooltip

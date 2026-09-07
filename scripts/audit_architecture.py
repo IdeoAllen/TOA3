@@ -2,7 +2,7 @@
 """架构超边扫描：modules 禁 setStyleSheet（无例外注释）/ QMessageBox / 直连 HTTP。
 
 白名单仅登记「已知债务」或「已注释控件库例外」，不得扩大。
-详见 docs/architecture/14-超边门禁与目标锁定.md
+详见 docs/architecture/ARCH-03-超边门禁.md
 """
 from __future__ import annotations
 

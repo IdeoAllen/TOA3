@@ -19,22 +19,18 @@ ocr:
   provider: tesseract
   tesseract_path: C:\Program Files\Tesseract-OCR\tesseract.exe
   lang: chi_sim+eng
-  # 可选：poppler_path 指向含 pdftoppm 的 bin 目录，供图片型 PDF OCR
-  # poppler_path: C:\Program Files\poppler\Library\bin
   note: 图片/扫描件 OCR；简历提取默认 chi_sim+eng；业务经 OcrClient 调用
 llm:
   enabled: true
   provider: openai_compatible
-  api_base: https://api.moonshot.cn/v1
-  # 国内站当前文档示例：kimi-k2.6（moonshot-v1-* 对新账号常 404）
-  model: kimi-k2.6
-  note: 摘要、改写、截图翻译；密钥存本机 secrets。模型名须与控制台一致。
+  api_base: http://127.0.0.1:11434/v1
+  model: llama3.2
+  note: 摘要、改写；多配置见 model_catalog
   temperature: 0.3
-  # 模型 404 时按序回退（不写密钥）
   model_fallbacks:
-    - kimi-k2.5
-    - moonshot-v1-8k
-    - kimi-k3
+  - kimi-k2.5
+  - moonshot-v1-8k
+  - kimi-k3
 image_gen:
   enabled: true
   provider: catalog
@@ -48,7 +44,7 @@ video_gen:
 watermark_ai:
   enabled: true
   provider: local_lama
-  note: 本地 LaMa 去水印；权重 data/models/image/inpaint/lama · 与算力来源一并安装
+  note: 本地 LaMa 可选增强；默认业务走轻量修复，低配无需装权重/GPU
 tencent_docs:
   enabled: false
   provider: tencent

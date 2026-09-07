@@ -78,16 +78,23 @@ class DataTable(QTableWidget):
         self._auto_column_layout = bool(enabled)
 
     def set_headers(self, headers: list[str]) -> None:
-        self.setColumnCount(len(headers))
-        self.setHorizontalHeaderLabels(headers)
-        self._apply_column_layout()
+        try:
+            self.setColumnCount(len(headers))
+            self.setHorizontalHeaderLabels(headers)
+            self._apply_column_layout()
+        except RuntimeError:
+            # C++ 对象已删（常见于刚拆 WebEngine 后进业务页）
+            return
 
     def set_rows(self, rows: list[tuple[str, ...]]) -> None:
-        self.setRowCount(len(rows))
-        for r, row in enumerate(rows):
-            for c, val in enumerate(row):
-                self.setItem(r, c, QTableWidgetItem(str(val)))
-        self._apply_column_layout()
+        try:
+            self.setRowCount(len(rows))
+            for r, row in enumerate(rows):
+                for c, val in enumerate(row):
+                    self.setItem(r, c, QTableWidgetItem(str(val)))
+            self._apply_column_layout()
+        except RuntimeError:
+            return
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -127,22 +134,45 @@ class DataTable(QTableWidget):
     def _apply_column_layout(self) -> None:
         if not self._auto_column_layout:
             return
-        cols = self.columnCount()
-        if cols <= 0:
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(self):
+                return
+        except Exception:
+            pass
+        try:
+            cols = self.columnCount()
+            if cols <= 0:
+                return
+            hdr = self.horizontalHeader()
+            if hdr is None:
+                return
+            try:
+                from shiboken6 import isValid
+
+                if not isValid(hdr):
+                    return
+            except Exception:
+                pass
+            hdr.setStretchLastSection(False)
+            # 批量改 mode 比逐列 Interactive 更稳；WebEngine 刚拆时逐列 setSectionResizeMode 易 AV
+            hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            avail = max(int(self.viewport().width()), 240)
+            weights = self._column_weights()
+            if len(weights) != cols:
+                weights = [1.0] * cols
+            total = sum(weights) or 1.0
+            used = 0
+            for c in range(cols - 1):
+                w = max(48, int(avail * weights[c] / total))
+                self.setColumnWidth(c, w)
+                used += w
+            self.setColumnWidth(cols - 1, max(48, avail - used))
+        except RuntimeError:
             return
-        hdr = self.horizontalHeader()
-        hdr.setStretchLastSection(False)
-        for c in range(cols):
-            hdr.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
-        avail = max(int(self.viewport().width()), 240)
-        weights = self._column_weights()
-        total = sum(weights) or 1.0
-        used = 0
-        for c in range(cols - 1):
-            w = max(48, int(avail * weights[c] / total))
-            self.setColumnWidth(c, w)
-            used += w
-        self.setColumnWidth(cols - 1, max(48, avail - used))
+        except Exception:
+            return
 
 
 class CalendarWidget(QCalendarWidget):

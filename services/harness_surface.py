@@ -13,8 +13,8 @@ SURFACE_BROWSER = "browser"
 
 
 def surface_mode() -> str:
-    mode = str(load_harness_config().get("surface_mode") or SURFACE_EMBED).strip().lower()
-    return mode if mode in (SURFACE_EMBED, SURFACE_BROWSER) else SURFACE_EMBED
+    mode = str(load_harness_config().get("surface_mode") or SURFACE_BROWSER).strip().lower()
+    return mode if mode in (SURFACE_EMBED, SURFACE_BROWSER) else SURFACE_BROWSER
 
 
 def prefer_embed() -> bool:
@@ -26,9 +26,9 @@ def prefer_browser() -> bool:
 
 
 def set_surface_mode(mode: str) -> None:
-    m = str(mode or SURFACE_EMBED).strip().lower()
+    m = str(mode or SURFACE_BROWSER).strip().lower()
     if m not in (SURFACE_EMBED, SURFACE_BROWSER):
-        m = SURFACE_EMBED
+        m = SURFACE_BROWSER
     save_harness_config({"surface_mode": m})
 
 

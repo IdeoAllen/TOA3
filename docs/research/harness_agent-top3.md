@@ -2,7 +2,7 @@
 
 > 状态：`shipped`（主理人 2026-08-27 验收通过 · migration_manifest `done`）
 > 日期：2026-08-27
-> 关联：`docs/功能清单与优先级.md` · AI 子模块
+> 关联：`docs/PROD-01-功能清单与优先级.md` · AI 子模块
 > 门禁：`.cursor/rules/toa3-feature-top3-research.mdc`
 
 ---

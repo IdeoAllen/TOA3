@@ -2,7 +2,7 @@
 
 > 状态：`approved`（主理人 2026-09-01 对话「通过」确认专家改定 §3.5）  
 > 日期：2026-09-01  
-> 关联：`docs/功能清单与优先级.md` · Wave F-1  
+> 关联：`docs/PROD-01-功能清单与优先级.md` · Wave F-1  
 > 门禁：`.cursor/rules/toa3-feature-top3-research.mdc`
 
 ---

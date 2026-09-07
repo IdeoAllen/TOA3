@@ -67,6 +67,7 @@ class FitPixmapLabel(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(360, 360)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # 控件库例外：预览画布需随主题 palette 描边，勿走业务硬编码色
         self.setStyleSheet("background: palette(dark); border: 1px solid palette(mid);")
         self.setText(placeholder)
 

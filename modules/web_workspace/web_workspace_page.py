@@ -254,6 +254,92 @@ class WebWorkspacePage(BasePage):
             self._ensure_view()
             self._load_current_site()
 
+    def soft_leave(self) -> None:
+        """壳层切走：停加载；View 由壳层延迟 purge。"""
+        view = self._view
+        if view is None:
+            return
+        try:
+            from PySide6.QtWebEngineCore import QWebEnginePage
+
+            page = view.page()
+            if page is not None:
+                page.triggerAction(QWebEnginePage.WebAction.Stop)
+        except Exception:
+            pass
+
+    def on_leave(self) -> None:
+        self.soft_leave()
+
+    def uses_webengine_embed(self) -> bool:
+        return self._view is not None
+
+    def keep_web_embed_on_leave(self) -> bool:
+        return False
+
+    def _destroy_web_embed(self) -> None:
+        """壳层延迟调用：拆内嵌 WebEngine，避免与其它引擎页并存闪退。"""
+        from PySide6.QtCore import QTimer
+
+        view = self._view
+        self._view = None
+        if view is None:
+            return
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            fw = QApplication.focusWidget()
+            if fw is not None and (fw is view or view.isAncestorOf(fw)):
+                fw.clearFocus()
+        except Exception:
+            pass
+        try:
+            view.hide()
+        except Exception:
+            pass
+        try:
+            view.loadStarted.disconnect()
+        except Exception:
+            pass
+        try:
+            view.loadFinished.disconnect()
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWebEngineCore import QWebEnginePage
+
+            page = view.page()
+            if page is not None:
+                page.triggerAction(QWebEnginePage.WebAction.Stop)
+            view.setPage(None)
+        except Exception:
+            pass
+        try:
+            view.setParent(None)
+        except Exception:
+            pass
+        try:
+            self._placeholder.show()
+        except Exception:
+            pass
+        QTimer.singleShot(400, lambda v=view: self._delete_view_later(v))
+
+    @staticmethod
+    def _delete_view_later(view) -> None:
+        try:
+            from shiboken6 import isValid
+
+            if view is None or not isValid(view):
+                return
+        except Exception:
+            pass
+        try:
+            view.deleteLater()
+        except RuntimeError:
+            pass
+        except Exception:
+            pass
+
     def _ensure_view(self) -> None:
         if self._view is not None:
             return

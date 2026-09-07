@@ -2,7 +2,7 @@
 
 > **status:** `research`（待主理人确认三独到处 → `approved`）  
 > **module_id:** `open_pencil`  
-> **范式：** [`docs/architecture/29-本地Web引擎嵌入范式.md`](../architecture/29-本地Web引擎嵌入范式.md)
+> **范式：** [`docs/architecture/ARCH-05-引擎与Harness.md`](../architecture/ARCH-05-引擎与Harness.md)
 
 ## 1. 场景
 

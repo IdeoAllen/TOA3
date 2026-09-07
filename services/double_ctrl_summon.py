@@ -55,10 +55,14 @@ class DoubleCtrlSummonService(QObject):
         self.stop()
         if callback is None or sys.platform != "win32":
             return ""
-        try:
-            self.summon_requested.disconnect()
-        except Exception:
-            pass
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                self.summon_requested.disconnect()
+            except (TypeError, RuntimeError):
+                pass
         self.summon_requested.connect(callback)
 
         self._user32 = ctypes.windll.user32
@@ -139,10 +143,14 @@ class DoubleCtrlSummonService(QObject):
         self._proc = None
         self._last_ctrl_up = 0.0
         self._last_ctrl_down = 0.0
-        try:
-            self.summon_requested.disconnect()
-        except Exception:
-            pass
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                self.summon_requested.disconnect()
+            except (TypeError, RuntimeError):
+                pass
 
 
 _SERVICE: DoubleCtrlSummonService | None = None

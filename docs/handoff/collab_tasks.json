@@ -1,0 +1,191 @@
+[
+  {
+    "id": "collab-c01",
+    "title": "[协作] C-01 点验 Wave★ 截图（钉图+放大镜）",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c02",
+    "title": "[协作] C-02 点验剪贴板（搜索/隐私/送记事）",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c03",
+    "title": "[协作] C-03 点验快速记事（自动保存/互拷/WYSIWYG）",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c04",
+    "title": "[协作] C-04 点验四象限（拖拽/日历/逾期）",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c05",
+    "title": "[协作] C-05 点验去水印（默认轻量 + AI 安装引导）",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c06",
+    "title": "[协作] C-06 点验截图翻译工具栏主路径",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c07",
+    "title": "[协作] C-07 点验 Wave F：PDF",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c08",
+    "title": "[协作] C-08 点验 Wave F：打包归档",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c09",
+    "title": "[协作] C-09 点验 Wave F：批量重命名",
+    "quadrant": "important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c10",
+    "title": "[协作] C-10 点验 Harness 三步开用",
+    "quadrant": "important_not_urgent",
+    "start": "",
+    "due": "2026-09-21",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c11",
+    "title": "[协作] C-11 Agent 默认改为浏览器干活（doc33已裁定）",
+    "quadrant": "important_not_urgent",
+    "start": "2026-09-07",
+    "due": "2026-09-07",
+    "done": true,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 11:35"
+  },
+  {
+    "id": "collab-c12",
+    "title": "[协作] C-12 整理并提交发版外 WIP（~85 项分批）",
+    "quadrant": "important_not_urgent",
+    "start": "",
+    "due": "2026-09-21",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c13",
+    "title": "[协作] C-13 doc 26 三点产品拍板",
+    "quadrant": "important_not_urgent",
+    "start": "",
+    "due": "2026-09-30",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c14",
+    "title": "[协作] C-14 大模型助手点验简单配置",
+    "quadrant": "important_not_urgent",
+    "start": "",
+    "due": "2026-09-21",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c15",
+    "title": "[协作] C-15 刷新待办总览工作区 commit 行",
+    "quadrant": "not_important_urgent",
+    "start": "",
+    "due": "2026-09-10",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c16",
+    "title": "[协作] C-16 toa-cloud 发版 SOP 改动入库（若需）",
+    "quadrant": "not_important_urgent",
+    "start": "",
+    "due": "2026-09-14",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c17",
+    "title": "[协作] C-17 引擎无感就绪：Hub Hold·先修 Harness/换预置；半残六件套UI禁止",
+    "quadrant": "important_not_urgent",
+    "start": "",
+    "due": "2026-10-15",
+    "done": false,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 13:40"
+  },  {
+    "id": "collab-c18",
+    "title": "[协作] C-18 发版 v3.1.11 + Portal 当前版",
+    "quadrant": "important_not_urgent",
+    "start": "2026-09-06",
+    "due": "2026-09-06",
+    "done": true,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  },
+  {
+    "id": "collab-c19",
+    "title": "[协作] C-19 版本对齐脚本 + update_manifest",
+    "quadrant": "important_not_urgent",
+    "start": "2026-09-06",
+    "due": "2026-09-06",
+    "done": true,
+    "created": "2026-09-07 10:40",
+    "updated": "2026-09-07 10:40"
+  }
+]

@@ -683,10 +683,43 @@ class MediaStudioPage(BasePage):
         self._kind_switch_timer.setInterval(60)
         self._kind_switch_timer.timeout.connect(self._apply_kind_switch)
 
+        self._ui_ready = False
+        self._ui_build_started = False
+
         m = page_content_margins()
-        root = QVBoxLayout(self)
-        root.setContentsMargins(*m)
-        root.setSpacing(8)
+        self._root = QVBoxLayout(self)
+        self._root.setContentsMargins(*m)
+        self._root.setSpacing(8)
+        self._boot_hint = HintLabel(
+            "正在打开媒体工坊…\n可随时点其它菜单离开，无需等待。"
+        )
+        self._boot_hint.setWordWrap(True)
+        self._boot_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._root.addStretch(1)
+        self._root.addWidget(self._boot_hint)
+        self._root.addStretch(1)
+
+    def request_deferred_ui(self) -> None:
+        """壳层/进页调用：分块建完整 UI，中间让出事件循环以便立刻点走。"""
+        if self._ui_ready or self._ui_build_started:
+            return
+        self._ui_build_started = True
+        QTimer.singleShot(0, self._build_ui_phase1)
+
+    def _clear_boot_skeleton(self) -> None:
+        while self._root.count():
+            item = self._root.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self._boot_hint = None
+
+    def _build_ui_phase1(self) -> None:
+        if self._ui_ready:
+            return
+        self._clear_boot_skeleton()
+        root = self._root
 
         head = QHBoxLayout()
         head.addWidget(
@@ -715,10 +748,20 @@ class MediaStudioPage(BasePage):
         self._btn_tasks.setMinimumWidth(72)
         self._btn_tasks.clicked.connect(self._toggle_task_panel)
         head.addWidget(self._btn_tasks)
-        btn_models = SecondaryButton("模型设置")
+        btn_simple = SecondaryButton("简单配置…")
+        btn_simple.setToolTip("本机生图一键安装（≤2 步）；云端 Key 走「高级」")
+        btn_simple.clicked.connect(self._open_simple_setup)
+        head.addWidget(btn_simple)
+        btn_models = SecondaryButton("高级…")
+        btn_models.setToolTip("系统设置 · 模型管理（完整表单）")
         btn_models.clicked.connect(self._open_model_settings)
         head.addWidget(btn_models)
         root.addLayout(head)
+
+        self._empty_models = HintLabel("")
+        self._empty_models.setWordWrap(True)
+        self._empty_models.setVisible(False)
+        root.addWidget(self._empty_models)
 
         self._model_note = HintLabel("")
         self._model_note.setWordWrap(True)
@@ -726,7 +769,9 @@ class MediaStudioPage(BasePage):
         root.addWidget(self._model_note)
 
         body_row = QWidget()
+        self._body_row = body_row
         body_lay = QHBoxLayout(body_row)
+        self._body_lay = body_lay
         body_lay.setContentsMargins(0, 0, 0, 0)
         body_lay.setSpacing(8)
         root.addWidget(body_row, 1)
@@ -993,6 +1038,11 @@ class MediaStudioPage(BasePage):
 
         body_lay.addWidget(left, 0)
 
+        QTimer.singleShot(0, self._build_ui_phase2)
+
+    def _build_ui_phase2(self) -> None:
+        if self._ui_ready:
+            return
         # —— 右侧：预览 + 可选任务侧栏（不用 QSplitter，避免 Windows 上 OverflowError 闪退）——
         self._right_row = QWidget()
         right_row_lay = QHBoxLayout(self._right_row)
@@ -1115,18 +1165,26 @@ class MediaStudioPage(BasePage):
         task_lay.addWidget(self._task_scroll, 1)
         right_row_lay.addWidget(self._task_panel, 0)
 
-        body_lay.addWidget(self._right_row, 1)
+        self._body_lay.addWidget(self._right_row, 1)
 
         self._apply_kind_ui()
         self._kind_tabs.currentChanged.connect(self._on_kind_tab)
         self._queue.task_updated.connect(self._on_task_updated)
         self._queue.queue_changed.connect(self._refresh_task_badge)
+        self._ui_ready = True
         self.apply_page_focus_policy()
+        if self._page_is_active():
+            self._schedule_enter_data()
+
 
     def primary_focus_widget(self):
+        if not self._ui_ready:
+            return None
         return self._prompt
 
     def focus_tab_widgets(self) -> list[QWidget]:
+        if not self._ui_ready:
+            return []
         return [
             self._prompt,
             self._btn_ref,
@@ -1141,12 +1199,16 @@ class MediaStudioPage(BasePage):
         return self._video_model_combo if self._kind == _KIND_VIDEO else self._image_model_combo
 
     def _set_result_actions(self, path: Path) -> None:
+        if not self._ui_ready:
+            return
         is_video = path.suffix.lower() in (".mp4", ".webm", ".mov")
         self._btn_open.setEnabled(True)
         self._btn_play.setEnabled(is_video)
         self._btn_copy.setEnabled(not is_video)
 
     def _on_works_panel_drag(self, dy: int) -> None:
+        if not self._ui_ready:
+            return
         # 向下拖 = 预览区变大 → 作品条高度减小
         new_h = max(96, min(320, self._works_block.height() - dy))
         if new_h == self._works_block.height():
@@ -1155,7 +1217,7 @@ class MediaStudioPage(BasePage):
         self._works_block.setFixedHeight(new_h)
 
     def _init_models_once(self) -> None:
-        if self._enter_models_ready:
+        if not self._ui_ready or self._enter_models_ready:
             return
         # 先进图片模型（当前默认 tab），视频模型滞后，减轻首进卡顿
         self._reload_models(
@@ -1168,7 +1230,7 @@ class MediaStudioPage(BasePage):
         QTimer.singleShot(350, self._deferred_load_video_models)
 
     def _deferred_load_video_models(self) -> None:
-        if not self._page_is_active():
+        if not self._ui_ready or not self._page_is_active():
             return
         self._reload_models(
             select_active=True,
@@ -1178,29 +1240,36 @@ class MediaStudioPage(BasePage):
         )
 
     def prewarm_enter(self) -> None:
-        """壳层空闲预建：仅轻量刷图片模型，作品与视频模型仍进页再挂。"""
-        if self._enter_models_ready:
+        """壳层空闲预建：先分块 UI，再轻量刷图片模型。"""
+        self.request_deferred_ui()
+        if not self._ui_ready or self._enter_models_ready:
             return
         self._init_models_once()
 
-    def on_enter(self) -> None:
-        self.report_status("媒体工坊")
+    def _schedule_enter_data(self) -> None:
+        """UI 就绪后灌模型/作品；可被 on_enter 与建页收尾共用。"""
+        if not self._ui_ready:
+            return
         if self._enter_models_ready:
             QTimer.singleShot(2400, self._ensure_video_posters_if_active)
-            # 作品条滞后刷新，不挡首帧
             QTimer.singleShot(450, self._deferred_reload_works_if_active)
             return
-        # 分批：先让页面出帧 → 模型 → 再历史
         QTimer.singleShot(50, self._bootstrap_models_deferred)
         QTimer.singleShot(420, self._bootstrap_works_deferred)
 
+    def on_enter(self) -> None:
+        self.report_status("媒体工坊")
+        self.request_deferred_ui()
+        if self._ui_ready:
+            self._schedule_enter_data()
+
     def _bootstrap_models_deferred(self) -> None:
-        if not self._page_is_active() or self._enter_models_ready:
+        if not self._ui_ready or not self._page_is_active() or self._enter_models_ready:
             return
         self._init_models_once()
 
     def _bootstrap_works_deferred(self) -> None:
-        if not self._page_is_active():
+        if not self._ui_ready or not self._page_is_active():
             return
         self._show_works_loading_hint()
         self._reload_works_if_needed()
@@ -1254,7 +1323,8 @@ class MediaStudioPage(BasePage):
         QTimer.singleShot(350, self._bootstrap_works_deferred)
 
     def on_leave(self) -> None:
-        self._preview.stop_media()
+        if self._ui_ready and hasattr(self, "_preview"):
+            self._preview.stop_media()
         self._works_reload_gen += 1
 
     def _deferred_reload_works(self) -> None:
@@ -1270,6 +1340,28 @@ class MediaStudioPage(BasePage):
             elif page is not None and hasattr(page, "open_model_hub_tab"):
                 page.open_model_hub_tab()
 
+    def _open_simple_setup(self) -> None:
+        """探索路径：图片优先一键装本机生图；视频引导高级绑定。"""
+        if self._kind == _KIND_VIDEO:
+            from core.user_messages import ask_confirm
+
+            if ask_confirm(
+                self,
+                "视频算力通常需云端 Key。\n"
+                "下一步打开「模型管理」：① 选视频来源 ② 粘贴 Key 保存。\n"
+                "也可稍后再说，先浏览本页。",
+                title="简单配置 · 视频",
+            ):
+                self._open_model_settings()
+            return
+        from modules.system_settings.local_image_setup_dialog import LocalImageSetupDialog
+
+        dlg = LocalImageSetupDialog(self)
+        dlg.exec()
+        self._reload_models(select_active=True, refresh_cache=True)
+        if dlg.ready:
+            self.report_status("本机生图已就绪", level=StatusLevel.SUCCESS)
+
     def _on_kind_tab(self, index: int) -> None:
         self._pending_kind_index = int(index)
         self._kind_switch_timer.start()
@@ -1282,6 +1374,7 @@ class MediaStudioPage(BasePage):
         self._kind = new_kind
         self._model_combo_stack.setCurrentIndex(0 if new_kind == _KIND_IMAGE else 1)
         self._apply_kind_ui()
+        self._sync_empty_models_hint()
 
     def _on_img_mode_id(self, index: int) -> None:
         self._img_mode = (_IMG_TXT, _IMG_REF, _IMG_FUSE)[index]
@@ -1404,7 +1497,8 @@ class MediaStudioPage(BasePage):
         combo.clear()
         select_index = -1
         if not profiles:
-            combo.addItem("（无可用模型 · 请点「模型设置」绑定）", "")
+            combo.addItem("（无可用模型）", "")
+            combo.addItem("＋ 简单配置…", "__bind__")
         else:
             idx = 0
             for label, prof in group_profiles_for_combo(profiles):
@@ -1419,12 +1513,13 @@ class MediaStudioPage(BasePage):
                     if select_id and pid == select_id:
                         select_index = idx
                 idx += 1
+            combo.addItem("＋ 简单配置…", "__bind__")
             if select_index >= 0:
                 combo.setCurrentIndex(select_index)
             else:
                 for i in range(combo.count()):
                     item = combo.model().item(i)
-                    if item is not None and item.isEnabled():
+                    if item is not None and item.isEnabled() and combo.itemData(i) not in ("", "__bind__"):
                         combo.setCurrentIndex(i)
                         break
         combo.blockSignals(False)
@@ -1485,26 +1580,34 @@ class MediaStudioPage(BasePage):
         if refresh_cache:
             img_id = ""
             vid_id = ""
-            if "image_gen" in caps and self._image_profiles:
+            if "image_gen" in caps:
                 cap = "image_gen"
                 ids = [str(p.get("id") or "") for p in self._image_profiles]
                 active = get_active_profile_id(cap)
                 img_id = (
                     active
                     if active in ids
-                    else pick_effective_profile_id(cap, persist=persist_pick)
+                    else (
+                        pick_effective_profile_id(cap, persist=persist_pick)
+                        if self._image_profiles
+                        else ""
+                    )
                 )
                 self._fill_grouped_model_combo(
                     self._image_model_combo, self._image_profiles, select_id=img_id
                 )
-            if "video_gen" in caps and self._video_profiles:
+            if "video_gen" in caps:
                 cap = "video_gen"
                 ids = [str(p.get("id") or "") for p in self._video_profiles]
                 active = get_active_profile_id(cap)
                 vid_id = (
                     active
                     if active in ids
-                    else pick_effective_profile_id(cap, persist=persist_pick)
+                    else (
+                        pick_effective_profile_id(cap, persist=persist_pick)
+                        if self._video_profiles
+                        else ""
+                    )
                 )
                 self._fill_grouped_model_combo(
                     self._video_model_combo, self._video_profiles, select_id=vid_id
@@ -1518,6 +1621,22 @@ class MediaStudioPage(BasePage):
             self._fill_grouped_model_combo(combo, rows, select_id=select_id)
         self._model_combo_stack.setCurrentIndex(0 if self._kind == _KIND_IMAGE else 1)
         self._sync_image_param_panels()
+        self._sync_empty_models_hint()
+
+    def _sync_empty_models_hint(self) -> None:
+        rows = self._video_profiles if self._kind == _KIND_VIDEO else self._image_profiles
+        if rows:
+            self._empty_models.setVisible(False)
+            return
+        if self._kind == _KIND_VIDEO:
+            self._empty_models.setText(
+                "暂无视频模型。点「简单配置…」两步绑 Key；也可稍后再说，先浏览本页。"
+            )
+        else:
+            self._empty_models.setText(
+                "暂无生图模型。点「简单配置…」一键装本机生图（≤2 步）；也可稍后再说。"
+            )
+        self._empty_models.setVisible(True)
 
     def _combo_index_for_profile(self, profile_id: str) -> int:
         combo = self._active_model_combo()
@@ -1534,7 +1653,10 @@ class MediaStudioPage(BasePage):
         item = combo.model().item(idx)
         if item is not None and not item.isEnabled():
             return ""
-        return str(combo.currentData() or "")
+        data = combo.currentData()
+        if data in ("", "__bind__", None):
+            return ""
+        return str(data)
 
     def _on_model_changed(self, _index: int) -> None:
         sender = self.sender()
@@ -1544,6 +1666,18 @@ class MediaStudioPage(BasePage):
         idx = combo.currentIndex()
         if idx >= 0:
             combo.setToolTip(combo.itemText(idx))
+        data = combo.currentData()
+        if data == "__bind__":
+            combo.blockSignals(True)
+            for i in range(combo.count()):
+                item = combo.model().item(i)
+                d = combo.itemData(i)
+                if item is not None and item.isEnabled() and d not in ("", "__bind__", None):
+                    combo.setCurrentIndex(i)
+                    break
+            combo.blockSignals(False)
+            self._open_simple_setup()
+            return
         pid = self._current_profile_id()
         if not pid:
             return
@@ -1764,7 +1898,16 @@ class MediaStudioPage(BasePage):
             return
         pid = self._current_profile_id()
         if not pid:
-            show_warning(self, "请先选择模型，或到「模型设置」绑定 Key。")
+            from core.user_messages import ask_confirm
+
+            if ask_confirm(
+                self,
+                "还没有可用模型。现在「简单配置」？\n"
+                "图片：一键装本机生图；视频：两步绑 Key。\n"
+                "也可稍后再说。",
+                title="探索模型",
+            ):
+                self._open_simple_setup()
             return
 
         refs = [str(p) for p in self._ref_paths if p.is_file()]

@@ -61,6 +61,7 @@ class ListPanel(QWidget):
             row.addWidget(self._btn_refresh)
         else:
             self._btn_refresh.hide()
+        self._btn_row = row
         row.addStretch(1)
         root.addLayout(row)
 
@@ -89,6 +90,20 @@ class ListPanel(QWidget):
 
     def bind_refresh(self, fn: Callable) -> None:
         self._on_refresh = fn
+
+    def append_action_button(self, button: QWidget) -> None:
+        """把额外按钮插进操作栏（在 stretch 之前），用于「清空历史」等同排。"""
+        row = getattr(self, "_btn_row", None)
+        if row is None or button is None:
+            return
+        try:
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        except Exception:
+            pass
+        # stretch 通常是最后一项
+        idx = max(0, row.count() - 1)
+        row.insertWidget(idx, button)
 
     def set_items(self, items: list[str]) -> None:
         self._list.clear()

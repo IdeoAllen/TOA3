@@ -289,7 +289,7 @@ class HarnessAgentPage(BasePage):
         self._status_label.setMinimumWidth(148)
         bar.addWidget(self._status_label)
 
-        self._btn_start = PrimaryButton("启动服务")
+        self._btn_start = SecondaryButton("启动服务")
         self._btn_start.setMinimumWidth(96)
         self._btn_start.setMinimumHeight(32)
         self._btn_start.clicked.connect(self._on_start)
@@ -305,6 +305,14 @@ class HarnessAgentPage(BasePage):
         self._start_stop_stack.addWidget(self._btn_start)
         self._start_stop_stack.addWidget(self._btn_stop)
         bar.addWidget(self._start_stop_stack)
+
+        # 主 CTA：浏览器干活（doc 33 / C-11）；内嵌改为「更多」可选
+        self._btn_open_browser = PrimaryButton("在浏览器打开")
+        self._btn_open_browser.setMinimumWidth(120)
+        self._btn_open_browser.setMinimumHeight(32)
+        self._btn_open_browser.setToolTip("在系统浏览器打开 DeepSeek Harness 官方界面（推荐）")
+        self._btn_open_browser.clicked.connect(self._open_external)
+        bar.addWidget(self._btn_open_browser)
 
         self._btn_refresh = SecondaryButton("刷新")
         self._btn_refresh.setMinimumWidth(72)
@@ -358,9 +366,12 @@ class HarnessAgentPage(BasePage):
 
         self._host = _HarnessWebHost()
         if not self._web_ready:
-            self._host.set_placeholder("当前环境未包含内嵌浏览器，请用「更多 → 在浏览器打开」。")
+            self._host.set_placeholder("点「在浏览器打开」使用系统浏览器（推荐）。")
         else:
-            self._host.set_placeholder("正在准备 DeepSeek Harness…")
+            self._host.set_placeholder(
+                "推荐：点「在浏览器打开」干活。\n"
+                "需要套件内预览时：更多 → 改回套件内嵌显示。"
+            )
         web_outer.addWidget(self._host, 1)
         self._body_stack.addWidget(self._web_wrap)
         self._body_stack.setCurrentIndex(1)
@@ -370,6 +381,7 @@ class HarnessAgentPage(BasePage):
 
     def _sync_service_bar_placeholder(self) -> None:
         self._btn_start.setEnabled(False)
+        self._btn_open_browser.setEnabled(False)
         self._start_stop_stack.setCurrentIndex(0)
 
     def _rebuild_more_menu(self) -> None:
@@ -381,11 +393,11 @@ class HarnessAgentPage(BasePage):
             return
         self._more_menu_signature = signature
         self._more_menu.clear()
-        self._more_menu.addAction("在浏览器打开", self._open_external)
+        self._more_menu.addAction("再次打开浏览器", self._open_external)
         if embed:
-            self._more_menu.addAction("改用系统浏览器显示", self._switch_to_browser_surface)
+            self._more_menu.addAction("改用系统浏览器显示（推荐）", self._switch_to_browser_surface)
         else:
-            self._more_menu.addAction("改回套件内嵌显示", self._switch_to_embed_surface)
+            self._more_menu.addAction("改回套件内嵌显示（可选）", self._switch_to_embed_surface)
         # 单一入口：强杀端口占用 + 注入密钥后由 TOA 托管（旧「接管并重启」已合并）
         self._more_menu.addAction("重启服务", self._on_restart)
         self._more_menu.addAction("修复运行环境", self._on_repair_env)
@@ -399,7 +411,7 @@ class HarnessAgentPage(BasePage):
         if self._setup_state == HarnessPageState.NEEDS_KEY and self._body_stack.currentIndex() == 0:
             return self._setup_gate._key_edit
         # 勿把焦点交给 WebEngine，避免进页时整窗闪动（网页工作台也只聚焦工具条）
-        return self._btn_refresh if self._body_stack.currentIndex() == 1 else None
+        return self._btn_open_browser if self._body_stack.currentIndex() == 1 else None
 
     def _page_active(self, visit: int | None = None) -> bool:
         if visit is not None and visit != self._visit_gen:
@@ -734,9 +746,20 @@ class HarnessAgentPage(BasePage):
             (not st.running) and st.install == InstallState.READY and not self._action_busy
         )
         self._btn_stop.setEnabled(st.running and not self._action_busy)
+        self._btn_open_browser.setEnabled(
+            st.install == InstallState.READY and st.running and not self._action_busy
+        )
         self._btn_refresh.setEnabled(True)
         self._btn_more.setEnabled(True)
-        self._btn_refresh.setToolTip("重新探测状态并刷新内嵌页")
+        self._btn_open_browser.setToolTip(
+            "在系统浏览器打开 DeepSeek Harness（推荐主路径）"
+            if st.running
+            else "请先启动服务"
+        )
+        self._btn_refresh.setToolTip(
+            "重新探测状态"
+            + ("并刷新内嵌页" if prefer_embed() else "")
+        )
         self._btn_more.setToolTip("")
         self._btn_stop.setToolTip("停止 Harness 服务")
 
@@ -748,7 +771,7 @@ class HarnessAgentPage(BasePage):
                 self._apply_browser_surface(status)
                 return
             if not self._web_ready:
-                self._show_web_idle("服务已运行 · 请用「更多 → 在浏览器打开」")
+                self._show_web_idle("服务已运行 · 点「在浏览器打开」")
                 return
             if self._view is not None:
                 current = (self._view.url().toString() or "").rstrip("/")
@@ -766,13 +789,16 @@ class HarnessAgentPage(BasePage):
             elif interim_busy and self._should_keep_embed_on_enter():
                 self._show_web_embed()
             else:
-                self._show_web_idle("服务未启动 · 点「启动服务」后加载界面")
+                self._show_web_idle(
+                    "服务未启动 · 点「启动服务」后将在浏览器打开"
+                    if prefer_browser()
+                    else "服务未启动 · 点「启动服务」后加载界面"
+                )
 
     def _apply_browser_surface(self, status: HarnessStatus) -> None:
-        """surface_mode=browser：同一 URL 开系统浏览器，页内仅占位。
+        """surface_mode=browser：同一 URL 开系统浏览器，页内仅占位（产品默认）。
 
-        注意：仅用户显式选「系统浏览器」时走此路径；dsh 侧已加 --no-open，
-        避免启动时再弹一次外部浏览器。
+        dsh 侧已加 --no-open，避免启动时再弹一次；由本页主 CTA / 进页逻辑打开。
         """
         url = status.url or web_url()
         first = not self._browser_surface_opened
@@ -782,7 +808,7 @@ class HarnessAgentPage(BasePage):
         self._web_embedded_ok = False
         self._show_web_idle(
             f"已在系统浏览器打开 · {url}\n"
-            "点「更多 → 改回套件内嵌显示」可收回 WebEngine。"
+            "复杂会话请在浏览器完成。需要套件内预览：更多 → 改回套件内嵌显示。"
         )
         if first:
             self.report_status("已在系统浏览器打开 Harness", level=StatusLevel.SUCCESS)
@@ -795,11 +821,13 @@ class HarnessAgentPage(BasePage):
             # 操作中：禁启停与更多，避免叠操作；刷新仍可用以便强制看状态
             self._btn_start.setEnabled(False)
             self._btn_stop.setEnabled(False)
+            self._btn_open_browser.setEnabled(False)
             self._btn_more.setEnabled(False)
             self._btn_refresh.setEnabled(True)
             tip = f"正在执行：{label}（完成后可操作）"
             self._btn_start.setToolTip(tip)
             self._btn_stop.setToolTip(tip)
+            self._btn_open_browser.setToolTip(tip)
             self._btn_more.setToolTip(tip)
             self._btn_refresh.setToolTip("强制刷新状态/页面（当前操作仍在后台进行）")
         elif not busy:

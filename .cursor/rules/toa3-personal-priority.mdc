@@ -1,5 +1,5 @@
 ---
-description: 个人最高频八件套优先；培训线后置；菜单可维护
+description: 个人最高频八件套优先；培训线后置
 alwaysApply: true
 ---
 
@@ -7,20 +7,13 @@ alwaysApply: true
 
 ## 主线（Wave★）
 
-按序做强，未达标前不扩培训主链：
-
 1. screenshot_tool  2. clipboard_history  3. quick_notepad  
-4. quadrant_tasks（missing）  5. watermark_remover  6. image_watermark  
-7. directory_generator  8. screenshot_translate（挂截图，勿空菜单）
+4. quadrant_tasks（mvp · 点验清 gaps）  5. watermark_remover  
+6. ~~image_watermark~~（已降级隐藏）  
+7. directory_generator（done）  8. screenshot_translate（挂截图）
 
-真相源：`docs/功能清单与优先级.md` §0.5
-
-## 降级
-
-- `pomodoro`、`image_creator`：非八件套 → P2/Hold，菜单可隐藏  
-- 培训模块：八件套达标后再排
+真相源：`docs/PROD-01-功能清单与优先级.md` §0.5 + `config/migration_manifest.yml`
 
 ## 菜单
 
-- 入口只来自 `config/app.yml` / `data/user/menu.yml`  
-- 禁止在 `home_page` / `shell` 写死工具列表
+入口只来自 `config/app.yml` / `data/user/menu.yml`；禁止业务页写死列表。

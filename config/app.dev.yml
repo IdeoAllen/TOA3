@@ -18,7 +18,8 @@ update:
   manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
   download_page: https://www.yczh.tech/downloads/
 log_config:
-  log_level: INFO
+  log_level: DEBUG
+  enable_console_log: true
 hotkeys:
   close_to_background: true
   enable_screenshot: true

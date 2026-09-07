@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 _HEADER_LOGO = 44
 _HEADER_ICON = 18
 _HEADER_BTN = 30
-# 离开这些页时需冷却再进下一页，避免 WebEngine 销毁与设置页构建撞车闪退
+# 离开这些页时若挂了 WebEngine，需延迟拆 View（切页立刻响应壳，Guest 后清）
 _WEBENGINE_MODULE_IDS = frozenset(
     {
         "harness_agent",
@@ -63,9 +63,45 @@ _WEBENGINE_MODULE_IDS = frozenset(
         "drawio_web",
         "comfyui_web",
         "web_workspace",
+    }
+)
+# 首次建页偏重的模块（仍走通用 Loading；保留常量供审计/文档引用）
+_HEAVY_BUILD_MODULE_IDS = frozenset(
+    {
         "media_studio",
     }
 )
+
+
+class _LoadingGuestPage(BasePage):
+    """子页未就位时的壳内占位：带不确定进度，可随时被 navigate 切走。"""
+
+    def __init__(self, module_id: str, title: str, parent=None) -> None:
+        super().__init__(parent)
+        self.page_id = module_id
+        self.page_title = title or module_id
+        from widgets import HintLabel, ProgressBar
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(32, 32, 32, 32)
+        lay.setSpacing(12)
+        lay.addStretch(1)
+        tip = HintLabel(f"正在打开「{self.page_title}」…")
+        tip.setWordWrap(True)
+        tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(tip)
+        self._progress = ProgressBar()
+        self._progress.setRange(0, 0)
+        self._progress.setTextVisible(False)
+        self._progress.setMinimumHeight(8)
+        self._progress.setMaximumHeight(8)
+        self._progress.setMaximumWidth(320)
+        lay.addWidget(self._progress, 0, Qt.AlignmentFlag.AlignHCenter)
+        sub = HintLabel("可随时点其它菜单离开，主窗口不会卡住。")
+        sub.setWordWrap(True)
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(sub)
+        lay.addStretch(2)
 _NAV_ICON = 22
 _QUICK_ICON = 20
 _MENU_ICON = 18
@@ -197,6 +233,8 @@ class MainShell(QMainWindow):
         self._shell_spec = shell_spec()
 
         self._pages: dict[str, BasePage] = {}
+        self._loading_guests: dict[str, BasePage] = {}
+        self._nav_seq = 0
         self._nav_buttons: dict[str, QPushButton] = {}
         self._nav_items: dict[str, dict] = {}
         self._nav_group_headers: dict[str, QPushButton] = {}
@@ -441,6 +479,18 @@ class MainShell(QMainWindow):
             return
         from services.single_instance import release_single_instance
 
+        # 先拆尽 WebEngine，再关窗（否则 Qt 析构顺序易原生闪退）
+        try:
+            self._purge_stale_web_embeds(except_mid=None)
+        except Exception:
+            logger.debug("退出前 purge WebEmbed 失败", exc_info=True)
+        try:
+            from services.shared_local_webengine import shutdown as shutdown_shared_web
+
+            shutdown_shared_web()
+        except Exception:
+            logger.debug("退出前 shutdown shared webengine 失败", exc_info=True)
+
         get_hotkey_service().shutdown()
         get_scheduler().shutdown()
         get_tray().stop()
@@ -537,11 +587,11 @@ class MainShell(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # 始终预留滚动条槽位，避免有/无滚动条时右内边距跳动
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        # 二级菜单项通常装得下：不预留滚动条槽；仅内容溢出时再出现
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         nav_host = QWidget()
         self._nav_layout = QVBoxLayout(nav_host)
-        self._nav_layout.setContentsMargins(10, 8, 6, 8)
+        self._nav_layout.setContentsMargins(10, 8, 10, 8)
         self._nav_layout.setSpacing(2)
         scroll.setWidget(nav_host)
         nav_outer.addWidget(scroll, 1)
@@ -811,6 +861,12 @@ class MainShell(QMainWindow):
             self._domain_btn_group.addButton(btn)
             # 用 pressed+强制选中，避免 checkable 自切换造成「一点就推」
             btn.clicked.connect(lambda _=False, g=group_id: self.select_domain(g))
+            btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda pos, g=group_id, b=btn: self._on_domain_context_menu(
+                    g, b.mapToGlobal(pos)
+                )
+            )
             lay.addWidget(btn)
             self._domain_buttons[group_id] = btn
 
@@ -838,10 +894,44 @@ class MainShell(QMainWindow):
         btn.setAutoExclusive(False)
         btn.setToolTip(f"{label}（子模块 · 子系统）")
         btn.clicked.connect(lambda _=False, g=gid: self.select_domain(g))
+        btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        btn.customContextMenuRequested.connect(
+            lambda pos, g=gid, b=btn: self._on_domain_context_menu(g, b.mapToGlobal(pos))
+        )
         if self._domain_btn_group is not None:
             self._domain_btn_group.addButton(btn)
         self._domain_buttons[gid] = btn
         return btn
+
+    def _on_domain_context_menu(self, group_id: str, global_pos) -> None:
+        """顶栏自定义子模块右键：取消一级菜单（侧栏被隐藏时仍可降回）。"""
+        from core.user_messages import ask_confirm, show_warning
+        from services.menu_promote import demote_module_from_top_level
+        from services.menu_registry import is_custom_group_id
+
+        gid = str(group_id or "").strip().lower()
+        if not is_custom_group_id(gid):
+            return
+        # 自定义 Tab 通常 group==module_id
+        name = group_label(gid)
+        menu = QMenu(self)
+        act = menu.addAction("取消一级菜单")
+        chosen = menu.exec(global_pos)
+        if chosen is not act:
+            return
+        if not ask_confirm(self, f"将「{name}」取消一级菜单，降回侧栏？", title="取消一级菜单"):
+            return
+        ok, msg = demote_module_from_top_level(gid)
+        if not ok:
+            show_warning(self, msg)
+            return
+        self._on_nav_rebuild()
+        self.show_status(msg, level=StatusLevel.SUCCESS)
+        item2 = get_menu_item_by_id(gid) or {}
+        dest = str(item2.get("group") or "business")
+        self.select_domain(dest, navigate_first=False)
+        if item2:
+            self.navigate(gid)
 
     def _rebuild_domain_tabs(self) -> None:
         """按当前 group_order 重排顶栏，并仅展示有可见模块的域 Tab。"""
@@ -1480,10 +1570,69 @@ class MainShell(QMainWindow):
         btn.setIcon(menu_item_icon(icon_key, size=_NAV_ICON, parent=self))
         btn.setIconSize(QSize(_NAV_ICON, _NAV_ICON))
         btn.setProperty("navItem", "true")
+        btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        btn.customContextMenuRequested.connect(
+            lambda pos, m=module_id, b=btn: self._on_nav_context_menu(m, b.mapToGlobal(pos))
+        )
         btn.clicked.connect(lambda _=False, m=module_id: self._on_nav_clicked(m))
         self._nav_buttons[module_id] = btn
         self._nav_items[module_id] = menu_item
         self._nav_layout.addWidget(btn)
+
+    def _on_nav_context_menu(self, module_id: str, global_pos) -> None:
+        """侧栏右键：置为 / 取消一级菜单（写本机 menu.yml）。"""
+        from core.user_messages import ask_confirm, show_warning
+        from services.menu_promote import (
+            PROMOTE_BLOCK_IDS,
+            demote_module_from_top_level,
+            is_top_level_module,
+            promote_module_to_top_level,
+        )
+
+        mid = str(module_id or "").strip()
+        if not mid or mid in SYSTEM_ACTIONS or mid.startswith("__"):
+            return
+        item = self._nav_items.get(mid) or self._menu_meta.get(mid) or {}
+        name = str(item.get("name") or mid)
+        menu = QMenu(self)
+        if is_top_level_module(mid, item=item):
+            act = menu.addAction("取消一级菜单")
+            act.setToolTip("降回原来的侧栏分组")
+            chosen = menu.exec(global_pos)
+            if chosen is not act:
+                return
+            if not ask_confirm(self, f"将「{name}」取消一级菜单，降回侧栏？", title="取消一级菜单"):
+                return
+            ok, msg = demote_module_from_top_level(mid)
+        else:
+            if mid in PROMOTE_BLOCK_IDS:
+                show_warning(self, "系统入口不可置为一级菜单。")
+                return
+            act = menu.addAction("置为一级菜单")
+            act.setToolTip("提升为顶栏独立 Tab；仅一项时侧栏会自动隐藏")
+            chosen = menu.exec(global_pos)
+            if chosen is not act:
+                return
+            if not ask_confirm(
+                self,
+                f"将「{name}」置为一级菜单？\n顶栏将出现独立 Tab。",
+                title="置为一级菜单",
+            ):
+                return
+            ok, msg = promote_module_to_top_level(mid)
+        if not ok:
+            show_warning(self, msg)
+            return
+        self._on_nav_rebuild()
+        self.show_status(msg, level=StatusLevel.SUCCESS)
+        if ok and not is_top_level_module(mid):
+            # 刚降级：回到目标域
+            item2 = get_menu_item_by_id(mid) or {}
+            gid = str(item2.get("group") or "business")
+            self.select_domain(gid, navigate_first=False)
+            self.navigate(mid)
+        elif ok:
+            self.select_domain(mid, navigate_first=True)
 
     def _set_nav_group_header(self, group_id: str, expanded: bool) -> None:
         header = self._nav_group_headers.get(group_id)
@@ -1527,10 +1676,382 @@ class MainShell(QMainWindow):
             "id": module_id,
             "name": module_id,
         }
-        page = create_page(module_id, item)
+        try:
+            page = create_page(module_id, item)
+        except SystemExit as e:
+            logger.error("模块建页试图退出进程（已拦截）mid=%s code=%s", module_id, e.code)
+            show_warning(self, f"「{self._loading_guest_title(module_id)}」加载异常，外壳仍可用。")
+            return None
+        except Exception:
+            logger.exception("创建模块页失败: %s", module_id)
+            show_warning(self, f"无法打开「{self._loading_guest_title(module_id)}」，外壳仍可用。")
+            return None
+        if page is None:
+            return None
         self._pages[module_id] = page
         self._stack.addWidget(page)
         return page
+
+    def _safe_call_page(self, page, method: str, *args, **kwargs) -> None:
+        """Guest 页回调失败不得拖垮主壳（含拦截 SystemExit）。"""
+        if page is None or not hasattr(page, method):
+            return
+        try:
+            getattr(page, method)(*args, **kwargs)
+        except SystemExit as e:
+            logger.error(
+                "页面 %s.%s 试图退出进程（已拦截）code=%s",
+                type(page).__name__,
+                method,
+                e.code,
+            )
+            self.show_status("子页异常已隔离，外壳继续", level=StatusLevel.WARNING)
+        except Exception:
+            logger.exception("页面 %s.%s 异常（已隔离，壳继续）", type(page).__name__, method)
+            try:
+                self.show_status("子页异常已隔离，外壳继续", level=StatusLevel.WARNING)
+            except Exception:
+                pass
+
+    def _safe_purge_web_embed(self, page) -> None:
+        """仅销毁内嵌 WebEngine View；禁止 processEvents / 禁止丢弃整页。"""
+        if page is None:
+            return
+        mid = getattr(page, "page_id", None) or type(page).__name__
+        logger.debug("purge web embed mid=%s", mid)
+        try:
+            if hasattr(page, "_destroy_web_embed"):
+                page._destroy_web_embed()
+        except SystemExit:
+            logger.error("销毁 WebEmbed 时试图退出进程（已拦截）")
+        except Exception:
+            logger.debug("延迟销毁 WebEngine 失败", exc_info=True)
+
+    def _purge_stale_web_embeds(self, *, except_mid: str | None = None) -> None:
+        """进任一引擎页前，拆掉其它模块残留 View，禁止多 Chromium 并存。"""
+        for mid, page in list(self._pages.items()):
+            if except_mid and mid == except_mid:
+                continue
+            if mid not in _WEBENGINE_MODULE_IDS:
+                continue
+            self._safe_purge_web_embed(page)
+
+    def _page_is_web_heavy(self, module_id: str | None, page) -> bool:
+        if not module_id or module_id not in _WEBENGINE_MODULE_IDS or page is None:
+            return False
+        check = getattr(page, "uses_webengine_embed", None)
+        if callable(check):
+            try:
+                return bool(check())
+            except Exception:
+                return False
+        try:
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+
+            return any(isinstance(c, QWebEngineView) for c in page.findChildren(QWebEngineView))
+        except Exception:
+            return module_id in _WEBENGINE_MODULE_IDS
+
+    def _leave_guest(self, leaving: str | None, leaving_page, *, mid: str) -> bool:
+        """软离当前 Guest。返回是否曾为 web-heavy。"""
+        if leaving_page is None or not leaving or leaving == mid:
+            return False
+        web_heavy = self._page_is_web_heavy(leaving, leaving_page)
+        if hasattr(leaving_page, "soft_leave"):
+            self._safe_call_page(leaving_page, "soft_leave")
+        else:
+            self._safe_call_page(leaving_page, "on_leave")
+        return web_heavy
+
+    def _handoff_engine_embed(self, page) -> None:
+        """引擎↔引擎：只清本页引用，共享 View 留给下一页 acquire（禁止 hide/Stop）。"""
+        if page is None:
+            return
+        mid = getattr(page, "page_id", None) or type(page).__name__
+        logger.debug("handoff engine embed mid=%s", mid)
+        try:
+            if hasattr(page, "_handoff_web_embed"):
+                page._handoff_web_embed()
+            elif hasattr(page, "_host") and hasattr(page._host, "detach_view"):
+                setattr(page, "_view", None)
+                setattr(page, "_embedded_url", "")
+                setattr(page, "_web_embedded_ok", False)
+                page._host.detach_view(hide=False)
+        except SystemExit:
+            logger.error("引擎 handoff 时试图退出进程（已拦截）")
+        except Exception:
+            logger.debug("引擎 handoff 失败", exc_info=True)
+
+    def _schedule_purge_if_needed(self, web_heavy: bool, leaving_page) -> None:
+        """跨模块离开 web-heavy：立刻拆引用（deleteLater 仍由业务页延迟）。
+
+        禁止再「等 300ms 再 purge」——下一页 enter 会在等待窗口内再建第二份 WebEngine，原生闪退。
+        引擎↔引擎勿走此路径（用 _handoff_engine_embed）。
+        """
+        if not web_heavy or leaving_page is None:
+            return
+        self._safe_purge_web_embed(leaving_page)
+
+    def _loading_guest_title(self, module_id: str) -> str:
+        item = self._menu_meta.get(module_id) or get_menu_item_by_id(module_id) or {}
+        return str(item.get("name") or module_id)
+
+    def _ensure_loading_guest(self, module_id: str) -> BasePage:
+        existing = self._loading_guests.get(module_id)
+        if existing is not None:
+            return existing
+        page = _LoadingGuestPage(module_id, self._loading_guest_title(module_id), self)
+        self._loading_guests[module_id] = page
+        self._stack.addWidget(page)
+        return page
+
+    def _discard_loading_guest(self, module_id: str) -> None:
+        page = self._loading_guests.pop(module_id, None)
+        if page is None:
+            return
+        try:
+            self._stack.removeWidget(page)
+            page.deleteLater()
+        except Exception:
+            logger.debug("discard loading guest failed", exc_info=True)
+
+    def _apply_nav_chrome(self, mid: str, *, title: str | None = None) -> None:
+        """只更新壳 chrome（顶栏域/侧栏勾选/状态），不创建业务页。"""
+        if not self.updatesEnabled():
+            self.setUpdatesEnabled(True)
+        self.set_page_shortcuts(None)
+        self._current_id = mid
+        self._st.set_module(mid)
+        self._sync_domain_for_module(mid)
+        for nav_mid, btn in self._nav_buttons.items():
+            btn.setChecked(nav_mid == mid)
+        label = title or self._loading_guest_title(mid)
+        self.show_status(f"当前：{label}", level=StatusLevel.INFO)
+
+    def navigate(self, module_id: str) -> None:
+        """固若金汤：先切壳，子页未就绪显示 Loading；狂切也不应拖垮主窗。"""
+        try:
+            self._navigate_impl(module_id)
+        except SystemExit as e:
+            logger.error("navigate 试图退出进程（已拦截）code=%s", e.code)
+            self.show_status("导航异常已隔离", level=StatusLevel.WARNING)
+        except Exception:
+            logger.exception("navigate 异常（已隔离，壳继续） mid=%r", module_id)
+            try:
+                self.show_status("导航异常已隔离，外壳仍可用", level=StatusLevel.WARNING)
+                self._sync_nav_checks()
+            except Exception:
+                pass
+
+    def _navigate_impl(self, module_id: str) -> None:
+        mid = self._coerce_module_id(module_id)
+        if not mid:
+            logger.warning("忽略无效模块导航: %r", module_id)
+            return
+        if mid == "__about__":
+            self._show_about()
+            return
+
+        ok, reason = can_open(mid)
+        if not ok:
+            nav_ok, nav_reason = nav_clickable(mid)
+            if requires_purchase_redirect() and nav_ok:
+                self._redirect_to_purchase(nav_reason or reason, module_id=mid)
+                return
+            if self._try_purchase_and_open(mid, reason):
+                return
+            show_warning(self, reason or "无权限打开该模块")
+            self.show_status(reason or "无权限", level=StatusLevel.WARNING)
+            self._sync_nav_checks()
+            return
+
+        try:
+            self._clear_webengine_focus()
+        except Exception:
+            logger.debug("clear webengine focus failed", exc_info=True)
+
+        from PySide6.QtCore import QTimer
+
+        leaving = self._current_id
+        leaving_page = self._pages.get(leaving) if leaving else None
+        web_heavy = self._leave_guest(leaving, leaving_page, mid=mid)
+
+        self._nav_seq = getattr(self, "_nav_seq", 0) + 1
+        seq = self._nav_seq
+        self._apply_nav_chrome(mid)
+
+        # 子页尚未缓存：Loading 进度 → 下一拍建页（可随时点走）
+        if mid not in self._pages:
+            guest = self._ensure_loading_guest(mid)
+            try:
+                self._stack.setCurrentWidget(guest)
+            except Exception:
+                logger.exception("切换 LoadingGuest 失败 mid=%s", mid)
+                self._sync_nav_checks()
+                return
+            self.show_status(
+                f"正在打开：{self._loading_guest_title(mid)}",
+                level=StatusLevel.INFO,
+            )
+            # 立刻拆离开页 View；enter 再等 deleteLater / 共享归还落稳
+            enter_delay = 0
+            engine_handoff = (
+                web_heavy
+                and leaving in _WEBENGINE_MODULE_IDS
+                and mid in _WEBENGINE_MODULE_IDS
+            )
+            if engine_handoff:
+                # 引擎↔引擎：软交接共享 View，短延迟仅等主栈切页，禁止 hide/Stop 白闪
+                enter_delay = 80
+                self._handoff_engine_embed(leaving_page)
+            elif web_heavy and leaving_page is not None and leaving != mid:
+                # 引擎 → 业务/其它：彻底拆 Chromium 再进页（900ms 不够仍会与 Excel 叠崩）
+                enter_delay = 1200 if mid not in _WEBENGINE_MODULE_IDS else 500
+                self._schedule_purge_if_needed(web_heavy, leaving_page)
+                if mid in _WEBENGINE_MODULE_IDS:
+                    self._purge_stale_web_embeds(except_mid=mid)
+                else:
+                    self._purge_stale_web_embeds(except_mid=None)
+                    try:
+                        from services.shared_local_webengine import shutdown as shutdown_shared
+
+                        shutdown_shared()
+                    except Exception:
+                        pass
+            elif mid in _WEBENGINE_MODULE_IDS:
+                self._purge_stale_web_embeds(except_mid=mid)
+            logger.info(
+                "navigate mid=%s leaving=%s web_heavy=%s enter_delay=%s",
+                mid,
+                leaving,
+                web_heavy,
+                enter_delay,
+            )
+            QTimer.singleShot(
+                0,
+                lambda s=seq, m=mid, d=enter_delay: self._async_ensure_page(
+                    s, m, enter_delay=d
+                ),
+            )
+            return
+
+        page = self._pages[mid]
+        self._discard_loading_guest(mid)
+        try:
+            self._stack.setCurrentWidget(page)
+        except Exception:
+            logger.exception("切换 ModuleHost 失败 mid=%s", mid)
+            self._sync_nav_checks()
+            return
+        title = page.page_title or mid
+        self.show_status(f"当前：{title}", level=StatusLevel.INFO)
+
+        enter_delay = 0
+        engine_handoff = (
+            web_heavy
+            and leaving in _WEBENGINE_MODULE_IDS
+            and mid in _WEBENGINE_MODULE_IDS
+        )
+        if engine_handoff:
+            enter_delay = 80
+            self._handoff_engine_embed(leaving_page)
+        elif web_heavy and leaving_page is not None and leaving != mid:
+            enter_delay = 1200 if mid not in _WEBENGINE_MODULE_IDS else 500
+            self._schedule_purge_if_needed(web_heavy, leaving_page)
+            if mid in _WEBENGINE_MODULE_IDS:
+                self._purge_stale_web_embeds(except_mid=mid)
+            else:
+                self._purge_stale_web_embeds(except_mid=None)
+                try:
+                    from services.shared_local_webengine import shutdown as shutdown_shared
+
+                    shutdown_shared()
+                except Exception:
+                    pass
+        elif mid in _WEBENGINE_MODULE_IDS:
+            self._purge_stale_web_embeds(except_mid=mid)
+        logger.info(
+            "navigate mid=%s leaving=%s web_heavy=%s enter_delay=%s (cached)",
+            mid,
+            leaving,
+            web_heavy,
+            enter_delay,
+        )
+        QTimer.singleShot(enter_delay, lambda s=seq, m=mid: self._deferred_page_enter(s, m))
+
+    def _async_ensure_page(self, seq: int, mid: str, *, enter_delay: int = 0) -> None:
+        """异步建页。用户已点走时仍可后台建缓存，但不抢栈、不进 on_enter。"""
+        from PySide6.QtCore import QTimer
+
+        try:
+            still_here = getattr(self, "_nav_seq", 0) == seq and self._current_id == mid
+            page = self._pages.get(mid)
+            if page is None:
+                page = self._ensure_page(mid)
+            if page is None:
+                if still_here:
+                    self._discard_loading_guest(mid)
+                    self.show_status(
+                        f"无法打开「{self._loading_guest_title(mid)}」",
+                        level=StatusLevel.WARNING,
+                    )
+                return
+
+            if hasattr(page, "request_deferred_ui"):
+                self._safe_call_page(page, "request_deferred_ui")
+
+            if not still_here:
+                self._discard_loading_guest(mid)
+                if self._stack.currentWidget() is page:
+                    cur = self._pages.get(self._current_id)
+                    if cur is not None and cur is not page:
+                        try:
+                            self._stack.setCurrentWidget(cur)
+                        except Exception:
+                            pass
+                return
+
+            self._discard_loading_guest(mid)
+            try:
+                self._stack.setCurrentWidget(page)
+            except Exception:
+                logger.exception("异步切到页面失败 mid=%s", mid)
+                return
+            title = page.page_title or mid
+            self.show_status(f"当前：{title}", level=StatusLevel.INFO)
+            delay = max(0, int(enter_delay or 0))
+            if delay > 0:
+                QTimer.singleShot(
+                    delay, lambda s=seq, m=mid: self._deferred_page_enter(s, m)
+                )
+            else:
+                self._deferred_page_enter(seq, mid)
+        except SystemExit as e:
+            logger.error("异步建页试图退出进程（已拦截）mid=%s code=%s", mid, e.code)
+        except Exception:
+            logger.exception("异步建页失败 mid=%s（壳继续）", mid)
+            if getattr(self, "_nav_seq", 0) == seq and self._current_id == mid:
+                try:
+                    self._discard_loading_guest(mid)
+                    self.show_status(
+                        f"打开「{self._loading_guest_title(mid)}」失败，外壳仍可用",
+                        level=StatusLevel.WARNING,
+                    )
+                except Exception:
+                    pass
+
+    def _deferred_page_enter(self, seq: int, mid: str) -> None:
+        if getattr(self, "_nav_seq", 0) != seq:
+            return
+        if self._current_id != mid:
+            return
+        page = self._pages.get(mid)
+        if page is None:
+            return
+        if hasattr(page, "request_deferred_ui"):
+            self._safe_call_page(page, "request_deferred_ui")
+        self._safe_call_page(page, "on_enter")
+        self._safe_call_page(page, "schedule_primary_focus")
 
     def _refresh_chrome_icons(self) -> None:
         clear_cache()
@@ -1681,124 +2202,6 @@ class MainShell(QMainWindow):
         from app.commerce_dialog import open_purchase_dialog
 
         open_purchase_dialog(self, reason=reason, module_id=module_id, forced=True)
-
-    def navigate(self, module_id: str) -> None:
-        mid = self._coerce_module_id(module_id)
-        if not mid:
-            logger.warning("忽略无效模块导航: %r", module_id)
-            return
-        if mid == "__about__":
-            self._show_about()
-            return
-
-        ok, reason = can_open(mid)
-        if not ok:
-            nav_ok, nav_reason = nav_clickable(mid)
-            if requires_purchase_redirect() and nav_ok:
-                self._redirect_to_purchase(nav_reason or reason, module_id=mid)
-                return
-            if self._try_purchase_and_open(mid, reason):
-                return
-            show_warning(self, reason or "无权限打开该模块")
-            self.show_status(reason or "无权限", level=StatusLevel.WARNING)
-            self._sync_nav_checks()
-            return
-
-        page = self._ensure_page(mid)
-        if page is None:
-            logger.warning("未知模块: %s", mid)
-            self._sync_nav_checks()
-            return
-
-        self._clear_webengine_focus()
-        leaving = self._current_id
-        leaving_page = self._pages.get(leaving) if leaving else None
-        web_heavy = leaving in _WEBENGINE_MODULE_IDS
-        if web_heavy and leaving_page is not None:
-            # 浏览器表面（如 Comfy 默认）未挂 WebEngine → 不当作重页
-            check = getattr(leaving_page, "uses_webengine_embed", None)
-            if callable(check) and not bool(check()):
-                web_heavy = False
-
-        if web_heavy and leaving_page is not None:
-            # 先软离页（停定时器），再切栈，再延迟销毁 WebEngine——同步销毁易与「系统」页构建撞车闪退
-            if hasattr(leaving_page, "soft_leave"):
-                leaving_page.soft_leave()
-            else:
-                leaving_page.on_leave()
-            from PySide6.QtCore import QTimer
-            from PySide6.QtWidgets import QApplication
-
-            self._nav_seq = getattr(self, "_nav_seq", 0) + 1
-            seq = self._nav_seq
-            if not self.updatesEnabled():
-                self.setUpdatesEnabled(True)
-            self.set_page_shortcuts(None)
-            self._current_id = mid
-            self._stack.setCurrentWidget(page)
-            self._st.set_module(mid)
-            self._sync_domain_for_module(mid)
-            for nav_mid, btn in self._nav_buttons.items():
-                btn.setChecked(nav_mid == mid)
-            title = page.page_title or mid
-            self.show_status(f"当前：{title}", level=StatusLevel.INFO)
-
-            def _purge_web(lp=leaving_page, lid=leaving) -> None:
-                try:
-                    if hasattr(lp, "_destroy_web_embed"):
-                        lp._destroy_web_embed()
-                except Exception:
-                    logger.debug("延迟销毁 WebEngine 失败", exc_info=True)
-                try:
-                    app = QApplication.instance()
-                    if app is not None:
-                        app.processEvents()
-                except Exception:
-                    pass
-
-            def _drop_page(lid=leaving) -> None:
-                if self._current_id != lid and lid in self._pages:
-                    try:
-                        self._invalidate_cached_page(lid)
-                    except Exception:
-                        logger.debug("丢弃引擎页失败", exc_info=True)
-
-            QTimer.singleShot(100, _purge_web)
-            QTimer.singleShot(450, _drop_page)
-            QTimer.singleShot(500, lambda s=seq, m=mid: self._deferred_page_enter(s, m))
-            return
-
-        if leaving and leaving in self._pages:
-            self._pages[leaving].on_leave()
-
-        if not self.updatesEnabled():
-            self.setUpdatesEnabled(True)
-        self.set_page_shortcuts(None)
-        self._current_id = mid
-        self._stack.setCurrentWidget(page)
-        self._st.set_module(mid)
-        self._sync_domain_for_module(mid)
-
-        for nav_mid, btn in self._nav_buttons.items():
-            btn.setChecked(nav_mid == mid)
-
-        page.on_enter()
-        if hasattr(page, "schedule_primary_focus"):
-            page.schedule_primary_focus()
-        title = page.page_title or mid
-        self.show_status(f"当前：{title}", level=StatusLevel.INFO)
-
-    def _deferred_page_enter(self, seq: int, mid: str) -> None:
-        if getattr(self, "_nav_seq", 0) != seq:
-            return
-        if self._current_id != mid:
-            return
-        page = self._pages.get(mid)
-        if page is None:
-            return
-        page.on_enter()
-        if hasattr(page, "schedule_primary_focus"):
-            page.schedule_primary_focus()
 
     def _open_system_settings(self) -> None:
         self.navigate("system_settings")

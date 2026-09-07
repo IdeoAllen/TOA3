@@ -5,7 +5,7 @@
 # missing = 清单有、产品尚无模块
 #
 # 首页指示灯：done 绿 · mvp 琥珀 · stub/missing 灰
-# 个人最高频八件套见 docs/功能清单与优先级.md §0.5
+# 个人最高频八件套见 docs/PROD-01-功能清单与优先级.md §0.5
 
 modules:
   home:
@@ -179,17 +179,31 @@ modules:
       - 主理人点验：空态两步 / 选模型下拉 / 简单配置弹窗
       - 多轮会话持久化（非本范式范围，Hold）
 
+  engine_host_hub:
+    status: Hold
+    priority: P2
+    office_freq: low
+    toa2_ref: —
+    note: >-
+      主理人裁定 2026-09-07：智能体时代安装本不该难；若不能无感解决引擎安装与应用则不要做。
+      当前 Hub 仅为目录壳，Harness Web 组件仍失败，已 show:false。待换技术方案后再开。
+    gaps:
+      - 技术方案未定：预置运行时 / 官方安装包 / Agent 代装（禁止再堆半残六件套 UI）
+      - Harness「缺少核心 Web 组件」须在正式引擎页无感修复后，才谈管家
+      - 侧栏已隐藏；代码保留不删以便换方案时复用壳
+
   harness_agent:
     status: mvp
     priority: P1
     office_freq: high
     toa2_ref: —
     note: >-
-      Harness Host+Guest；全宽 Web + 办公链投喂；小白三步开用（装环境→Key→自启）；
-      独立目录/3082/embed 与发版模板对齐；冲突配置运行时自愈
+      Harness 薄 Host：三步开用；默认系统浏览器干活（doc33/C-11）；内嵌可选；
+      独立目录/3082/browser 与发版模板对齐；冲突配置运行时自愈
     gaps:
-      - 主理人点验：无 Node 时「去安装 Node.js」→ 重试 → Key → 自动进入内嵌
-      - 主理人点验：旧脏配置（外置目录/关启用）进页后可自愈并三步走通
+      - 主理人点验：无 Node → 重试 → Key → 自启后浏览器打开
+      - 主理人点验：主 CTA「在浏览器打开」；更多可改回内嵌
+      - 主理人点验：旧脏配置进页后可自愈并三步走通
 
   open_pencil:
     status: mvp

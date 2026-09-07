@@ -81,7 +81,8 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Files]
 Source: "dist\{#MyReleaseDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\{#MyReleaseDir}\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+; 正式包必须带 _internal（onedir）。禁止 skipifsourcedoesntexist，缺目录应编译失败而非装成巨型 onefile。
+Source: "dist\{#MyReleaseDir}\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\{#MyReleaseDir}\avatars\*"; DestDir: "{app}\avatars"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\{#MyReleaseDir}\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\{#MyReleaseDir}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
@@ -103,6 +104,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "安装完成后启动 TOA3"; Fl
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\output"
 Type: filesandordirs; Name: "{app}\cache"
+; 旧版误用 onefile 巨型 exe 无 _internal，升级时清掉残留避免仍点到坏入口
+Type: filesandordirs; Name: "{app}\_MEI*"
 Type: files; Name: "{app}\config\admin_bootstrap_code.txt"
 Type: files; Name: "{app}\config\app.dev.yml"
 Type: files; Name: "{app}\unins000.msg"
@@ -157,21 +160,29 @@ var
   ResultCode: Integer;
   ExePath: String;
   Args: String;
+  PyDll: String;
 begin
-  if CurStep <> ssPostInstall then
-    exit;
-  if OptionalLicenseKey = '' then
-    exit;
-
-  ExePath := ExpandConstant('{app}\{#MyAppExeName}');
-  if not FileExists(ExePath) then
-    exit;
-
-  Args := '--activate-license "' + OptionalLicenseKey + '"';
-  if Exec(ExePath, Args, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if CurStep = ssPostInstall then
   begin
-    if ResultCode <> 0 then
-      Log('Optional post-install activate failed, exit=' + IntToStr(ResultCode) + ' (user can activate in app)');
+    PyDll := ExpandConstant('{app}\_internal\python311.dll');
+    if not FileExists(PyDll) then
+      MsgBox('安装不完整：缺少 _internal\python311.dll。' + #13#10 +
+        '请勿使用旧版单文件包；请重新下载正式 TOA3-Setup 安装。' + #13#10 +
+        '否则启动会出现 Failed to load Python DLL / _MEI。', mbError, MB_OK);
+
+    if OptionalLicenseKey <> '' then
+    begin
+      ExePath := ExpandConstant('{app}\{#MyAppExeName}');
+      if FileExists(ExePath) then
+      begin
+        Args := '--activate-license "' + OptionalLicenseKey + '"';
+        if Exec(ExePath, Args, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        begin
+          if ResultCode <> 0 then
+            Log('Optional post-install activate failed, exit=' + IntToStr(ResultCode) + ' (user can activate in app)');
+        end;
+      end;
+    end;
   end;
 end;
 

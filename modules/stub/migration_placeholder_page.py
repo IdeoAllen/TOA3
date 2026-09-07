@@ -72,7 +72,7 @@ class MigrationPlaceholderPage(BasePage):
             scroll.add_widget(HintLabel(text))
         scroll.add_widget(
             HintLabel(
-                "完整清单见 config/migration_manifest.yml 与 docs/迁移进度.md。\n"
+                "完整清单见 config/migration_manifest.yml 与 docs/PROD-01-功能清单与优先级.md。\n"
                 "实装完成后将替换为本模块业务页。"
             )
         )

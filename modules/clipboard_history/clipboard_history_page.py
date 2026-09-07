@@ -27,11 +27,9 @@ from widgets import (
     HintLabel,
     LineEdit,
     ListWidget,
-    PageHeader,
     ReadOnlyPlainTextEdit,
     ScrollPage,
     SecondaryButton,
-    SemanticLabel,
 )
 from widgets.list_edit import ListPanel, confirm_delete
 
@@ -58,19 +56,7 @@ class ClipboardHistoryPage(BasePage):
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = ScrollPage()
         outer.addWidget(scroll)
-        scroll.add_widget(
-            PageHeader(
-                "剪贴板历史",
-                "Alt+Shift+C 速贴 · 历史为主 · 常用短语为辅 · 双击或 Ctrl+C 复制。",
-            )
-        )
-        scroll.add_widget(
-            SemanticLabel(
-                "提示：开启自动捕获后，复制/截图文字会自动入库；钉选条目不会被清理。",
-                kind="info",
-            )
-        )
-
+        # 侧栏已有模块名；热键说明放自动捕获 ToolTip，不占常驻顶栏
         tools = QHBoxLayout()
         self._search = LineEdit()
         self._search.setPlaceholderText("搜索历史…")
@@ -78,6 +64,9 @@ class ClipboardHistoryPage(BasePage):
         tools.addWidget(self._search, 1)
         self._auto = CheckBox("自动捕获")
         self._auto.setChecked(True)
+        self._auto.setToolTip(
+            "开启后复制/截图文字自动入库；钉选不会被清理。速贴 Alt+Shift+C · 双击或 Ctrl+C 复制。"
+        )
         self._auto.toggled.connect(lambda on: get_clipboard_watcher().set_enabled(on))
         tools.addWidget(self._auto)
         scroll.add_layout(tools)

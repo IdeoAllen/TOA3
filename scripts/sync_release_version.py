@@ -35,7 +35,7 @@ if str(ROOT) not in sys.path:
 
 UPDATE_MANIFEST = ROOT / "config" / "update_manifest.yml"
 VERSION_PY = ROOT / "app" / "version.py"
-HANDOFF_TODO = ROOT / "docs" / "待办总览.md"
+HANDOFF_RELAY = ROOT / "docs" / "handoff" / "OPS-01-交接与进度.md"
 MANIFEST_URL = (
     "https://toa-service.yczh.tech/api/toa/releases/manifest"
     "?product=TOA3&channel=stable&format=json"
@@ -62,8 +62,8 @@ RELEASE_COMMIT_PATHS: tuple[str, ...] = (
     "services/harness_setup.py",
     "services/harness_sidecar.py",
     "services/harness_status.py",
-    "docs/architecture/27-Portal发版与商业升级子流程.md",
-    "docs/待办总览.md",
+    "docs/handoff/OPS-01-交接与进度.md",
+    "docs/README.md",
 )
 
 
@@ -151,23 +151,13 @@ def sync_from_live() -> dict:
 
 
 def _patch_todo_overview(version: str) -> None:
-    if not HANDOFF_TODO.is_file():
+    """发版后回写唯一进度文件中的版本号（不再维护待办总览）。"""
+    if not HANDOFF_RELAY.is_file():
         return
-    text = HANDOFF_TODO.read_text(encoding="utf-8")
-    text2 = re.sub(
-        r"(\| 代码版本 \| \*\*)[0-9.]+(\*\*)",
-        rf"\g<1>{version}\2",
-        text,
-        count=1,
-    )
-    text2 = re.sub(
-        r"(\| 线上稳定版 \| \*\*)[0-9.]+(\*\*)",
-        rf"\g<1>{version}\2",
-        text2,
-        count=1,
-    )
+    text = HANDOFF_RELAY.read_text(encoding="utf-8")
+    text2 = re.sub(r"\*\*v[0-9]+\.[0-9]+\.[0-9]+\*\*", f"**v{version}**", text, count=1)
     if text2 != text:
-        HANDOFF_TODO.write_text(text2, encoding="utf-8")
+        HANDOFF_RELAY.write_text(text2, encoding="utf-8")
 
 
 def verify_aligned(*, require_live: bool = True) -> list[str]:

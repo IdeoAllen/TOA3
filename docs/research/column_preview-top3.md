@@ -2,7 +2,7 @@
 
 > 状态：`approved`  
 > 日期：2026-08-26（增强修订）  
-> 关联：`docs/功能清单与优先级.md` · 文件/目录操作  
+> 关联：`docs/PROD-01-功能清单与优先级.md` · 文件/目录操作  
 > 门禁：`.cursor/rules/toa3-feature-top3-research.mdc`
 
 ---

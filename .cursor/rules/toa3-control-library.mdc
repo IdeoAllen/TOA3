@@ -1,32 +1,12 @@
 ---
-description: TOA3 控件库——gallery 为唯一验收面，业务只用 widgets
+description: TOA3 控件库——短；全文见工程标准 A3.2 / B2
 globs: modules/**/*.py,widgets/**/*.py,ui/**
 alwaysApply: false
 ---
 
-# TOA3 控件库
+# 控件库（短）
 
-## 铁律
+业务只用 `widgets` + `CONTROL_CLASSES`；gallery 为验收面。禁止业务 `setStyleSheet`。  
+新增走 **工程标准 B2**。例外注释：`# 控件库例外：…`
 
-1. **控件库页** `modules/gallery/` = 全应用允许控件 × 状态的验收清单。
-2. 样式由 **全局 QSS** 驱动；业务禁止覆写主题色/字号。
-3. 业务页从 `widgets/` 选用（如 `PageTitle`、`HintLabel`），或对照 gallery 用标准 Qt 控件 + `class` 属性。
-
-## 新增控件流程
-
-1. 在 `widgets/` 登记并实现
-2. 在 gallery 增加一节（各状态）
-3. 业务模块再引用
-
-## 例外
-
-特殊业务（Canvas 绘制、全屏截图层）可局部原生控件，须注释：`# 控件库例外：…`，并尽量读 `AppState.palette`。
-
-## 禁止
-
-- 为单页好看写死 `setStyleSheet`
-- 从 TOA2 复制 ttkbootstrap / `bootstyle` 代码
-- 新建窗口绕过 `BaseDialog`（须跟当前主题；尺寸走 `ui_spec.yml`）
-- 图标模糊 / 锯齿：须 `icon_registry.get_icon` / `icon_pixmap`，见控件库规范「图标清晰度」
-
-规范：`docs/standards/控件库规范.md`
+全文：`docs/规范/STD-01-工程标准与流程.md` A3.2 · B2

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""截图翻译对照弹窗（挂截图工具栏，非独立空菜单）。"""
+"""截图翻译对照弹窗：应用时选模型 + 简单配置（大模型范式）。"""
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal
@@ -8,17 +8,30 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
 from core.base_dialog import BaseDialog
 from core.status_service import StatusLevel, report_status
-from core.user_messages import show_warning
-from widgets import HintLabel, PageTitle, PrimaryButton, ReadOnlyPlainTextEdit, SecondaryButton
+from core.user_messages import ask_confirm, show_warning
+from services.compute_source import pick_effective_profile_id
+from services.model_catalog import set_active_profile_id
+from services.model_ready_registry import list_ready
+from widgets import (
+    ComboBox,
+    HintLabel,
+    PageTitle,
+    PrimaryButton,
+    ReadOnlyPlainTextEdit,
+    SecondaryButton,
+)
+
+_BIND = "__bind__"
 
 
 class _TranslateWorker(QObject):
     finished = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, source: str) -> None:
+    def __init__(self, source: str, *, profile_id: str = "") -> None:
         super().__init__()
         self._source = source
+        self._profile_id = profile_id
 
     def run(self) -> None:
         try:
@@ -32,6 +45,7 @@ class _TranslateWorker(QObject):
                     "若原文已是中文则译为英文。只输出译文，不要解释。"
                 ),
                 temperature=0.2,
+                profile_id=self._profile_id or None,
             )
             text = str(translated or "").strip()
             if not text:
@@ -41,7 +55,8 @@ class _TranslateWorker(QObject):
         except Exception as exc:
             from core.exceptions import format_exception
 
-            self.failed.emit(format_exception(exc))
+            msg = getattr(exc, "user_message", None) or format_exception(exc)
+            self.failed.emit(str(msg))
 
 
 class TranslateResultDialog(BaseDialog):
@@ -62,10 +77,25 @@ class TranslateResultDialog(BaseDialog):
         self._offer_translate = offer_translate
         self._thread: QThread | None = None
         self._worker: _TranslateWorker | None = None
+        self._profile_ids: list[str] = []
 
         lay = QVBoxLayout(self)
         lay.addWidget(PageTitle("原文 / 译文对照"))
-        lay.addWidget(HintLabel("引擎经 integrations（OCR + LLM）。可在本窗直接翻译并分别复制。"))
+        lay.addWidget(
+            HintLabel("选模型即用 · 未绑定时点「简单配置」两步搞定。可分别复制。")
+        )
+
+        model_row = QHBoxLayout()
+        model_row.addWidget(HintLabel("模型"))
+        self._profile_combo = ComboBox()
+        self._profile_combo.setMinimumWidth(240)
+        self._profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        model_row.addWidget(self._profile_combo, 1)
+        btn_cfg = SecondaryButton("简单配置…")
+        btn_cfg.setToolTip("两步：① 选来源 ② Key → 保存记住")
+        btn_cfg.clicked.connect(self._open_simple_setup)
+        model_row.addWidget(btn_cfg)
+        lay.addLayout(model_row)
 
         cols = QHBoxLayout()
         left = QVBoxLayout()
@@ -106,8 +136,61 @@ class TranslateResultDialog(BaseDialog):
         row.addWidget(btn_ok)
         lay.addLayout(row)
 
+        self._reload_profiles()
         if not self._source.strip():
             self._btn_tr.setEnabled(False)
+
+    def _reload_profiles(self) -> None:
+        profiles = list_ready("text_llm", ready_only=True)
+        self._profile_ids = [
+            str(p.get("id") or "") for p in profiles if p.get("source") == "catalog"
+        ]
+        self._profile_combo.blockSignals(True)
+        self._profile_combo.clear()
+        for p in profiles:
+            if p.get("source") != "catalog":
+                continue
+            label = str(p.get("label") or p.get("id") or "未命名")
+            model = str(p.get("model") or "")
+            if model:
+                label = f"{label}（{model}）"
+            self._profile_combo.addItem(label, str(p.get("id") or ""))
+        self._profile_combo.addItem("＋ 绑定新模型…", _BIND)
+        if self._profile_ids:
+            effective = pick_effective_profile_id("text_llm", persist=True)
+            if effective in self._profile_ids:
+                self._profile_combo.setCurrentIndex(self._profile_ids.index(effective))
+            else:
+                self._profile_combo.setCurrentIndex(0)
+        self._profile_combo.blockSignals(False)
+
+    def _current_profile_id(self) -> str:
+        data = self._profile_combo.currentData()
+        if data == _BIND:
+            return ""
+        return str(data or "")
+
+    def _on_profile_changed(self, index: int) -> None:
+        if index < 0:
+            return
+        data = self._profile_combo.itemData(index)
+        if data == _BIND:
+            self._profile_combo.blockSignals(True)
+            if self._profile_ids:
+                self._profile_combo.setCurrentIndex(0)
+            self._profile_combo.blockSignals(False)
+            self._open_simple_setup()
+            return
+        pid = str(data or "")
+        if pid:
+            set_active_profile_id("text_llm", pid)
+
+    def _open_simple_setup(self) -> None:
+        from modules.llm_assistant.llm_simple_setup_dialog import LlmSimpleSetupDialog
+
+        dlg = LlmSimpleSetupDialog(self)
+        dlg.exec()
+        self._reload_profiles()
 
     def _copy(self, text: str) -> None:
         cb = QGuiApplication.clipboard()
@@ -146,11 +229,25 @@ class TranslateResultDialog(BaseDialog):
             show_warning(self, "正在翻译，请稍候，勿连点。")
             return
 
+        pid = self._current_profile_id() or pick_effective_profile_id(
+            "text_llm", persist=True
+        )
+        if not pid:
+            if ask_confirm(
+                self,
+                "还没有可用写字模型。现在按两步配置？\n"
+                "① 选来源  →  ② 粘贴 Key\n"
+                "也可稍后再说，先看原文。",
+                title="探索翻译模型",
+            ):
+                self._open_simple_setup()
+            return
+
         self._set_busy(True)
         report_status(self, "正在翻译…", level=StatusLevel.INFO)
 
         self._thread = QThread(self)
-        self._worker = _TranslateWorker(source)
+        self._worker = _TranslateWorker(source, profile_id=pid)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.finished.connect(self._on_translate_ok)
@@ -168,9 +265,20 @@ class TranslateResultDialog(BaseDialog):
 
     def _on_translate_fail(self, message: str) -> None:
         self._set_busy(False)
+        msg = (message or "").strip()
+        low = msg.lower()
+        if any(k in low for k in ("key", "api", "未配置", "未启用", "未绑定", "auth")):
+            if ask_confirm(
+                self,
+                f"{msg}\n\n是否打开「简单配置」两步绑定模型？",
+                title="截图翻译",
+            ):
+                self._open_simple_setup()
+            report_status(self, "翻译失败 · 可配置模型", level=StatusLevel.ERROR)
+            return
         from core.user_messages import show_error
 
-        show_error(self, message, title="截图翻译失败")
+        show_error(self, msg, title="截图翻译失败")
         report_status(self, "翻译失败", level=StatusLevel.ERROR)
 
     def _cleanup_worker(self) -> None:

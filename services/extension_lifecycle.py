@@ -126,7 +126,7 @@ def build_dev_task_prompt(
     name: str,
     description: str = "",
 ) -> str:
-    """投喂 Harness 的任务书：对齐 skill toa3-user-extension，锁目录、只做业务。"""
+    """投喂 Harness 的任务书：对齐 skill toa3-sop-user-extension，锁目录、只做业务。"""
     from services.plugin_scaffold import read_requirements_md
 
     path_s = str(root.resolve())
@@ -152,7 +152,7 @@ def build_dev_task_prompt(
             f"- 禁止写 Python Qt 布局\n"
         )
     return (
-        f"【TOA 用户扩展 · skill=toa3-user-extension】\n"
+        f"【TOA 用户扩展 · skill=toa3-sop-user-extension】\n"
         f"你只做业务实现，不做宿主调研。省时间，保安全。\n\n"
         f"## 用户需求（必须按此实现，勿改题）\n"
         f"功能名：{display}\n"

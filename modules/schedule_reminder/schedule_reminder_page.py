@@ -256,20 +256,37 @@ class ScheduleReminderPage(BasePage):
     def _apply_scenes(self, scenes: dict, mtime: float | None) -> None:
         self._scenes = scenes or {}
         self._scene_mtime = mtime
+        # 延后一拍画表：刚离开引擎时 WebEngine deleteLater 未落稳，
+        # 同步 setSectionResizeMode 会 Windows ACCESS_VIOLATION（见 toa3_faulthandler.log）
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(0, lambda: self._apply_scenes_ui(self._scenes))
+
+    def _apply_scenes_ui(self, scenes: dict) -> None:
+        if self.window() is not None and getattr(
+            self.window(), "_current_id", None
+        ) != self.page_id:
+            return
         for sid, _, _ in SCENE_DEFS:
-            result = self._scenes.get(sid)
-            table = self._tables[sid]
-            if result is None:
+            result = (scenes or {}).get(sid)
+            table = self._tables.get(sid)
+            if result is None or table is None:
                 continue
-            table.set_headers(result.columns)
-            table.set_rows([tuple(str(c) for c in row) for row in result.rows])
+            try:
+                table.set_headers(result.columns)
+                table.set_rows([tuple(str(c) for c in row) for row in result.rows])
+            except RuntimeError:
+                continue
         counts = {
             sid: len(r.rows)
-            for sid, r in self._scenes.items()
+            for sid, r in (scenes or {}).items()
             if r and not (len(r.columns) == 1 and r.columns[0] == "提示")
         }
         msg = "已刷新五场景：" + "、".join(f"{k}={v}" for k, v in counts.items())
-        self._log.setPlainText(msg)
+        try:
+            self._log.setPlainText(msg)
+        except RuntimeError:
+            return
         self.report_status(msg)
 
     def _current_scene_id(self) -> str:
@@ -370,17 +387,27 @@ class ScheduleReminderPage(BasePage):
 
     def on_enter(self) -> None:
         # 先让顶栏「业务」与侧栏画完，再刷事件/课表（Excel 查询放后台）
+        # 从引擎切来时壳层已有 ~900ms delay；此处再错开一拍，避免与 WebEngine 拆解重叠
         self.report_status("班级日程提醒")
-        QTimer.singleShot(0, self._on_enter_deferred)
+        QTimer.singleShot(80, self._on_enter_deferred)
 
     def _on_enter_deferred(self) -> None:
+        import logging
+
+        log = logging.getLogger("TOA3.schedule_reminder")
+        log.debug(
+            "schedule on_enter_deferred current_id=%s",
+            getattr(self.window(), "_current_id", None) if self.window() else None,
+        )
         if self.window() is not None and getattr(self.window(), "_current_id", None) != self.page_id:
             return
         self._reload_events()
         if not data_file_path().is_file():
+            log.debug("schedule 无课表文件，跳过查询")
             return
         # 有缓存先画上，避免顶栏切业务时空转
         if self._scenes:
             self._apply_scenes(self._scenes, self._scene_mtime)
             self.report_status("课表（缓存）", level=StatusLevel.INFO)
+        log.debug("schedule 开始 _reload_scenes force=False")
         self._reload_scenes(force=False)

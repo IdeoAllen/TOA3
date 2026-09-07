@@ -2,8 +2,8 @@
 
 > 状态：`approved`（主理人 2026-08-25 对话「同意」确认 §3.5）
 > 日期：2026-08-25  
-> 关联：Wave★-2 · `docs/功能清单与优先级.md`  
-> 门禁：`.cursor/rules/toa3-feature-top3-research.mdc` · 超边见 `docs/architecture/14-超边门禁与目标锁定.md`
+> 关联：Wave★-2 · `docs/PROD-01-功能清单与优先级.md`  
+> 门禁：`.cursor/rules/toa3-feature-top3-research.mdc` · 超边见 `docs/architecture/ARCH-03-超边门禁.md`
 
 ---
 

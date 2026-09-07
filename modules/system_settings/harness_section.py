@@ -61,10 +61,10 @@ class HarnessSection(QWidget):
         form.addRow("Web 端口", self._port)
 
         self._surface = ComboBox()
-        self._surface.addItem("内嵌在套件内（默认）", "embed")
-        self._surface.addItem("启动后优先系统浏览器", "browser")
+        self._surface.addItem("启动后优先系统浏览器（推荐）", "browser")
+        self._surface.addItem("内嵌在套件内（可选）", "embed")
         cur = surface_mode()
-        self._surface.setCurrentIndex(0 if cur == "embed" else 1)
+        self._surface.setCurrentIndex(0 if cur == "browser" else 1)
         form.addRow("显示方式", self._surface)
 
         self._auto = CheckBox("进页自动启动")
@@ -131,7 +131,7 @@ class HarnessSection(QWidget):
                 "stop_on_app_exit": self._stop_exit.isChecked(),
             }
         )
-        set_surface_mode(str(self._surface.currentData() or "embed"))
+        set_surface_mode(str(self._surface.currentData() or "browser"))
         from services.harness_credentials import diagnose_llm_access
 
         key_ok, key_msg = diagnose_llm_access()

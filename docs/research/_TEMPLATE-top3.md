@@ -2,7 +2,7 @@
 
 > 状态：`research` → **主理人确认 3 条独到之处后**改为 `approved` 再写码  
 > 日期：YYYY-MM-DD  
-> 关联：`docs/功能清单与优先级.md` · Wave★ / 模块清单  
+> 关联：`docs/PROD-01-功能清单与优先级.md` · Wave★ / 模块清单  
 > 门禁：`.cursor/rules/toa3-feature-top3-research.mdc`
 
 ---

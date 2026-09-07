@@ -1,36 +1,11 @@
 ---
-description: TOA3 分层架构——modules/widgets/theme/config 单向依赖
+description: TOA3 分层架构——短；全文见工程标准 A1
 alwaysApply: true
 ---
 
-# TOA3 分层架构
+# TOA3 分层（短）
 
-## 依赖方向（只允许向下）
+`modules → widgets/ui → app/core/loader → services → config/qss`  
+禁止：业务 `setStyleSheet`、第二套控件库、`QTabWidget` 作模块壳、手改 QSS、services 依赖 modules。
 
-```
-modules/*          业务页
-    ↓
-widgets/* + ui/*.ui   控件与 Designer 布局
-    ↓
-app/shell.py + app/theme_loader + core/base_page
-    ↓
-resources/qss/*.qss  （由 scripts/gen_qss_from_theme.py 生成）
-    ↓
-config/themes/*.json
-```
-
-## 禁止
-
-- 业务页 `setStyleSheet`、硬编码 hex 色、裸 `QPushButton` 作主按钮
-- 在 `modules/**` 新建第二套控件库绕过 `widgets/`
-- 用 `QTabWidget` 作模块外壳（用 `MainShell` + `QStackedWidget`）
-- 手改 `resources/qss/*.qss`（改 JSON 后重新生成）
-
-## 壳职责
-
-- 菜单、工具栏、顶栏、侧栏、状态栏、模块切换：**仅** `app/shell.py`
-- 业务模块实现 `BasePage`：`on_enter` / `on_leave` / `on_theme_changed`
-
-## 文档
-
-`docs/architecture/01-总览与原则.md`、`02-分层与仓库结构.md`
+壳切换仅 `app/shell.py`。**全文**：`docs/规范/STD-01-工程标准与流程.md` A1 · `docs/architecture/ARCH-01-平台基础.md`

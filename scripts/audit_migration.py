@@ -63,6 +63,15 @@ def main() -> int:
             continue
         if not is_migrated(mid):
             errors.append(f"menu id {mid} 未登记 MIGRATED_MODULES / migration_manifest")
+            continue
+        # 用户扩展挂业务菜单：以 plugin_registry 为准，不要求 migration_manifest
+        try:
+            from services.plugin_registry import is_registered_plugin
+
+            if is_registered_plugin(mid):
+                continue
+        except Exception:
+            pass
         if not get_module_meta(mid):
             errors.append(f"menu id {mid} 未登记 migration_manifest.yml")
 

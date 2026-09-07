@@ -3,7 +3,7 @@
 
 ① 一键安装运行环境（独立目录，不绑其它软件）
 ② 粘贴 DeepSeek API Key
-③ 自动启动并进入内嵌界面
+③ 自动启动并在系统浏览器打开（doc 33 / C-11）
 """
 from __future__ import annotations
 

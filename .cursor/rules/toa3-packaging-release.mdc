@@ -1,39 +1,38 @@
 ---
-description: TOA3 打包与发版——PyInstaller Inno 版本对齐 DMS 说明
+description: TOA3 打包与发版——PyInstaller Inno 已落地
 globs: packaging/**/*,packaging-app/**/*,scripts/build*.py,scripts/*setup*,app/version.py
 alwaysApply: false
 ---
 
 # TOA3 打包与发版
 
-## 目标产物
+## 已落地
 
-- PyInstaller 目录/onefolder → Inno Setup `TOA3-Setup-v{version}.exe`
-- 升级：固定 `AppId` + 可选 upgrade launcher（参考 TOA2 `packaging-app/`）
+- 入口：`packaging/build_windows.py` + Inno（`packaging/toa3_setup.iss` 等）
+- 产物：`dist/` → `TOA3-Setup-v{version}.exe`
+- 发版配置：`packaging/shipped_config/*` 覆盖本机脏 harness/integrations
+- 护栏：`packaging/release_config_guard.py`；对齐：`scripts/sync_release_version.py`
 
 ## 版本单一来源
 
 ```text
-app/version.py APP_VERSION  →  Inno  →  关于页  →  DMS release 说明
+app/version.py APP_VERSION  →  Inno  →  关于页  →  TOA Portal / 发版说明
 ```
 
 禁止 `app.yml brand.app_version` 与 `APP_VERSION` 长期漂移。
 
 ## 构建前检查
 
-- `python scripts/verify_mvp.py` 通过
-- license e2e（移植后 `scripts/e2e_toa_dms_license.py` 等价）
+- `python scripts/verify_all.py`（或至少 `verify_mvp`）
 - 生产包 **不得** 内置 `auth.skip_login`
-- 干净 `license.json` 或安装时写入策略（参考 TOA2 `write_clean_license`）
+- **禁止打进包**：`data/user`、`license.json`、`app.dev.yml`、secrets、本机日志
 
-## DMS 发版
+## 与 DMS
 
 - TOA3 安装包发版与 DMS **后端**发版分离。
-- 在 DMS release 中更新下载链接/版本说明时，遵守 `dms-release-deploy.mdc`：**只建 draft，人审后 deploy**。
+- 若在 DMS release 里只更新下载说明：遵守 `dms-release-deploy.mdc`（只建 draft，人审后 deploy）。
 - Agent 禁止自批 release、禁止 `SkipReleaseGate`。
 
-## 目录（规划）
+## 文档
 
-`packaging/`：`spec`、`toa3_setup.iss`、`build_windows.py`
-
-文档：`docs/architecture/09-打包与发布.md`
+`docs/规范/STD-01-工程标准与流程.md` §10 · `docs/architecture/ARCH-01-平台基础.md` §8

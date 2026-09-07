@@ -175,7 +175,7 @@ def remove_watermark(
     image_path: str | Path,
     output_path: str | Path,
     *,
-    prefer_ai: bool = True,
+    prefer_ai: bool = False,
     mild_corner_blur: bool = False,
     region: Region | None = None,
     boxes: list[Region] | None = None,
@@ -193,9 +193,16 @@ def remove_watermark(
             from services.integrations import get_client
 
             client = get_client("watermark_ai")
-            if getattr(client, "enabled", False):
+            # 仅当 LaMa 真就绪才走 AI，避免占位 raise 刷日志
+            if getattr(client, "enabled", False) and client.health_check():
                 try:
-                    out = client.remove_watermark(src)
+                    out = client.remove_watermark(
+                        src,
+                        output_path=dest,
+                        region=region,
+                        boxes=boxes,
+                        brush_mask=brush_mask,
+                    )
                     if out:
                         p = Path(out)
                         if p.is_file() and str(p.resolve()) != str(Path(dest).resolve()):
@@ -204,10 +211,10 @@ def remove_watermark(
                             Path(dest).write_bytes(data)
                         elif p.is_file():
                             dest = str(p)
-                        note = "AI 去水印完成"
+                        note = "AI 去水印完成（LaMa）"
                         if mild_corner_blur:
                             note += "（未再做四角模糊；AI 结果优先保留）"
-                        return RemoveResult(True, dest, "watermark_ai", note)
+                        return RemoveResult(True, dest, "watermark_ai+lama", note)
                 except Exception as exc:
                     logger.info("AI 去水印不可用，回退本地: %s", exc)
         except Exception as exc:

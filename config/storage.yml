@@ -54,6 +54,7 @@ modules:
   ocr_tool: {}
   llm_assistant: {}
   harness_agent: {}
+  engine_host_hub: {}
   open_pencil: {}
   drawio_web: {}
   comfyui_web: {}

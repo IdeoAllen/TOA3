@@ -17,6 +17,7 @@ logger = logging.getLogger("TOA3.local_inpaint")
 _MODEL = None
 _DEVICE = "cpu"
 _MODEL_PATH = ""
+_DEVICE_CACHED: str | None = None
 
 
 def weights_root() -> Path:
@@ -47,21 +48,27 @@ def weights_path() -> Path | None:
 
 
 def _detect_device() -> str:
+    """探测一次并缓存；不兼容 GPU 安静回落 CPU，避免每次状态查询刷警告。"""
+    global _DEVICE_CACHED
+    if _DEVICE_CACHED is not None:
+        return _DEVICE_CACHED
     try:
         import torch
 
         if not torch.cuda.is_available():
-            return "cpu"
+            _DEVICE_CACHED = "cpu"
+            return _DEVICE_CACHED
         try:
             x = torch.zeros(1, device="cuda")
             del x
             torch.cuda.synchronize()
-            return "cuda"
+            _DEVICE_CACHED = "cuda"
         except Exception as exc:
-            logger.warning("CUDA 不可用，LaMa 改用 CPU: %s", exc)
-            return "cpu"
+            logger.info("CUDA 不可用，LaMa 将用 CPU（可选增强，默认不强制）: %s", exc)
+            _DEVICE_CACHED = "cpu"
     except Exception:
-        return "cpu"
+        _DEVICE_CACHED = "cpu"
+    return _DEVICE_CACHED
 
 
 def install_status() -> dict[str, Any]:
@@ -73,7 +80,8 @@ def install_status() -> dict[str, Any]:
     except Exception:
         pass
     w = weights_path()
-    device = _detect_device()
+    # 未就绪时不必探 CUDA，减轻低配/进页探测成本
+    device = _detect_device() if (has_torch and w is not None) else "cpu"
     missing: list[str] = []
     if not has_torch:
         missing.append("PyTorch")
@@ -86,7 +94,11 @@ def install_status() -> dict[str, Any]:
         "weights": str(w) if w else "",
         "weights_dir": str(weights_root()),
         "device": device,
-        "user_hint": "已就绪，去水印将自动用 LaMa" if ready else "请到「安装本机模型」下载 LaMa",
+        "user_hint": (
+            f"可选 AI 增强已就绪（{device}）；默认仍走本地轻量"
+            if ready
+            else "未装 LaMa 不影响使用；需要时再到「安装本机模型」下载"
+        ),
     }
 
 

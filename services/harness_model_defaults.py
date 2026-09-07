@@ -58,22 +58,24 @@ def ensure_official_default_model() -> tuple[bool, str]:
         }
         changed = True
 
-    pi = data.setdefault("llm-pi-ai", {})
-    if not isinstance(pi, dict):
-        pi = {}
-        data["llm-pi-ai"] = pi
-    providers = pi.setdefault("providers", {})
-    if not isinstance(providers, dict):
-        providers = {}
-        pi["providers"] = providers
-    for pid in ("deepseek", _OFFICIAL_PROVIDER):
-        entry = providers.get(pid)
-        if not isinstance(entry, dict):
-            providers[pid] = {"apiKeyEnv": "DEEPSEEK_API_KEY"}
+    # llm-pi-ai 只接受 pi-ai 目录内的路由（如 deepseek / zai-coding-cn）。
+    # 禁止写入 deepseek-official：它属于 llm-deepseek；混入会导致整个
+    # llm-pi-ai 命名空间注册失败，「添加提供方」按钮点了无反应。
+    pi = data.get("llm-pi-ai")
+    if isinstance(pi, dict):
+        providers = pi.get("providers")
+        if isinstance(providers, dict) and _OFFICIAL_PROVIDER in providers:
+            providers.pop(_OFFICIAL_PROVIDER, None)
             changed = True
-        elif str(entry.get("apiKeyEnv") or "").strip() != "DEEPSEEK_API_KEY":
-            entry["apiKeyEnv"] = "DEEPSEEK_API_KEY"
-            changed = True
+            if not providers:
+                # 空 dict 可保留；勿删整个 llm-pi-ai（用户可能还有其它路由）
+                pass
+        # 可选：确保官方 DeepSeek（pi-ai 目录路由）指向本机 Key
+        if isinstance(providers, dict):
+            entry = providers.get("deepseek")
+            if isinstance(entry, dict) and not str(entry.get("apiKeyEnv") or "").strip():
+                entry["apiKeyEnv"] = "DEEPSEEK_API_KEY"
+                changed = True
 
     if not changed:
         return False, f"默认模型已是 {cur.get('provider')}/{cur.get('model')}"

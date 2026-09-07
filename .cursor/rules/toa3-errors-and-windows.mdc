@@ -1,36 +1,13 @@
 ---
-description: TOA3 异常与窗口——统一 error_handler、ui_spec 与主题弹窗
+description: TOA3 异常与窗口——短；全文见工程标准 A3.1 / A7
 globs: core/**/*.py,app/**/*.py,modules/**/*.py,config/ui_spec.yml
 alwaysApply: false
 ---
 
-# 异常与窗口规格
+# 异常与窗口（短）
 
-## 异常
+- 异常：`error_handler` / `TOAError`；禁止对用户甩 traceback  
+- 弹窗：`BaseDialog`；账号/关于 = 顶栏弹窗  
+- 生成完成：必须 `show_saved`（绿 + 打开所在目录）  
 
-- 业务可预期错误：继承 `TOAError`，设置友好 `user_message`
-- UI 边界：`report_error(parent, exc)` 或 `run_safe(fn, parent)`
-- 三方失败：`IntegrationError(service, ...)`
-- 禁止裸 `except: pass`；禁止对用户暴露 traceback
-
-## 窗口
-
-- 主壳：`apply_shell_spec`（`config/ui_spec.yml` shell 段）
-- **弹窗**：一律继承 `BaseDialog`（`objectName=ThemedDialog`），设 `dialog_kind`；控件只用 `widgets/`
-- 账号信息 / 关于：顶栏弹窗（`UserProfileDialog` / `AboutDialog`），**不要**再做成侧栏页面
-- 业务页：构建 UI 后 `apply_standard_page_layout()`；页面边距跟 `ui_spec.yml` page 段
-- 禁止新窗口 `setStyleSheet` 写死色；禁止裸 `QDialog` / `QMessageBox` 自绘绕过主题
-
-## 生成 / 导出 / 保存完成（硬门禁）
-
-凡**产出文件或目录**的功能（合成、导出、生成、另存、批量写出等），完成提示必须：
-
-1. 走 `core.user_messages.show_saved(parent, text, path)`（绿色 **完成** 对话框，勿用 `show_info` 冒充）
-2. 传入刚生成的 **文件或输出目录** `path`，对话框必须出现 **「打开所在目录」**
-3. 无产出路径的纯操作（复制到剪贴板、配置已保存等）可用 `show_success` / `show_info`，不强制「打开所在目录」
-
-入口实现：`MessageDialog` kind=`success` + `open_path`。控件库 Gallery 须演示 `show_saved`。
-
-调整尺寸只改 `config/ui_spec.yml`，不在各文件写 magic number。
-
-换肤后弹窗自动跟全局 QSS；对比度由 `scripts/gen_qss_from_theme.py` 生成期抬升。
+全文：`docs/规范/STD-01-工程标准与流程.md` A3.1 · A7 · `config/ui_spec.yml`

@@ -147,6 +147,7 @@ MIGRATED_MODULES: dict[str, str] = {
     "ocr_tool": "modules.ocr_tool.ocr_tool_page.OcrToolPage",
     "llm_assistant": "modules.llm_assistant.llm_assistant_page.LlmAssistantPage",
     "media_studio": "modules.media_studio.media_studio_page.MediaStudioPage",
+    "engine_host_hub": "modules.engine_host_hub.engine_host_hub_page.EngineHostHubPage",
     "harness_agent": "modules.harness_agent.harness_agent_page.HarnessAgentPage",
     "open_pencil": "modules.open_pencil.open_pencil_page.OpenPencilPage",
     "drawio_web": "modules.drawio_web.drawio_web_page.DrawioWebPage",

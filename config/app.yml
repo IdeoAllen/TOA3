@@ -212,6 +212,18 @@ menu:
     feature_id: clipboard_history
     requires_license: false
     show: true
+  - class_name: EngineHostHubPage
+    desc: Hold·无感安装未达标前不开放（主理人 2026-09-07）；代码保留待换技术方案
+    group: engines
+    icon: harness_agent
+    id: engine_host_hub
+    module_path: modules.engine_host_hub.engine_host_hub_page
+    name: 引擎管家
+    order: 5
+    feature_id: engine_host_hub
+    requires_license: false
+    # 主理人裁定：不能无感解决安装/应用则不要做；先撤侧栏
+    show: false
   - class_name: HarnessAgentPage
     desc: DeepSeek Harness 开源编码智能体 · 写代码/改仓库/多轮 Agent
     group: engines
@@ -266,7 +278,8 @@ menu:
     order: 18
     feature_id: comfyui_web
     requires_license: false
-    show: true
+    # 主理人裁定：内嵌/表面切换难稳，侧栏整项隐藏；文生图仍走「媒体工坊」
+    show: false
   - class_name: MediaStudioPage
     desc: ComfyUI / 本机 / 云端 · 文生图与媒体生成宿主
     group: image

@@ -1,43 +1,15 @@
 ---
-description: TOA3 产品六项核心——风格、架构、安全、集成、异常、窗口规格
+description: TOA3 产品核心——短总纲；全文见规范清单 STD-01
 alwaysApply: true
 ---
 
-# TOA3 产品核心（开发总纲）
+# TOA3 产品核心（短）
 
-## 六项核心
+1. 风格统一 · 2. 简捷实用 · 3. 分层可扩展 · 4. 安全可靠  
+5. 三方只走 integrations · 6. 异常/弹窗统一（`show_saved`）  
+7. Top3+三独到处确认再写码 · 8. 验收不回退  
+9. 办公套件一体 · 10. 壳三级导航 · 11. 介入双轨 · 12. 双门槛探索
 
-1. **风格统一、专业** — 全局 QSS + widgets/gallery；禁止 setStyleSheet/硬编码色
-2. **简捷实用** — 单模块单主任务；示例数据 `assets/samples`；状态栏反馈
-3. **架构清晰、可扩展** — 分层依赖；新模块 BasePage + storage + menu 登记
-4. **安全可靠** — license/DMS；无 skip_login 生产包；storage_paths 写文件
-5. **三方统一** — 仅经 `services/integrations`；配置 `integrations.yml`
-6. **异常与窗口统一** — `core/error_handler` + `core/ui_spec`；禁止散落 QMessageBox；**生成类完成提示必须 `show_saved`（绿色完成 +「打开所在目录」）**
-7. **Top3 对标 + 三独到处** — 开工前对标同类 Top3；**必须与主理人共创并确认恰好 3 条独到之处**后再写码（见 `toa3-feature-top3-research.mdc`）
-8. **验收不回退** — 联调结论写入 gaps/清单；遵守 `toa3-feature-acceptance.mdc`；新功能走 skill `toa3-add-feature`
-
-## 办公套件与壳层（第九项 · 架构）
-
-9. **办公套件一体** — 安装即集成剪贴板/截图/目录/文件/桌面/业务等效率工具；对标头部、一站集成（见 `toa3-office-suite-shell.mdc`）
-10. **壳层三级导航** — **一级子模块（子系统）→ 顶栏**；**二级功能模块 → 侧栏**；**三级任务页 → BasePage**；菜单只来自 `app.yml` / `menu_registry`
-11. **系统介入双轨** — 壳内可发现 + 热键/托盘/覆盖层至少一种；覆盖层 Esc 可退、默认不打断其它应用
-
-详述：`docs/architecture/12-办公套件壳层与系统介入.md`
-
-## 必用基类
-
-| 场景 | 基类/入口 |
-|------|-----------|
-| 业务页 | `core.base_page.BasePage` |
-| 弹窗 | `core.user_messages`（`show_info/error/warning/ask_confirm`；**生成完成用 `show_saved` 绿色+打开所在目录**） |
-| 状态 | `core.status_service` + `BasePage.report_status` |
-| 审计 | `core.audit_log.audit` → 日志 `TOA3.audit` |
-| 窗口尺寸 | `apply_dialog_spec` / `apply_shell_spec` |
-| 外部 API | `services.integrations.get_client` |
-
-## 菜单可见性
-
-- 侧栏只开放 `migration_manifest` 中 **status=done** 的模块（及明确联调例外）
-- 未完成功能保持 `show: false`，做强并点验后再改 `done` + `show: true`
-
-详述：`docs/architecture/11-产品核心规范.md`
+**总清单**：`docs/规范/00-规范清单.md`  
+**标准全文**：`docs/规范/STD-01-工程标准与流程.md`  
+**入口 Skill**：`toa3-dev-suite`

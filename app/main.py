@@ -36,8 +36,11 @@ def _configure_webengine_env() -> None:
         "--disable-lcd-text",
         "--font-render-hinting=full",
         "--enable-font-antialiasing",
-        # Windows 嵌入时父窗重绘易闪白
-        "--disable-features=CalculateNativeWinOcclusion",
+        # Windows 嵌入：父窗重绘 / 遮挡误判 → 白闪、假死、回来糊一帧
+        "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-background-timer-throttling",
     ]
     if sys.platform == "win32":
         # D3D11 路径比默认更容易稳，减轻悬停闪烁；仍走 GPU，不回软件光栅
@@ -48,8 +51,14 @@ def _configure_webengine_env() -> None:
         "--disable-gpu-compositing",
         "--disable-gpu-rasterization",
     }
+    # 旧版只写了 CalculateNativeWinOcclusion，统一换成带 IntensiveWakeUp 的合并项
     cur = (os.environ.get(key) or "").strip()
     parts = [p for p in cur.split() if p and p not in strip]
+    parts = [
+        p
+        for p in parts
+        if not p.startswith("--disable-features=CalculateNativeWinOcclusion")
+    ]
     for flag in extras:
         if flag not in parts:
             parts.append(flag)
@@ -94,9 +103,31 @@ def main() -> int:
         return cli_code
 
     setup_logging()
+    # 原生闪退时尽量留下栈（Windows ACCESS_VIOLATION 常见于 WebEngine）
+    try:
+        import faulthandler
+        from pathlib import Path
+
+        from services.config_service import resolve_path
+
+        crash_path = resolve_path("log_dir") / "toa3_faulthandler.log"
+        crash_path.parent.mkdir(parents=True, exist_ok=True)
+        _crash_fp = open(crash_path, "a", encoding="utf-8")  # noqa: SIM115
+        faulthandler.enable(file=_crash_fp, all_threads=True)
+        logger.info("faulthandler 已启用 → %s", crash_path)
+    except Exception:
+        logger.debug("faulthandler 启用失败", exc_info=True)
+
     install_qt_exception_hook()
     bootstrap_runtime()
     _configure_webengine_env()
+
+    try:
+        from services.harness_config import align_harness_runtime_config
+
+        align_harness_runtime_config(persist=True)
+    except Exception:
+        pass
 
     # 须在 QApplication 之前：否则任务栏仍归到 python.exe「Python」
     from services.windows_app_identity import apply_windows_app_identity
@@ -172,8 +203,7 @@ def main() -> int:
     try:
         shell = MainShell(defer_startup=True)
         shell_holder.append(shell)
-        shell.complete_startup()
-        # 禁止在主壳上挂 WebEngine 锚点：引擎/业务/系统来回切会原生闪退
+        # 先亮主窗再接线：避免「喘气」——登录后长时间黑屏/无窗
         shell.show()
         try:
             from services.windows_app_identity import apply_window_taskbar_identity
@@ -181,18 +211,13 @@ def main() -> int:
             apply_window_taskbar_identity(shell)
         except Exception:
             pass
-        # 离屏预热 Chromium，减轻首次进引擎页的大闪（不挂主壳）
-        try:
-            from PySide6.QtCore import QTimer
-            from services.webengine_prewarm import prewarm_chromium_process
+        from PySide6.QtCore import QTimer
 
-            QTimer.singleShot(400, lambda: prewarm_chromium_process(shell))
-        except Exception:
-            pass
+        QTimer.singleShot(0, shell.complete_startup)
+        # Chromium 预热已禁用（双 View 闪烁）；共享引擎首次 acquire 时再拉起
+        # QTimer.singleShot(4500, ...) 勿恢复 prewarm_chromium_process
         if launch_path_strs:
-            from PySide6.QtCore import QTimer
-
-            QTimer.singleShot(0, lambda: shell.open_drop_paths(launch_path_strs))
+            QTimer.singleShot(200, lambda: shell.open_drop_paths(launch_path_strs))
     except Exception:
         logger.exception("主壳启动失败")
         from services.single_instance import release_single_instance

@@ -201,10 +201,10 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
     }
 
     fixtures["04_auth_trial_active"] = {
-        "title": "授权版 · 体验码有效",
-        "chip": "授权版",
-        "chip_kind": "success",
-        "pack": "基础版 / 体验授权",
+        "title": "体验版 · 体验码有效",
+        "chip": "体验版",
+        "chip_kind": "info",
+        "pack": "（方案名省略，档位即体验版）",
         "login": "重启后应自动恢复「验收员·体验授权」",
         "paid_module": "若 features 不含 all，付费模块仍拦截",
         "basic_module": "local_free 模块可用",
@@ -262,7 +262,7 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
         "title": "正式版 · 套餐有效",
         "chip": "正式版",
         "chip_kind": "success",
-        "pack": "体验版（订单履约）",
+        "pack": "（全功能方案省略，与 Chip 同为正式版）",
         "login": "自动恢复「验收员·正式版」",
         "paid_module": "全部付费模块可打开",
         "basic_module": "全部模块可打开",
@@ -283,7 +283,7 @@ def _build_fixtures(lm) -> dict[str, dict[str, Any]]:
         "title": "正式版 · 套餐已到期",
         "chip": "续费",
         "chip_kind": "warning",
-        "pack": "体验版（已到期）",
+        "pack": "正式版已到期",
         "login": "自动恢复「验收员·正式到期」",
         "paid_module": "batch_rename 不可打开",
         "basic_module": "quick_notepad 仍可用",

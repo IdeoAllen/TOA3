@@ -1,34 +1,34 @@
 ---
-description: TOA3 测试验收——verify_mvp 与发版前门禁
+description: TOA3 测试验收——verify_all 为门禁真相源
 globs: scripts/**/*.py,tests/**/*
 alwaysApply: false
 ---
 
 # TOA3 测试与验收
 
-## 必跑（每次壳/主题/配置改动）
+## 必跑（壳 / 主题 / 配置 / 发版前）
 
 ```powershell
 python scripts/verify_all.py
 ```
 
-分项：`verify_mvp.py`（配置/菜单/主题）、`verify_gallery.py`（QSS/控件库）。
+`steps` 列表在 `scripts/verify_all.py` 内，**改门禁只改该文件**。含：mvp、gallery、shell hardening、截图钉选、水印 AI、LLM 范式、harness 系列、菜单 stress、`audit_migration`、`audit_architecture` 等。
 
-## 发版前追加（移植完成后）
+分项可单独跑同名脚本。仓库内其它 `verify_*.py`（如 `verify_local_web_engines`）为**可选专项**，未进 `verify_all` 则不挡默认绿灯。
 
-- License e2e：对照 TOA2 `scripts/e2e_toa_dms_license.py`
-- License 安全 smoke：`scripts/smoke_license_security.py` 等价
-- 全菜单 smoke：对照 `scripts/smoke_all_menus.py`
-- QSS 同步：`python scripts/gen_qss_from_theme.py` 后 diff 或 `--check`
+## 发版前追加（按需）
+
+- License 相关 smoke / e2e（若有）
+- `python scripts/gen_qss_from_theme.py` 后确认 QSS 已提交
 
 ## 新增模块
 
-- 至少：import 页面类 + `create_page(id)` 不抛错
-- 有 UI 交互：模块级手动用例或最小 pytest
+- import 页面类 + 壳可 `navigate`；`audit_migration` 通过
+- 有 UI 交互：模块级手动点验或最小 pytest
 
 ## 禁止
 
 - 仅靠手动点一遍就发版（无脚本门禁）
 - 跳过 license 测试用 `skip_login` 打生产包
 
-文档：`docs/architecture/08-测试与验收.md`
+文档：`docs/规范/STD-01-工程标准与流程.md` §12

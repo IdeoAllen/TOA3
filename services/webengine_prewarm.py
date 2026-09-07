@@ -3,6 +3,8 @@
 
 注意：禁止把 QWebEngineView 长期挂在 MainShell/centralWidget 上「消闪」——
 与业务页内嵌 View 并存时，Windows 上顶栏（引擎/业务/系统）来回切会原生闪退。
+
+预热第二份 View 已禁用：与真内嵌并存会抖窗/闪烁。
 """
 from __future__ import annotations
 
@@ -25,36 +27,15 @@ def bind_webengine_to_shell(shell) -> bool:
 
 
 def prewarm_chromium_process(parent=None) -> bool:
-    """可选：独立顶层离屏窗拉起进程，不挂主壳。"""
+    """已禁用：第二份离屏 View 与真内嵌并存会抖窗/闪烁。
+
+    共享 WebEngine 首次 acquire 时自然拉起 Chromium 即可。
+    """
     global _WARMED
-    if _WARMED:
-        return True
-    try:
-        from PySide6.QtCore import Qt, QUrl
-        from PySide6.QtWebEngineWidgets import QWebEngineView
-        from PySide6.QtWidgets import QApplication, QWidget
-    except Exception:
-        return False
-    app = QApplication.instance()
-    if app is None:
-        return False
-    try:
-        holder = QWidget(None)
-        holder.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
-        holder.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
-        holder.resize(8, 8)
-        view = QWebEngineView(holder)
-        view.setUrl(QUrl("about:blank"))
-        holder.show()
-        _ = view.winId()
-        app.processEvents()
-        _HOLD.append(holder)
-        _WARMED = True
-        logger.info("WebEngine 进程已离屏预热（未挂主壳）")
-        return True
-    except Exception:
-        logger.debug("离屏预热失败", exc_info=True)
-        return False
+    _WARMED = True
+    release_prewarm_hold()
+    logger.debug("prewarm_chromium_process 已禁用（防双 Chromium 闪烁）")
+    return True
 
 
 def cover_shell_for_webengine(shell, *, ms: int = 180) -> None:
@@ -64,10 +45,16 @@ def cover_shell_for_webengine(shell, *, ms: int = 180) -> None:
 
 def release_prewarm_hold() -> None:
     global _HOLD
-    for w in _HOLD:
+    if not _HOLD:
+        return
+    for w in list(_HOLD):
         try:
             w.hide()
+        except Exception:
+            pass
+        try:
             w.deleteLater()
         except Exception:
             pass
     _HOLD = []
+    logger.debug("已释放 WebEngine 预热占位")

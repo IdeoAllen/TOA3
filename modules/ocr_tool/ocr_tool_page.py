@@ -58,7 +58,7 @@ class OcrToolPage(BasePage):
         scroll.add_widget(
             HintLabel(
                 "主流程是截图直采，不必先存文件再识别。"
-                "本机无 chi_sim 时英文较准；装中文语言包后改 integrations.yml 的 lang。"
+                "中文不准时点「启用中文识别」（有语言包则一键开；没有则给安装指引）。"
             )
         )
 
@@ -73,6 +73,10 @@ class OcrToolPage(BasePage):
         btn_clip = SecondaryButton("识别剪贴板图片")
         btn_clip.clicked.connect(self._ocr_clipboard_image)
         row.addWidget(btn_clip)
+        btn_zh = SecondaryButton("启用中文识别")
+        btn_zh.setToolTip("有 chi_sim 则一键写入语言设置；没有则显示安装指引（不必手改 yml）")
+        btn_zh.clicked.connect(self._enable_chinese_ocr)
+        row.addWidget(btn_zh)
         row.addStretch(1)
         primary.add_layout(row)
         scroll.add_widget(primary)
@@ -247,6 +251,46 @@ class OcrToolPage(BasePage):
         if win is not None:
             navigate_to_harness(win, text, title="来自图片转文字", source="ocr_tool")
         self.report_status("已送入编码智能体", level=StatusLevel.SUCCESS)
+
+    def _enable_chinese_ocr(self) -> None:
+        """两步内启用中文：探测语言包 → 写入 lang；缺包则给安装指引（勿逼改 yml）。"""
+        try:
+            from services.integrations import get_client
+            from services.integrations.config import save_integrations_config
+
+            client = get_client("ocr")
+            # 借 prepare 探测已装语言（不识别图）
+            try:
+                import pytesseract  # noqa: F401
+            except ImportError:
+                show_warning(
+                    self,
+                    "本机未装 pytesseract。请先安装：pip install pytesseract Pillow\n"
+                    "主路径「框选截图」仍可用英文识别（若已配 Tesseract）。",
+                )
+                return
+            available: set[str] = set()
+            try:
+                _, _, _, available = client._prepare_tesseract(lang="eng")  # noqa: SLF001
+            except Exception as exc:
+                msg = getattr(exc, "user_message", None) or str(exc)
+                show_warning(self, f"{msg}\n\n装好 Tesseract 后可再点「启用中文识别」。")
+                return
+            if "chi_sim" in available:
+                save_integrations_config({"ocr": {"lang": "chi_sim+eng"}})
+                self.report_status("已启用中文识别（chi_sim+eng）", level=StatusLevel.SUCCESS)
+                show_info(self, "已写入语言设置：chi_sim+eng。再截一张图即可。")
+                return
+            show_info(
+                self,
+                "本机 Tesseract 还没有中文包 chi_sim。\n\n"
+                "① 打开 https://github.com/tesseract-ocr/tessdata 下载 chi_sim.traineddata\n"
+                "② 放到 Tesseract 的 tessdata 目录\n"
+                "③ 回到本页再点「启用中文识别」\n\n"
+                "未装中文前，英文识别照常可用。",
+            )
+        except Exception as exc:
+            show_warning(self, str(exc))
 
     def on_enter(self) -> None:
         if OcrToolPage._last_text and not self._text.toPlainText().strip():

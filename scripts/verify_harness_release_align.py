@@ -28,7 +28,7 @@ def _assert_shipped_matches_product() -> None:
     assert shipped.get("dsh_home") in ("", None)
     assert shipped.get("dsh_bin") in ("", None)
     assert shipped.get("node_exe") in ("", None)
-    assert shipped.get("surface_mode") == "embed"
+    assert shipped.get("surface_mode") == "browser"
     assert int(shipped.get("web_port") or 0) == 3082
     assert bool(shipped.get("enabled")) is True
     assert bool(shipped.get("auto_start")) is True
@@ -45,7 +45,7 @@ def _assert_align_migrates_workbuddy(tmp: Path) -> None:
                 "harness": {
                     "enabled": False,
                     "auto_start": False,
-                    "surface_mode": "browser",
+                    "surface_mode": "embed",
                     "web_port": 3081,
                     "dsh_home": str(Path.home() / "WorkBuddy" / "sess" / ".dsh"),
                     "node_exe": sys.executable,  # 任意存在文件，触发恢复启用

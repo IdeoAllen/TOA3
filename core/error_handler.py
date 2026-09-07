@@ -97,6 +97,23 @@ def install_qt_exception_hook() -> None:
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc, tb)
             return
+        # Guest / 回调里 sys.exit 不得拖垮主进程
+        if issubclass(exc_type, SystemExit):
+            text = "".join(traceback.format_exception(exc_type, exc, tb))
+            logger.critical("拦截 SystemExit（保持主窗）: %s\n%s", exc, text)
+            audit("拦截SystemExit", detail=str(exc), level=logging.CRITICAL)
+            return
+        # WebEngine / shiboken 悬空：降级 warning，避免致命框刷屏拖垮体感
+        msg = str(exc or "")
+        if issubclass(exc_type, RuntimeError) and (
+            "already deleted" in msg.lower()
+            or "Internal C++ object" in msg
+            or "wrapped C/C++ object" in msg
+        ):
+            text = "".join(traceback.format_exception(exc_type, exc, tb))
+            logger.warning("已忽略失效 Qt 对象访问: %s\n%s", exc, text)
+            audit("忽略失效Qt对象", detail=str(exc), level=logging.WARNING)
+            return
         text = "".join(traceback.format_exception(exc_type, exc, tb))
         logger.critical("未捕获异常: %s\n%s", exc, text)
         audit("未捕获异常", detail=str(exc), level=logging.CRITICAL)

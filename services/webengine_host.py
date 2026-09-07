@@ -76,10 +76,41 @@ class ToaWebEnginePage(QWebEnginePage):
     def __init__(self, profile, parent=None, *, accept_nav: Callable | None = None) -> None:
         super().__init__(profile, parent)
         self._accept_nav = accept_nav
+        # 引擎互切时放行 beforeunload / leave confirm，避免卡在旧引擎画面
+        self._suppress_leave_prompt = False
         try:
             self.setBackgroundColor(theme_surface_color())
         except Exception:
             pass
+
+    def set_accept_nav(self, accept_nav: Callable | None) -> None:
+        """运行时更新导航策略（Harness 外链限制）；勿为此重建 Page。"""
+        self._accept_nav = accept_nav
+
+    def begin_forced_navigation(self) -> None:
+        """共享 WebEngine 换引擎 URL 前调用：自动确认「离开页面」。"""
+        self._suppress_leave_prompt = True
+        try:
+            self.runJavaScript(
+                "try{window.onbeforeunload=null;}catch(e){}"
+                "try{window.onunload=null;}catch(e){}"
+                "try{window.addEventListener('beforeunload',function(e){"
+                "e.stopImmediatePropagation();},true);}catch(e){}"
+            )
+        except Exception:
+            pass
+
+    def end_forced_navigation(self) -> None:
+        self._suppress_leave_prompt = False
+
+    def javaScriptConfirm(self, security_origin, msg):  # noqa: N802
+        # 仅在引擎强制换 URL 时放行；页内正常确认框仍弹出
+        if self._suppress_leave_prompt:
+            return True
+        try:
+            return super().javaScriptConfirm(security_origin, msg)
+        except Exception:
+            return True
 
     def chooseFiles(self, mode, old_files, accepted_mime_types):  # noqa: N802
         parent = None
@@ -116,8 +147,9 @@ def apply_webengine_view_defaults(view) -> None:
     """
     try:
         view.setAutoFillBackground(True)
-        view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        view.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        view.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        # Opaque：减少父控件重绘透出导致的白闪（Comfy 命中靠 ClickFocus，不靠此属性）
+        view.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         pal = view.palette()
         pal.setColor(view.backgroundRole(), theme_surface_color())
         view.setPalette(pal)
@@ -130,6 +162,9 @@ def apply_webengine_view_defaults(view) -> None:
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
         settings.setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
         )
         settings.setAttribute(QWebEngineSettings.WebAttribute.ScrollAnimatorEnabled, False)
         settings.setAttribute(
@@ -161,5 +196,75 @@ def apply_webengine_view_defaults(view) -> None:
         if filt is not None:
             view.removeEventFilter(filt)
             view._toa_focus_filter = None
+    except Exception:
+        pass
+    # Draw.io / 任意「另存为」走下载通道；未接信号则保存无响应
+    try:
+        page = view.page()
+        profile = page.profile() if page is not None else None
+        if profile is not None:
+            wire_profile_downloads(profile, parent_widget=view)
+    except Exception:
+        pass
+
+
+def wire_profile_downloads(profile, *, parent_widget: QWidget | None = None) -> None:
+    """把 profile.downloadRequested 接到系统「另存为」（Draw.io 保存必需）。
+
+    同一 profile 只接一次；二次调用忽略。
+    """
+    if profile is None:
+        return
+    if getattr(profile, "_toa_download_wired", False):
+        return
+
+    def _on_download(download) -> None:
+        try:
+            from pathlib import Path
+
+            from PySide6.QtCore import QDir, QFileInfo
+            from PySide6.QtWebEngineCore import QWebEngineDownloadRequest
+
+            if download is None:
+                return
+            state = download.state()
+            if state != QWebEngineDownloadRequest.DownloadState.DownloadRequested:
+                # 部分「另存网页」已自动进入 InProgress，勿 cancel
+                return
+            proposal = QDir(download.downloadDirectory()).filePath(
+                download.downloadFileName() or "download"
+            )
+            # 默认落到桌面更直观；空则用提案路径
+            start = proposal
+            try:
+                desk = Path.home() / "Desktop"
+                if desk.is_dir() and not Path(proposal).is_absolute():
+                    start = str(desk / (download.downloadFileName() or "diagram.drawio"))
+                elif desk.is_dir() and Path(proposal).name:
+                    start = str(desk / Path(proposal).name)
+            except Exception:
+                pass
+            path, _ = QFileDialog.getSaveFileName(
+                parent_widget,
+                "保存文件",
+                start,
+                "所有文件 (*.*)",
+            )
+            if not path:
+                download.cancel()
+                return
+            fi = QFileInfo(path)
+            download.setDownloadDirectory(fi.path())
+            download.setDownloadFileName(fi.fileName())
+            download.accept()
+        except Exception:
+            try:
+                download.cancel()
+            except Exception:
+                pass
+
+    try:
+        profile.downloadRequested.connect(_on_download)
+        profile._toa_download_wired = True
     except Exception:
         pass

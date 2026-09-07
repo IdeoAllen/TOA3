@@ -3,11 +3,10 @@
 导出 TOA3 协作用 Excel（三档路线图：Ready / 眼下 / 未来）。
 
 协作真相源：https://docs.qq.com/sheet/DT05mY3ZXcGpneEpF?tab=000001
-固定副本：docs/TOA3-开发与功能手册.xlsx
+落盘：`output/docs/TOA3-开发与功能手册-*.xlsx`（禁止写入 docs/）
 """
 from __future__ import annotations
 
-import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -391,22 +390,13 @@ def export_dev_workbook(out_path: Path | None = None) -> Path:
     _sheet_catalog(wb)
     _sheet_changelog(wb)
     wb.save(out_path)
-
-    docs_copy = ROOT / "docs" / "TOA3-开发与功能手册.xlsx"
-    try:
-        shutil.copy2(out_path, docs_copy)
-    except OSError:
-        alt = ROOT / "docs" / f"TOA3-开发与功能手册-{ts}.xlsx"
-        shutil.copy2(out_path, alt)
-        docs_copy = alt
     return out_path
 
 
 def main() -> int:
     path = export_dev_workbook()
-    docs_copy = ROOT / "docs" / "TOA3-开发与功能手册.xlsx"
     print(f"已导出: {path}")
-    print(f"固定副本: {docs_copy}")
+    print("（不写入 docs/；官方文档见 docs/README.md）")
     print(f"腾讯文档: {COLLAB_SHEET_URL}")
     print("  Sheet1 路线图总览")
     print("  Sheet2 Ready体验版 — 可发调研")

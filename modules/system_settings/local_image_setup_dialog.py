@@ -69,8 +69,9 @@ class LocalImageSetupDialog(BaseDialog):
         lay.setSpacing(12)
         lay.addWidget(
             HintLabel(
-                "一键装好「本机生图 + 去水印 LaMa」，不用自己找文件。"
-                "生图包较大，请保持网络并耐心等待。"
+                "想一次装好「本机生图 + 去水印」：选档位 → 点「一键下载」（两步）。"
+                "只想去水印 AI，可在「去除图片水印」页点「安装 AI…」。"
+                "包较大时请保持网络并耐心等待。"
             )
         )
 

@@ -2,8 +2,8 @@
 
 > 状态：`approved`（主理人已确认 §3.5 三条）  
 > 日期：2026-08-25  
-> 关联：Wave★-1 · `docs/功能清单与优先级.md` · `docs/已实现功能确认清单.md`  
-> 门禁：`.cursor/rules/toa3-feature-top3-research.mdc` · skill `toa3-add-feature`
+> 关联：Wave★-1 · `docs/PROD-01-功能清单与优先级.md` · `config/migration_manifest.yml`  
+> 门禁：`.cursor/rules/toa3-feature-top3-research.mdc` · skill `toa3-sop-new-feature`
 
 ---
 

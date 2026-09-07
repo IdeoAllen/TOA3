@@ -1,0 +1,55 @@
+---
+description: TOA3 文档唯一真相源 — 新规范全面上线；旧版归档下线
+alwaysApply: true
+---
+
+# TOA3 · 文档宪法（强制）
+
+## 全面上线（2026-09-07）
+
+旧标准、旧流程、旧分册、旧待办/交接平行文件 **已全部归档下线**（`docs/_archive/OFFLINE.md`）。  
+**禁止**再引用 `_archive/`、旧文件名（如 `工程标准.md`、`AGENT_RELAY.md`、未编号 architecture 分册）作为依据。
+
+## 唯一现行入口
+
+1. **总清单**：`docs/规范/00-规范清单.md`  
+2. **工程标准**：`docs/规范/STD-01-工程标准与流程.md`（A 标准 · B 流程）  
+3. **作业指导**：`docs/规范/SOP-*.md`  
+4. **架构裁定**：`docs/architecture/ARCH-*.md`  
+5. **产品/运维**：`docs/PROD-*.md` · `docs/handoff/OPS-*.md`
+
+Cursor 规则 `toa3-*.mdc`：只允许**短指针**。  
+Agent 总入口 Skill：`toa3-dev-suite`。
+
+## 主理人反馈（强制回写）
+
+主理人对规范/流程/产品边界的任何意见 → **当次会话**写入对应 STD / SOP / ARCH / PROD，并在 OPS-01 记一行。  
+走 Skill `toa3-sop-docs-handoff`（SOP-07）。禁止「知道了」不改文件。
+
+## 禁止（硬）
+
+1. 新建平行规划 / 总览 / 方案副本 / 空指针 md。  
+2. 同一结论复制进第三份 md（短指针除外）。  
+3. 把 `docs/_archive/` 原样搬回现行目录，或引用归档当门禁。  
+4. 用 Cursor plan、会话纪要替代 `docs/handoff/OPS-01-交接与进度.md`。  
+5. 往 `docs/` 写 Excel / Figma brief（只落 `output/`）。
+
+## 只准改这些
+
+| 意图 | 只改 |
+|------|------|
+| 进度 / 交接 | `docs/handoff/OPS-01-交接与进度.md` |
+| 协作说明 | `docs/handoff/OPS-02-协作任务说明.md` |
+| 规范清单 | `docs/规范/00-规范清单.md` |
+| 工程标准 | `docs/规范/STD-01-工程标准与流程.md` |
+| 作业指导 | `docs/规范/SOP-*.md` |
+| 模块灯色 | `config/migration_manifest.yml` |
+| Wave / 排期 | `docs/PROD-01-功能清单与优先级.md` |
+| 产品叙事 | `docs/PROD-02-商务产品手册.md` |
+| 愿景运行时 | `config/product.yml` |
+| 架构专题 | `docs/architecture/ARCH-*.md` |
+| Top3 | `docs/research/<module_id>-top3.md` |
+
+## 会话结束
+
+只更新 OPS-01 必要段落；有规范意见则先改 STD/SOP 再记 OPS-01。

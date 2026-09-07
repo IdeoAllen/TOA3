@@ -1,0 +1,9 @@
+# 运营宝 / TOA · 产品说明（指针）
+
+> **产品叙事唯一正文：** [`商务产品手册.md`](./商务产品手册.md)（对内对外同一份，勿再写第二套说明）  
+> **运行时文案：** [`config/product.yml`](../config/product.yml)  
+> **排期 / 八件套：** [`功能清单与优先级.md`](./功能清单与优先级.md)  
+> **模块灯色：** [`config/migration_manifest.yml`](../config/migration_manifest.yml)  
+> **文档宪法：** [`README.md`](./README.md)
+
+旧版长文已进 `_archive/root/产品说明.md`。改产品怎么说、卖什么、给谁用 → 只改 **商务产品手册** + `product.yml`。

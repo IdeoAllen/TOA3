@@ -85,8 +85,12 @@ _PDF_EXT = {".pdf"}
 _TEXT_EXT = {
     ".txt",
     ".md",
+    ".markdown",
+    ".mdown",
     ".csv",
     ".json",
+    ".jsonl",
+    ".jsonc",
     ".yml",
     ".yaml",
     ".xml",
@@ -102,6 +106,8 @@ _TEXT_EXT = {
     ".sql",
     ".text",
 }
+_MARKDOWN_EXT = {".md", ".markdown", ".mdown"}
+_JSON_EXT = {".json", ".jsonl", ".jsonc"}
 _VIDEO_EXT = {
     ".mp4",
     ".webm",
@@ -423,6 +429,45 @@ def _read_text_preview(path: Path) -> str:
         except UnicodeDecodeError:
             continue
     return "（无法以文本方式解码）"
+
+
+def _read_json_preview(path: Path) -> tuple[str, str]:
+    """返回 (展示文本, 元信息短标签)。美化缩进；坏 JSON 回落原文。"""
+    raw = _read_text_preview(path)
+    # jsonl：逐行尝试美化
+    if path.suffix.lower() == ".jsonl":
+        lines_out: list[str] = []
+        for i, line in enumerate(raw.splitlines()):
+            s = line.strip()
+            if not s:
+                continue
+            try:
+                import json
+
+                lines_out.append(
+                    json.dumps(json.loads(s), ensure_ascii=False, indent=2)
+                )
+            except Exception:
+                lines_out.append(line)
+            if i > 200:
+                lines_out.append("…（已截断行数）")
+                break
+        return ("\n\n".join(lines_out) or raw), "JSON Lines"
+    try:
+        import json
+
+        obj = json.loads(raw.split("\n\n…（已截断预览）")[0])
+        pretty = json.dumps(obj, ensure_ascii=False, indent=2)
+        if "…（已截断预览）" in raw:
+            pretty += "\n\n…（已截断预览）"
+        return pretty, "JSON"
+    except Exception:
+        return raw, "JSON（原文）"
+
+
+def _read_markdown_preview(path: Path) -> tuple[str, str]:
+    """Markdown 以等宽原文预览（不引入渲染依赖）。"""
+    return _read_text_preview(path), "Markdown"
 
 
 def _load_image_as_displayed(path: Path, *, parent=None) -> QPixmap:
@@ -2179,9 +2224,20 @@ class ColumnPreviewPage(BasePage):
         if ext in _TEXT_EXT and path.is_file():
             self._raw_preview_pm = QPixmap()
             try:
-                self._preview_text.setPlainText(_read_text_preview(path))
+                if ext in _JSON_EXT:
+                    text, kind = _read_json_preview(path)
+                    self._preview_text.setPlainText(text)
+                    self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
+                elif ext in _MARKDOWN_EXT:
+                    text, kind = _read_markdown_preview(path)
+                    self._preview_text.setPlainText(text)
+                    self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
+                else:
+                    self._preview_text.setPlainText(_read_text_preview(path))
+                    self._preview_meta.setText(f"文本 · {ext} · {size_txt}\n{path}")
             except OSError as e:
                 self._preview_text.setPlainText(f"读取失败：{e}")
+                self._preview_meta.setText(f"{ext or '文本'} · {size_txt}\n{path}")
             self._stack.setCurrentIndex(_PAGE_TEXT)
             return
         if ext in _VIDEO_EXT and path.is_file():

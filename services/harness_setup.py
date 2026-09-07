@@ -190,7 +190,7 @@ def _install_harness_runtime_inner() -> tuple[bool, str]:
             {
                 "enabled": True,
                 "auto_start": True,
-                "surface_mode": "embed",
+                "surface_mode": "browser",
                 "web_port": 3082,
                 "node_exe": str(node_p),
                 "dsh_bin": str(dsh_p),
@@ -224,7 +224,7 @@ def _install_harness_runtime_inner() -> tuple[bool, str]:
             {
                 "enabled": True,
                 "auto_start": True,
-                "surface_mode": "embed",
+                "surface_mode": "browser",
                 "web_port": 3082,
                 "node_exe": str(node_p),
                 "dsh_bin": str(dsh_p),
@@ -262,6 +262,7 @@ def repair_harness_runtime() -> tuple[bool, str]:
         ensure_web_profile_bundles,
         heal_web_profile_junction,
         link_web_profile_node_modules,
+        sanitize_web_profile_package,
         web_profile_ready,
     )
 
@@ -303,11 +304,17 @@ def repair_harness_runtime() -> tuple[bool, str]:
                     return False, prof_msg or heal_msg or link_msg
                 notes.append("已补装 Web 组件")
 
+    ok_san, san_msg = sanitize_web_profile_package(home, dsh=dsh_p)
+    if not ok_san:
+        return False, f"清理 profile 插件失败：{san_msg}"
+    if "移除" in san_msg:
+        notes.append(san_msg)
+
     save_harness_config(
         {
             "enabled": True,
             "auto_start": True,
-            "surface_mode": "embed",
+            "surface_mode": "browser",
             "node_exe": str(node_p),
             "dsh_bin": str(dsh_p),
             "dsh_home": str(home),

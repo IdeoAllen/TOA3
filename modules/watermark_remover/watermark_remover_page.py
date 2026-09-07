@@ -487,7 +487,7 @@ class WatermarkRemoverPage(BasePage):
         outer.addWidget(
             PageHeader(
                 "去除图片水印",
-                "擦除豆包/角标等：优先 AI 强引擎，未配置或失败时自动本地修复。Ctrl 多选可批量。",
+                "擦除豆包/角标等：默认本地轻量修复（低配可用）；可选 AI 增强。Ctrl 多选可批量。",
             )
         )
 
@@ -502,12 +502,17 @@ class WatermarkRemoverPage(BasePage):
         btn_del.setToolTip("从列表移除选中项（不删磁盘文件）")
         btn_del.clicked.connect(self._remove_selected)
         top.addWidget(btn_del)
-        self._prefer_ai = CheckBox("优先 AI")
+        self._prefer_ai = CheckBox("AI 增强")
         self._prefer_ai.setToolTip(
-            "走 integrations「watermark_ai」（系统设置 → 能力接入）。未启用时自动本地修复。"
+            "可选探索：装好模型后勾选，效果更好。默认关——本地轻量即可用。"
         )
-        self._prefer_ai.setChecked(True)
+        self._prefer_ai.setChecked(False)
+        self._prefer_ai.toggled.connect(self._on_prefer_ai_toggled)
         top.addWidget(self._prefer_ai)
+        self._btn_ai_setup = SecondaryButton("安装 AI…")
+        self._btn_ai_setup.setToolTip("两步：① 下载模型 ② 勾选「AI 增强」。每步有提示。")
+        self._btn_ai_setup.clicked.connect(self._open_ai_setup)
+        top.addWidget(self._btn_ai_setup)
         self._ai_hint = HintLabel("")
         top.addWidget(self._ai_hint, 1)
         outer.addLayout(top)
@@ -590,7 +595,9 @@ class WatermarkRemoverPage(BasePage):
         actions.addStretch(1)
         outer.addLayout(actions)
 
-        self._result = HintLabel("框选/涂抹后右侧自动预览；AI 需在能力接入启用 watermark_ai。")
+        self._result = HintLabel(
+            "框选/涂抹后右侧自动预览；默认本地轻量修复（低配可用）。可选勾「AI 增强」。"
+        )
         outer.addWidget(self._result)
         self._refresh_ai_hint()
 
@@ -599,13 +606,60 @@ class WatermarkRemoverPage(BasePage):
             from services.integrations import get_client
 
             client = get_client("watermark_ai")
-            on = bool(getattr(client, "enabled", False))
+            hint = getattr(client, "status_hint", None)
+            text = hint() if callable(hint) else ""
+            ready = bool(client.health_check()) if getattr(client, "enabled", False) else False
         except Exception:
-            on = False
-        if on:
-            self._ai_hint.setText("AI 已启用 · 优先走远程/本地模型")
+            text = ""
+            ready = False
+        self._btn_ai_setup.setVisible(not ready)
+        if ready:
+            self._ai_hint.setText(
+                f"本地已可用 · 想更好可勾「AI 增强」（{text or '已装好'}）"
+            )
         else:
-            self._ai_hint.setText("AI 未启用 · 当前本地修复（设置→能力接入可开 watermark_ai）")
+            self._ai_hint.setText(
+                "本地已可用（小白直接用）。有条件再点「安装 AI…」两步探索"
+            )
+
+    def _on_prefer_ai_toggled(self, checked: bool) -> None:
+        if not checked:
+            return
+        try:
+            from services.integrations import get_client
+
+            client = get_client("watermark_ai")
+            ready = bool(client.enabled and client.health_check())
+        except Exception:
+            ready = False
+        if ready:
+            self.report_status("已开 AI 增强；失败会自动回退本地", StatusLevel.INFO)
+            return
+        self._prefer_ai.blockSignals(True)
+        self._prefer_ai.setChecked(False)
+        self._prefer_ai.blockSignals(False)
+        from core.user_messages import ask_confirm
+
+        if ask_confirm(
+            self,
+            "还没装 AI 模型。要不要现在按两步安装？\n"
+            "① 下载模型  →  ② 再勾选「AI 增强」\n"
+            "不装也不影响：继续用本地轻量修复即可。",
+            title="探索 AI 增强",
+        ):
+            self._open_ai_setup()
+
+    def _open_ai_setup(self) -> None:
+        from modules.watermark_remover.watermark_ai_setup_dialog import WatermarkAiSetupDialog
+
+        dlg = WatermarkAiSetupDialog(self)
+        dlg.exec()
+        self._refresh_ai_hint()
+        if dlg.installed:
+            self._prefer_ai.blockSignals(True)
+            self._prefer_ai.setChecked(True)
+            self._prefer_ai.blockSignals(False)
+            self.report_status("AI 增强已就绪并已勾选", StatusLevel.SUCCESS)
 
     def _add_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "选择图片", "", IMAGE_FILTER)

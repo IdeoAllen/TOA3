@@ -1054,7 +1054,7 @@ class WatermarkRemoverProcessor:
     ) -> np.ndarray:
         """
         去除水印。框选与涂抹由调用方保证互斥。
-        已配置 LaMa 插件 → 大模型；否则 → 邻域贴片轻量修复。
+        默认邻域贴片轻量修复（低配可用）；LaMa 仅由上层 prefer_ai 显式走 integrations。
         """
         try:
             has_boxes = bool(boxes)
@@ -1073,7 +1073,8 @@ class WatermarkRemoverProcessor:
 
             from .repair_engine import repair
 
-            out, engine = repair(bgr, mask, light_fn=_light)
+            # 处理器路径永不默认拉起重模型，避免低配机「装了就卡」
+            out, engine = repair(bgr, mask, light_fn=_light, prefer_heavy=False)
             logger.info("去水印引擎: %s", engine)
             feather = self._adaptive_feather_px(mask)
             blended = self._composite_strict(bgr, out, mask, feather_px=feather)
