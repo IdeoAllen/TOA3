@@ -1,5 +1,5 @@
 # 发版默认（无个人路径）。与 config/harness.yml 行为对齐：
-# 浏览器优先 + 进页自启；路径空 → 进页走一键安装引导。本机覆盖写 %LOCALAPPDATA%\YCZH-TOA3\config\harness.yml
+# 默认套件内嵌；「在浏览器打开」仍为可用 CTA；路径空 → 进页走一键安装引导。
 
 harness:
   enabled: true
@@ -13,7 +13,7 @@ harness:
   clear_env_api_key: true
   dshm_script: vendor/dshm/bin/dshm.js
   default_workspace: ""
-  surface_mode: browser
+  surface_mode: embed
   web_zoom: 1.0
   web_readability_boost: false
   theme_harmonize: false

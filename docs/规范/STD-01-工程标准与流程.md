@@ -135,6 +135,7 @@ modules/*  →  widgets/* + ui/*.ui  →  app/shell · theme_loader · core/* ·
 | A4.4 | 主路径低配可用；GPU/大模型仅为可选增强，失败安静回退。 |
 | A4.5 | 探索路径：一件安装 + 配置 ≤2 步；主路径不因未探索而不可用。 |
 | A4.6 | 截图/自绘：逻辑像素几何 + 正确 `devicePixelRatio`；工具栏按钮 `padding:0` + 固定高宽。 |
+| A4.7 | **引擎 Host 进度与装载（强制）**：见 `ARCH-05`「Host 进度与装载契约」。活动条只用 `SoftActivityBar`（常占位、淡入扫、硬停）；**仅**服务启/停/重启可拉条；进页检测/检查安装**禁止**弹条与 `ProgressBar.show/hide`；界面装载用主区占位遮罩，`loadFinished` 成功后再揭开 Web；装载完成必须硬停活动条。安装可用确定进度 `ProgressBar`（0–100）。参考实现：`harness_agent_page` · `local_web_host_page`。 |
 
 ## A5. 数据落盘（本机数据设计）
 
@@ -158,7 +159,7 @@ modules/*  →  widgets/* + ui/*.ui  →  app/shell · theme_loader · core/* ·
 | A6.3 | 禁止把 Key 写入 `config/*.yml`、源码、日志、安装包。 |
 | A6.4 | TOA License / 发版基址：`https://toa-service.yczh.tech`（`license.service_url` 指向 `/api/toa-license`）；禁止把 DMS 当 TOA 账本。 |
 | A6.5 | 用户扩展桥：扩展内 `HOST_API.md` + `toa_bridge.js`（见 architecture/28）。 |
-| A6.6 | Harness 默认 `surface_mode: browser`（见 `config/harness.yml`）；`engine_host_hub` 为 Hold。 |
+| A6.6 | Harness 默认 `surface_mode: embed`（见 `config/harness.yml`）；`engine_host_hub` 为 Hold。 |
 
 ## A7. 日志、异常、审计
 
@@ -205,15 +206,26 @@ modules/*  →  widgets/* + ui/*.ui  →  app/shell · theme_loader · core/* ·
 | 步 | 动作 | 完成判据 |
 |----|------|----------|
 | 1 | 定场景：谁 / 何时 / 输入 / 输出 / 失败提示 | 与主理人一句话对齐 |
-| 2 | Top3 对标 + 草案恰好 3 条独到处 | 写入 `docs/research/<id>-top3.md` |
-| 3 | 与主理人逐条论证独到处 | 文档勾选确认；状态 → `approved` |
+| 2 | **产品亮点研究**：参考面（含但不限于同类 Top3）→ **充分挖掘不落俗套的设计亮点** → 草案恰好 3 条独到处 | 写入 `docs/research/<id>-top3.md`；俗套主张已否决 |
+| 3 | 与主理人逐条论证独到处（过「不落俗套」） | 文档勾选确认；状态 → `approved` |
 | 4 | 技术方案（同 research 文档）：栈 / 否决 / 落点 / 性能 / 验收步骤 | 可测、可交付 |
 | 5 | 实现：兑现 3 条独到处；遵守 **A** 全部适用条款 | 代码可运行 |
 | 6 | 登记：菜单 + `MIGRATED_MODULES` + manifest +（若落盘）`storage.yml` | `audit_migration` 通过 |
 | 7 | 自测：B5；主理人点验；回写 gaps 或清 gaps | 绿灯规则见 A10 |
 | 8 | 进度：更新 `OPS-01-交接与进度.md` 必要段 | 不另建待办 md |
 
-**停手**：无 Top3 文档、无主理人确认的 3 条独到处、文档非 `approved`。
+### B1.1 research 文档的真正目的（2026-09-07 主理人裁定）
+
+文件名可仍叫 `*-top3.md`，但 **不是**「找三个竞品填表交差」。
+
+| 要 | 不要 |
+|----|------|
+| 从 **产品角度** 挖本功能的设计亮点与可感知差异 | 只罗列竞品功能清单 |
+| 参考同类 / 替代路径 / 跨品类灵感，**取长补短** | 把「一键、智能、统一体验」当独到 |
+| 产出 **恰好 3 条** 可测、不落俗套的独到处 | 用对标表代替产品主张 |
+| 明示 **俗套否决**（哪些常见卖点我们不做/不自称） | 为凑三条把平台铁律（如 `show_saved`）写成独到 |
+
+**停手**：无 research 文档、无主理人确认的 3 条独到处、文档非 `approved`、独到处经主理人判定仍俗套。
 
 模板：`docs/research/_TEMPLATE-top3.md`。排期真相：`docs/PROD-01-功能清单与优先级.md`。
 
@@ -254,12 +266,15 @@ modules/*  →  widgets/* + ui/*.ui  →  app/shell · theme_loader · core/* ·
 
 ## B6. 打包发版
 
-1. 确认 `APP_VERSION`；配置干净（shipped_config）  
-2. 跑 `verify_all`（或至少 mvp + 护栏）  
-3. `python packaging/build_windows.py`（及 Inno）  
-4. `release_config_guard` / secrets 审计通过  
-5. 需要时 `scripts/sync_release_version.py`  
-6. 若涉及 DMS 仅更新下载说明：只建 draft，**人审后**再部署（见工作区 `dms-release-deploy.mdc`）  
+说「发版」= 五步（细则 SOP-04 / `toa-cloud/docs/版本发布SOP.md`）：
+
+1. 确认 `APP_VERSION`；shipped_config 干净；`verify_all`（或 mvp + 护栏）  
+2. `python packaging/build_windows.py --clean --msi` + `release_config_guard`  
+3. **Agent 上传**：`../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`（禁止只交本地 dist）  
+4. **主理人**运营台：试链 → 设为当前版  
+5. `python scripts/sync_release_version.py --from-live --require-match --commit`（上传脚本在已切版时常自动做）  
+
+若涉及 DMS 仅更新下载说明：只建 draft，**人审后**再部署（见工作区 `dms-release-deploy.mdc`）；**≠** TOA 安装包 Portal 上传。
 
 细则：`docs/规范/SOP-04-打包发版.md`
 
@@ -291,7 +306,7 @@ SOP：`docs/规范/SOP-06-用户扩展开发.md` · Skill：`toa3-sop-user-exten
 | 编码/分层 | A1 | — |
 | UI/色/控件/密度 | A3 | B2 B3 · SOP-02 |
 | 壳与介入 | A2 | ARCH-02 |
-| 性能/生命周期 | A4 | — |
+| 性能/生命周期 | A4 · **A4.7 引擎进度** | — · ARCH-05 §2.1 |
 | 本机数据 | A5 | B4 · SOP-03 |
 | 接口/密钥 | A6 | ARCH-04 |
 | 需求/Top3 | A10.2 | B1 · SOP-01 |

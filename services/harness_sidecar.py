@@ -29,12 +29,32 @@ _LAST_START_LOG: Path | None = None
 _LOCK = threading.Lock()
 
 
-def _sidecar_log_path() -> Path:
+def sidecar_log_path() -> Path:
+    """最近一次 Sidecar 启动日志（模块 output）。"""
     from services.storage_paths import module_output_dir
 
     p = module_output_dir("harness_agent") / "sidecar_last.log"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def _sidecar_log_path() -> Path:
+    return sidecar_log_path()
+
+
+def log_suggests_plugin_boot_failure(text: str) -> bool:
+    """日志是否像插件启动失败（Failed to load plugins / 缺服务等）。"""
+    t = (text or "").lower()
+    if not t:
+        return False
+    needles = (
+        "failed to load plugins",
+        "uiconversation",
+        "cannot find module",
+        "plugin load failed",
+        "error: cannot find",
+    )
+    return any(n in t for n in needles)
 
 
 def _read_log_tail(path: Path, limit: int = 600) -> str:
@@ -121,7 +141,7 @@ def validate_setup() -> tuple[bool, str]:
     if _port_open(port) and not is_running():
         return True, (
             f"端口 {port} 已被占用但 Harness 未响应。"
-            "可能是 WorkBuddy 或其它进程；可改端口或直接嵌入已有实例。"
+            "可改端口，或点「停止服务」后重试。"
         )
     return True, ""
 
@@ -141,6 +161,38 @@ def _build_env() -> dict[str, str]:
     return env
 
 
+def preflight_web_profile(*, home: Path | None = None) -> tuple[bool, str]:
+    """启动前轻量自愈：凭证格式 + 剔除已知启动杀手插件（不重装、不联网）。
+
+    稳定方案核心：任何启停路径都先过这一关，避免 Harness Web「Failed to load plugins」。
+    """
+    from services.harness_credentials import sanitize_credentials_document
+    from services.harness_plugins import strip_boot_killer_plugins
+
+    notes: list[str] = []
+    try:
+        ok_cred, cred_msg = sanitize_credentials_document()
+        if cred_msg and "跳过" not in cred_msg and "正常" not in cred_msg:
+            notes.append(cred_msg)
+        if not ok_cred:
+            return False, cred_msg
+    except Exception as exc:
+        logger.warning("sanitize credentials failed: %s", exc)
+        notes.append(f"凭证整理异常：{exc}")
+
+    h = Path(home) if home is not None else dsh_home_path()
+    try:
+        ok_pl, pl_msg = strip_boot_killer_plugins(h)
+        if pl_msg:
+            notes.append(pl_msg)
+        if not ok_pl:
+            return False, "；".join(notes) if notes else pl_msg
+    except Exception as exc:
+        logger.warning("preflight_web_profile failed: %s", exc)
+        return False, f"启动前自愈失败：{exc}"
+    return True, "；".join(notes) if notes else "启动前检查通过"
+
+
 def prepare_sidecar_start() -> tuple[bool, str, bool]:
     """校验环境与 Web 组件；返回 (可继续, 提示, 是否已在运行)。"""
     from services.harness_config import align_harness_runtime_config
@@ -154,9 +206,9 @@ def prepare_sidecar_start() -> tuple[bool, str, bool]:
         hint = "Harness 已在运行"
         st = health_status()
         if st.get("owned"):
-            hint += "（TOA 托管）"
+            hint += "（本应用托管）"
         else:
-            hint += "（外部实例，停止服务可结束或「更多 → 重启服务」）"
+            hint += "（本机已有进程，可停止后由本页重新启动）"
         if setup_hint:
             hint = f"{hint}\n{setup_hint}"
         return True, hint, True
@@ -178,7 +230,14 @@ def prepare_sidecar_start() -> tuple[bool, str, bool]:
             f"Web 组件未就绪：{prof_msg}\n请点「更多 → 修复运行环境」。",
             False,
         )
-    return True, "", False
+    # 即使组件已就绪，也强制扫 denylist（用户可能在 Harness 内装了杀手插件）
+    ok_pre, pre_msg = preflight_web_profile(home=home)
+    if not ok_pre:
+        return False, f"{pre_msg}\n请点「更多 → 修复运行环境」。", False
+    hint = ""
+    if "移除" in (pre_msg or ""):
+        hint = pre_msg
+    return True, hint, False
 
 
 def spawn_sidecar_process() -> tuple[bool, str]:
@@ -247,22 +306,15 @@ def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
         with _LOCK:
             proc = _PROCESS
         if proc is not None and proc.poll() is not None:
-            tail = _read_log_tail(log_path)
-            hint = f"\n\n日志：{log_path}"
-            if tail:
-                hint = f"\n\n{tail}"
             return False, (
                 "Harness 进程已退出。常见原因：API Key 未配置、"
                 "Node/dsh 路径错误或 Web 组件未装全。"
-                "请点「更多 → 修复运行环境」后重试。"
-                f"{hint}"
+                "请点「更多 → 修复运行环境」后重试，或打开启动日志。"
             )
         if is_running():
             return True, f"Harness 已启动：{web_url()}"
         time.sleep(0.35)
-    tail = _read_log_tail(log_path)
-    extra = f"\n{tail}" if tail else ""
-    return False, f"Harness 启动超时（{timeout_sec}s），请检查端口 {port}{extra}"
+    return False, f"Harness 启动超时（{timeout_sec}s），请检查端口 {port}，或打开启动日志"
 
 
 def sidecar_start_progress() -> tuple[str, str]:
@@ -271,11 +323,8 @@ def sidecar_start_progress() -> tuple[str, str]:
     with _LOCK:
         proc = _PROCESS
     if proc is not None and proc.poll() is not None:
-        tail = _read_log_tail(log_path)
-        msg = "Harness 进程已退出。"
-        if tail:
-            msg = f"{msg}\n{tail[-400:]}"
-        return "failed", msg
+        # 用户可见短句；完整日志只给 heal / 「打开启动日志」
+        return "failed", "Harness 进程已退出"
     if is_running(timeout=0.8):
         return "ready", f"Harness 已启动：{web_url()}"
     return "pending", ""
@@ -382,8 +431,8 @@ def stop(*, force: bool = False) -> tuple[bool, str]:
     if not force:
         return (
             False,
-            "当前为外部实例（如 WorkBuddy 或其它 TOA 会话拉起）。"
-            "点「停止服务」并在确认框中同意即可结束。",
+            "当前服务不是本页拉起的。"
+            "点「停止服务」并确认后即可结束。",
         )
 
     port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
@@ -405,6 +454,8 @@ def ensure_owned_with_credentials(*, wait_ready: bool = True, timeout_sec: float
     专治：WorkBuddy 等外部进程占用端口、或本机 DEEPSEEK_API_KEY 盖住设置页密钥，
     导致历史会话接不上大模型。
     """
+    # 重启路径同样先过 denylist，避免「修完又被旧进程/脏插件拖死」
+    preflight_web_profile()
     port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
     stop(force=True)
     # 再扫一轮，避免 taskkill 后端口仍短暂占用
@@ -474,3 +525,22 @@ def open_config_dir() -> Path:
     p = dsh_home_path()
     p.mkdir(parents=True, exist_ok=True)
     return Path(p)
+
+
+def open_install_root() -> Path:
+    from services.harness_setup import default_install_root
+
+    p = default_install_root()
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def open_sidecar_log() -> Path:
+    """确保日志文件存在并返回路径（供「打开启动日志」）。"""
+    p = sidecar_log_path()
+    if not p.is_file():
+        try:
+            p.write_text("", encoding="utf-8")
+        except OSError:
+            pass
+    return p

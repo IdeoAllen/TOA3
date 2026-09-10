@@ -86,10 +86,17 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: Wave★-3；Top3 v2 approved；单面WYSIWYG+自动保存+投喂链
+    note: >-
+      Wave★-3；Top3 v2 approved；单面WYSIWYG+自动保存+投喂链；
+      2026-09-10：Ctrl+V/拖入插图、图片拖角缩放、段距/行距/空段；
+      去掉大纲/正文分区框；更多菜单可导出 PDF；
+      完整 HTML：源码编辑 + WebEngine「网页」预览（不经设计区毁掉）
     gaps:
       - 主理人点验：去编辑预览叠层、自动保存、从剪贴板/最近历史/送入记事（含图）
       - 主理人点验：简约↔多功能正文不丢、导入MD与复制HTML
+      - 主理人点验：Ctrl+V 插图可见占位；拖角缩放不闪、松手落盘、不扯乱上下文；段距/行距
+      - 主理人点验：更多 → 导出 PDF（标题+正文/图）
+      - 主理人点验：导入/打开完整 HTML → 网页预览正确；源码可改并保存
 
   web_workspace:
     status: mvp
@@ -198,12 +205,14 @@ modules:
     office_freq: high
     toa2_ref: —
     note: >-
-      Harness 薄 Host：三步开用；默认系统浏览器干活（doc33/C-11）；内嵌可选；
-      独立目录/3082/browser 与发版模板对齐；冲突配置运行时自愈
+      Harness 薄 Host 六件套 + chrome 状态机（启停/进度/忙碌互斥）；
+      启动前 denylist；健康快照；插件搞挂自愈；默认浏览器干活；
+      `scripts/verify_harness_host_lifecycle.py --live` 覆盖启停往返
     gaps:
-      - 主理人点验：无 Node → 重试 → Key → 自启后浏览器打开
-      - 主理人点验：主 CTA「在浏览器打开」；更多可改回内嵌
-      - 主理人点验：旧脏配置进页后可自愈并三步走通
+      - 主理人点验：启动→浏览器打开→停止→再启，按钮与状态行同步
+      - 主理人点验：忙碌中主钮全禁用；完成后恢复
+      - 主理人点验：一键修复后自动重启且不再二次确认
+      - 主理人点验：更多 → 打开… / 恢复 / 卸载（保留会话）
 
   open_pencil:
     status: mvp
@@ -301,6 +310,18 @@ modules:
       - 体积/画质曲线与批量体验
 
   # —— 培训业务 ——
+  training_delivery_board:
+    status: mvp
+    priority: P0
+    toa2_ref: —
+    note: >-
+      培训交付看板：班级上下文 + 开班→交付串链；高级付费；配合腾讯文档弱耦合；
+      Top3/亮点研究 approved（2026-09-07）。
+    gaps:
+      - 主理人点验：绑定班级后串链模块根目录/名单仍在
+      - 主理人点验：无 DMS / 无腾讯文档 OAuth 仍能粘贴开跑
+      - 主理人点验：打开文档链接与清除会话
+
   deduction_note_formatter:
     status: done
     priority: P0
@@ -345,11 +366,15 @@ modules:
     status: mvp
     priority: P1
     toa2_ref: —
-    note: MACOS风格桌面；三模式+标签；.md/.json 文本预览增强
+    note: >-
+      MACOS风格桌面；三模式+标签；.md/.json 文本预览增强；
+      HTML「代码 / 网页」、Markdown「源码 / 预览」双模式
     gaps:
       - 主理人点验三模式/标签/折叠/新建后清 gaps
       - 主理人点验拖入图标/主窗→父目录为根+预览+导入记事本
       - 主理人点验 .md / .json 右侧预览
+      - 主理人点验 HTML：代码源码与网页渲染切换
+      - 主理人点验 Markdown：源码与渲染预览切换
 
   enhanced_directory_inspector:
     status: done
@@ -405,6 +430,31 @@ modules:
     priority: P1
     toa2_ref: modules/teaching_assistant_resume/
     gaps: []
+
+  assistant_recruit_post:
+    status: mvp
+    priority: P1
+    toa2_ref: —
+    note: >-
+      助教招聘稿：班级命名即表单 + 公司话术锁定 + 复制即发；
+      Top3/亮点研究 approved（2026-09-08）。
+    gaps:
+      - 主理人点验：示例班名出稿城市/天数/费用正确
+      - 主理人点验：生成并复制与结果区一致
+      - 主理人点验：改日薪后固定职责段不变
+
+  assistant_outfit_swap:
+    status: mvp
+    priority: P1
+    toa2_ref: —
+    note: >-
+      助教打卡换装：目录全量 + 着装预设 + 只换服装保水印；
+      Top3/亮点研究 approved（2026-09-08）；经 image_gen 参考图编辑。
+    gaps:
+      - 主理人点验：目录全量出图张数对齐
+      - 主理人点验：水印/时间戳抽查仍在，仅服装变化
+      - 主理人点验：旁路 _换装_* 目录且原图未覆写
+      - 主理人点验：单张失败不中断整批
 
   resume_extractor:
     status: done

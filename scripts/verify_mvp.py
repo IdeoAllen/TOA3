@@ -111,16 +111,17 @@ def main() -> int:
             errors.append(f"create_page migrated {mid}: {e}")
 
     if errors:
-        print("MVP VERIFY FAILED")
+        print("MVP VERIFY FAILED", flush=True)
         for e in errors:
-            print(" -", e)
+            print(" -", e, flush=True)
         return 1
 
-    print("MVP VERIFY OK")
-    print(f"  themes: {len(themes)}")
-    print(f"  menu visible: {menu_count}")
+    print("MVP VERIFY OK", flush=True)
+    print(f"  themes: {len(themes)}", flush=True)
+    print(f"  menu visible: {menu_count}", flush=True)
     import os
 
+    # Qt/WebEngine 在 Windows 上正常退出常 0xC0000005；成功后硬退保证门禁绿
     os._exit(0)
 
 

@@ -15,7 +15,7 @@ harness:
   clear_env_api_key: true
   dshm_script: vendor/dshm/bin/dshm.js
   default_workspace: ""
-  surface_mode: browser
+  surface_mode: embed
   web_zoom: 1.0
   web_readability_boost: false
   theme_harmonize: false

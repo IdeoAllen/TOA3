@@ -18,7 +18,7 @@ _ALIGNED_ONCE = False
 
 # 与 config/harness.yml · packaging/shipped_config/harness.yml 同源行为默认
 PRODUCT_WEB_PORT = 3082
-PRODUCT_SURFACE_MODE = "browser"
+PRODUCT_SURFACE_MODE = "embed"
 
 
 def _user_harness_path() -> Path:
@@ -153,11 +153,8 @@ def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -
     migrating_home = bool(is_workbuddy_home(home_s) or updates.get("dsh_home"))
     if mode not in ("embed", "browser"):
         updates["surface_mode"] = PRODUCT_SURFACE_MODE
-        notes.append("显示方式对齐为浏览器优先")
-    elif migrating_home and mode != PRODUCT_SURFACE_MODE:
-        # 仅自愈脏配置时改；干净目录下用户自选内嵌则保留
-        updates["surface_mode"] = PRODUCT_SURFACE_MODE
-        notes.append("显示方式对齐为浏览器优先")
+        notes.append("显示方式对齐为套件内嵌")
+    # 用户已选 embed/browser 时一律保留；禁止安装/修复把内嵌改回浏览器
 
     if updates and persist:
         save_harness_config(updates)

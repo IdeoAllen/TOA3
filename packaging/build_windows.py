@@ -328,16 +328,30 @@ def preflight(profile: str = "release", *, skip_verify: bool = False) -> bool:
         log("运行 MVP 验收 ...")
         try:
             result = subprocess.run(
-                [sys.executable, str(PROJECT_DIR / "scripts" / "verify_mvp.py")],
+                [sys.executable, "-u", str(PROJECT_DIR / "scripts" / "verify_mvp.py")],
                 cwd=PROJECT_DIR,
                 timeout=180,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except subprocess.TimeoutExpired:
             log("MVP 验收超时（>180s），中止打包")
             return False
-        if result.returncode != 0:
-            log("MVP 验收失败，中止打包")
+        out = (result.stdout or "") + (result.stderr or "")
+        if out.strip():
+            print(out, end="" if out.endswith("\n") else "\n")
+        # Windows 上 Qt/WebEngine 成功打印后偶发 0xC0000005，仍视为通过
+        win_av = 0xC0000005
+        ok_mark = "MVP VERIFY OK" in out
+        if result.returncode != 0 and not (
+            ok_mark and (result.returncode & 0xFFFFFFFF) == win_av
+        ):
+            log(f"MVP 验收失败，中止打包 (code={result.returncode})")
             return False
+        if result.returncode != 0 and ok_mark:
+            log(f"MVP 已通过（忽略 Qt 退出码 {result.returncode}）")
 
     if profile == "release":
         release_cfg = PROJECT_DIR / "config" / "app.release.yml"

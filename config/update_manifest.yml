@@ -1,9 +1,9 @@
 # 本地回退清单（远程 manifest 不可达时使用）
 # 须与运营台当前 stable 对齐；由 scripts/sync_release_version.py 在发版后同步。
 product: TOA3
-version: 3.1.11
+version: 3.1.12
 channel: stable
-release_notes: TOA3 3.1.11
+release_notes: TOA3 3.1.12
 download_page: https://www.yczh.tech/downloads/
-download_url: https://www.yczh.tech/downloads/TOA3-Setup-v3.1.11.exe
+download_url: https://www.yczh.tech/downloads/TOA3-Setup-v3.1.12.exe
 min_version: 3.0.0

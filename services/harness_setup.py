@@ -24,13 +24,16 @@ def _workbuddy_roots() -> list[Path]:
 
 
 def discover_runtime() -> dict[str, str]:
-    """扫描运行时：优先 TOA 独立目录，其次本机 Node，再次 WorkBuddy（仅借 node/dsh，不绑其 home）。"""
+    """扫描运行时：优先 TOA 独立目录（含便携 Node），其次本机 Node，再次 WorkBuddy（仅借 node/dsh）。"""
     found: dict[str, str] = {}
     toa_root = default_install_root()
     toa_dsh = toa_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
     toa_home = toa_root / ".dsh"
+    toa_node = toa_root / "node" / ("node.exe" if os.name == "nt" else "node")
     if toa_dsh.is_file():
         found["dsh_bin"] = str(toa_dsh)
+    if toa_node.is_file():
+        found["node_exe"] = str(toa_node)
     # 始终优先 TOA home（可尚不存在）；绝不把 WorkBuddy/.dsh 写入发现结果
     found["dsh_home"] = str(toa_home)
 
@@ -137,12 +140,58 @@ def runtime_report(node: Path, dsh: Path, home: Path) -> dict[str, Any]:
     }
 
 
-def install_harness_runtime() -> tuple[bool, str]:
-    """
-    一键安装 / 检测 Harness 运行环境（Node + @deepseek-ai/dsh + DSH 目录）。
-    优先 TOA 独立目录 ~/.toa3/harness-runtime；可回落本机 Node / WorkBuddy。
+def _finalize_runtime(node_p: Path, dsh_p: Path, home: Path, *, ok_msg: str) -> tuple[bool, str]:
+    from services.harness_config import (
+        PRODUCT_SURFACE_MODE,
+        load_harness_config,
+        save_harness_config,
+    )
+    from services.harness_plugins import ensure_web_profile_bundles, sanitize_web_profile_package
+
+    ok_home, _ = init_dsh_home(home)
+    if not ok_home:
+        return False, "无法创建 DSH 数据目录"
+    ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
+    if not ok_prof:
+        return False, f"Web 界面组件安装失败：{prof_msg}"
+    ok_san, san_msg = sanitize_web_profile_package(home, dsh=dsh_p)
+    if not ok_san:
+        return False, f"清理 profile 插件失败：{san_msg}"
+    save_harness_config(
+        {
+            "enabled": True,
+            "auto_start": True,
+            "surface_mode": PRODUCT_SURFACE_MODE,
+            "web_port": 3082,
+            "node_exe": str(node_p),
+            "dsh_bin": str(dsh_p),
+            "dsh_home": str(home),
+        }
+    )
+    load_harness_config(force=True)
+    try:
+        from services.harness_model_defaults import ensure_official_default_model
+
+        ensure_official_default_model()
+    except Exception:
+        pass
+    return True, ok_msg
+
+
+def install_harness_runtime(
+    flavor: str | None = None,
+    *,
+    progress=None,
+    cancel=None,
+) -> tuple[bool, str]:
+    """安装 / 登记 Harness 运行环境。
+
+    - ``flavor`` 为 ``official`` / ``prefab``：走官方预制 zip 双路线（主路径）。
+    - ``flavor`` 为空：登记已有环境，或回落本机 Node + npm（修复/高级）。
     """
     try:
+        if flavor:
+            return _install_flavor_inner(str(flavor), progress=progress, cancel=cancel)
         return _install_harness_runtime_inner()
     except OSError as exc:
         from services.harness_plugins import _friendly_os_error
@@ -150,13 +199,75 @@ def install_harness_runtime() -> tuple[bool, str]:
         return False, _friendly_os_error(exc)
 
 
+def _install_flavor_inner(flavor: str, *, progress=None, cancel=None) -> tuple[bool, str]:
+    from services.harness_config import align_harness_runtime_config
+    from services.harness_prefab import (
+        FLAVOR_LABELS,
+        dsh_bin_under,
+        install_prefab_bundle,
+        normalize_flavor,
+        portable_node_exe,
+    )
+
+    align_harness_runtime_config(persist=True)
+    f = normalize_flavor(flavor)
+    label = FLAVOR_LABELS.get(f, f)
+    root = default_install_root()
+    ok, msg = install_prefab_bundle(
+        f,
+        install_root=root,
+        progress=progress,
+        cancel=cancel,
+        keep_user_data=True,
+    )
+    if not ok:
+        # 未配置 URL 且本机已有 Node：可回落 npm，并标明来源
+        if "尚未配置" in msg:
+            found = discover_runtime()
+            node_s = str(found.get("node_exe") or "").strip()
+            if not node_s or not Path(node_s).is_file():
+                sys_node = find_system_node()
+                node_s = str(sys_node) if sys_node else ""
+            if node_s and Path(node_s).is_file():
+                ok_npm, npm_msg = _install_via_npm(Path(node_s))
+                if ok_npm:
+                    return True, f"{npm_msg}（预制包地址未配置，已用本机 Node 在线安装）"
+                return False, f"{msg}\n另：在线安装也失败：{npm_msg}"
+        return False, msg
+
+    node_p = portable_node_exe(root)
+    dsh_p = dsh_bin_under(root)
+    home = root / ".dsh"
+    if not node_p.is_file() or not dsh_p.is_file():
+        return False, f"「{label}」解压后校验失败，请重试或改装另一版本。"
+    return _finalize_runtime(
+        node_p,
+        dsh_p,
+        home,
+        ok_msg=msg,
+    )
+
+
+def _install_via_npm(node_p: Path) -> tuple[bool, str]:
+    root = default_install_root()
+    ok, msg = npm_install_dsh(node_p, root)
+    if not ok:
+        return False, msg
+    dsh_p = root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+    home = root / ".dsh"
+    return _finalize_runtime(
+        node_p,
+        dsh_p,
+        home,
+        ok_msg="DeepSeek Harness 安装完成，请保存 API Key 后启动服务",
+    )
+
+
 def _install_harness_runtime_inner() -> tuple[bool, str]:
-    from services.harness_plugins import ensure_web_profile_bundles
     from services.harness_config import (
         align_harness_runtime_config,
         is_workbuddy_home,
         load_harness_config,
-        save_harness_config,
     )
 
     align_harness_runtime_config(persist=True)
@@ -180,90 +291,49 @@ def _install_harness_runtime_inner() -> tuple[bool, str]:
             home = default_install_root() / ".dsh"
         else:
             home = Path(home_s)
-        ok_home, _ = init_dsh_home(home)
-        if not ok_home:
-            return False, "无法创建 DSH 数据目录"
-        ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
-        if not ok_prof:
-            return False, f"Web 界面组件安装失败：{prof_msg}"
-        save_harness_config(
-            {
-                "enabled": True,
-                "auto_start": True,
-                "surface_mode": "browser",
-                "web_port": 3082,
-                "node_exe": str(node_p),
-                "dsh_bin": str(dsh_p),
-                "dsh_home": str(home),
-            }
+        return _finalize_runtime(
+            node_p,
+            dsh_p,
+            home,
+            ok_msg="已登记本机 Harness 环境并完成 Web 组件检查",
         )
-        load_harness_config(force=True)
-        try:
-            from services.harness_model_defaults import ensure_official_default_model
-
-            ensure_official_default_model()
-        except Exception:
-            pass
-        return True, "已登记本机 Harness 环境并完成 Web 组件检查"
 
     if node_s and Path(node_s).is_file():
-        node_p = Path(node_s)
-        root = default_install_root()
-        ok, msg = npm_install_dsh(node_p, root)
-        if not ok:
-            return False, msg
-        dsh_p = root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
-        home = root / ".dsh"
-        ok_home, _ = init_dsh_home(home)
-        if not ok_home:
-            return False, "无法创建 DSH 数据目录"
-        ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
-        if not ok_prof:
-            return False, f"Web 界面组件安装失败：{prof_msg}"
-        save_harness_config(
-            {
-                "enabled": True,
-                "auto_start": True,
-                "surface_mode": "browser",
-                "web_port": 3082,
-                "node_exe": str(node_p),
-                "dsh_bin": str(dsh_p),
-                "dsh_home": str(home),
-            }
-        )
-        load_harness_config(force=True)
-        try:
-            from services.harness_model_defaults import ensure_official_default_model
-
-            ensure_official_default_model()
-        except Exception:
-            pass
-        return True, "DeepSeek Harness 安装完成，请保存 API Key 后启动服务"
+        return _install_via_npm(Path(node_s))
 
     return (
         False,
         f"{NEED_NODE_PREFIX}"
-        "本机未找到 Node.js。请先安装官方 LTS（18+），装完后点「装好后点这里重试」。"
-        "不必手填路径，也不必安装其它带 Harness 的软件。",
+        "本机未找到运行环境。请选择「安装官方版」或「安装预制版」下载预制包；"
+        "若预制地址未就绪，也可先安装 Node.js LTS 后走高级回退。",
     )
 
 
 def repair_harness_runtime() -> tuple[bool, str]:
-    """修复：重建 DSH 目录、补装 web profile，并检查 API Key 冲突。"""
+    """修复：剔除拖死插件、重建 Web 组件、可选回退上次可用配置，并检查 API Key。"""
     from services.harness_config import (
         align_harness_runtime_config,
         is_workbuddy_home,
         load_harness_config,
         save_harness_config,
     )
-    from services.harness_credentials import diagnose_llm_access, has_api_key
+    from services.harness_credentials import (
+        diagnose_llm_access,
+        has_api_key,
+        sanitize_credentials_document,
+    )
     from services.harness_model_defaults import ensure_official_default_model
     from services.harness_plugins import (
         ensure_web_profile_bundles,
         heal_web_profile_junction,
         link_web_profile_node_modules,
         sanitize_web_profile_package,
+        strip_boot_killer_plugins,
         web_profile_ready,
+    )
+    from services.harness_profile_versions import (
+        ensure_baseline_snapshot,
+        snapshot_web_profile,
     )
 
     align_notes = align_harness_runtime_config(persist=True, force=True)
@@ -284,9 +354,24 @@ def repair_harness_runtime() -> tuple[bool, str]:
         return False, "无法创建 DSH 数据目录"
 
     notes: list[str] = list(align_notes)
+    ensure_baseline_snapshot(home=home)
+
+    ok_cred, cred_msg = sanitize_credentials_document()
+    if not ok_cred:
+        return False, cred_msg
+    if cred_msg and "正常" not in cred_msg and "跳过" not in cred_msg:
+        notes.append(cred_msg)
+
     changed_model, model_msg = ensure_official_default_model()
     if changed_model:
         notes.append(model_msg)
+
+    # 先剔除已知启动杀手（如 dsh-agent-teams ↔ uiConversation）
+    ok_kill, kill_msg = strip_boot_killer_plugins(home)
+    if "移除" in kill_msg or "remove" in kill_msg.lower():
+        notes.append(kill_msg)
+    elif not ok_kill:
+        notes.append(kill_msg)
 
     if web_profile_ready(home, dsh=dsh_p):
         notes.append("Web 组件已就绪")
@@ -310,11 +395,16 @@ def repair_harness_runtime() -> tuple[bool, str]:
     if "移除" in san_msg:
         notes.append(san_msg)
 
+    # 清理成功后拍一份「可用」快照，供下次插件搞挂一键回退
+    ok_snap, snap_msg, _ = snapshot_web_profile(reason="after_repair", mark_good=True, home=home)
+    if ok_snap:
+        notes.append(snap_msg)
+
+    # 修复不改显示方式：保留用户内嵌/浏览器偏好
     save_harness_config(
         {
             "enabled": True,
             "auto_start": True,
-            "surface_mode": "browser",
             "node_exe": str(node_p),
             "dsh_bin": str(dsh_p),
             "dsh_home": str(home),
@@ -322,13 +412,92 @@ def repair_harness_runtime() -> tuple[bool, str]:
     )
     load_harness_config(force=True)
 
-    key_ok, key_msg = diagnose_llm_access()
+    key_ok, key_msg = diagnose_llm_access(probe_balance=True)
     if not has_api_key():
         return False, "环境组件已检查，但未配置 API Key。请到系统设置 → 能力接入 → Harness 保存密钥后「重启服务」。"
     if not key_ok:
         notes.append(key_msg)
+        if "余额" in key_msg or "402" in key_msg or "QUOTA" in key_msg:
+            notes.append("运行环境已就绪；对话失败需充值 DeepSeek，不是插件损坏。")
+            return True, "\n".join(notes)
         notes.append("请点「更多 → 重启服务」，由 TOA 用正确密钥重新拉起（勿继续用外部脏环境实例）。")
         return True, "\n".join(notes)
     notes.append(key_msg)
-    notes.append("若历史会话仍接不上模型：点「更多 → 重启服务」刷新 Sidecar 凭证。")
+    notes.append("请点「更多 → 重启服务」刷新页面；若仍 Failed to load plugins，再点「恢复上次可用配置」。")
+    return True, "\n".join(notes)
+
+
+def uninstall_harness_runtime(*, delete_install: bool = True, keep_user_data: bool = True) -> tuple[bool, str]:
+    """一键卸载 Host 登记的运行时：停服务 → 可选删安装包 → 清路径配置。
+
+    - delete_install：删除 ``~/.toa3/harness-runtime/node_modules`` 等安装树
+    - keep_user_data：保留 ``.dsh`` 会话/工作区（默认保留，避免误删干活记录）
+    """
+    import shutil
+
+    from services.harness_config import load_harness_config, save_harness_config
+    from services.harness_sidecar import stop
+
+    notes: list[str] = []
+    ok_stop, stop_msg = stop(force=True)
+    notes.append(stop_msg if ok_stop else f"停止：{stop_msg}")
+
+    root = default_install_root()
+    home = root / ".dsh"
+    try:
+        cfg = load_harness_config(force=True)
+        home_s = str(cfg.get("dsh_home") or "").strip()
+        if home_s:
+            home = Path(home_s)
+    except Exception:
+        pass
+
+    if delete_install and root.is_dir():
+        # 删安装树，但可单独留下 .dsh
+        for child in list(root.iterdir()):
+            if keep_user_data and child.resolve() == home.resolve():
+                continue
+            if keep_user_data and child.name == ".dsh":
+                continue
+            try:
+                if child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)  # type: ignore[call-arg]
+            except TypeError:
+                try:
+                    if child.is_file():
+                        child.unlink()
+                except OSError as exc:
+                    notes.append(f"删除失败 {child.name}：{exc}")
+            except OSError as exc:
+                notes.append(f"删除失败 {child.name}：{exc}")
+        notes.append(f"已清理安装目录：{root}")
+    elif delete_install:
+        notes.append("安装目录本就不存在")
+
+    if not keep_user_data and home.is_dir():
+        try:
+            shutil.rmtree(home, ignore_errors=False)
+            notes.append("已删除用户数据目录（会话清空）")
+        except OSError as exc:
+            notes.append(f"用户数据删除失败：{exc}")
+
+    save_harness_config(
+        {
+            "enabled": False,
+            "auto_start": False,
+            "node_exe": "",
+            "dsh_bin": "",
+            # home 保留路径指针便于再装时复用会话；若已删则仍写默认
+            "dsh_home": str(home if keep_user_data else (root / ".dsh")),
+        }
+    )
+    load_harness_config(force=True)
+    tip = "Harness 已卸载。"
+    if keep_user_data:
+        tip += "会话数据已保留；需要时可再点「一键安装」。"
+    else:
+        tip += "安装与会话均已清除。"
+    notes.append(tip)
     return True, "\n".join(notes)

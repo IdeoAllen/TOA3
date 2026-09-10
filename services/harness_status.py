@@ -58,8 +58,8 @@ class HarnessStatus:
     def service_label(self) -> str:
         labels = {
             ServiceState.STOPPED: "未启动",
-            ServiceState.RUNNING_OWNED: "运行中 · TOA 托管",
-            ServiceState.RUNNING_EXTERNAL: "运行中 · 外部实例",
+            ServiceState.RUNNING_OWNED: "运行中",
+            ServiceState.RUNNING_EXTERNAL: "运行中",
             ServiceState.PORT_CONFLICT: "端口占用但未响应",
         }
         return labels.get(self.service, "未知")
@@ -161,23 +161,20 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
 
     if http_ok and owned:
         service = ServiceState.RUNNING_OWNED
-        summary = "已安装 · TOA 托管运行中"
-        detail = f"Sidecar 正常响应：{url}"
+        summary = "已安装 · 运行中"
+        detail = f"服务正常：{url}"
     elif http_ok and not owned:
         service = ServiceState.RUNNING_EXTERNAL
-        summary = "已安装 · 外部实例运行中"
-        detail = (
-            "端口上已有其它 Harness 实例。"
-            "要用本页密钥稳定干活，请点「更多 → 重启服务」（由 TOA 托管并注入密钥）。"
-        )
+        summary = "已安装 · 运行中"
+        detail = "服务已在运行。若对话异常，请点「更多 → 重启服务」。"
     elif port_busy and not http_ok:
         service = ServiceState.PORT_CONFLICT
         summary = "已安装 · 端口占用"
-        detail = f"端口 {port} 被占用但 Harness 未响应 HTTP，请改端口或结束占用进程。"
+        detail = f"端口 {port} 被占用但服务未响应，请改端口或点「一键修复」。"
     else:
         service = ServiceState.STOPPED
         summary = "已安装 · 服务未启动"
-        detail = "点「启动服务」由 TOA 拉起 Sidecar，或「在浏览器打开」使用已有实例。"
+        detail = "请点「启动服务」。"
 
     try:
         from services.harness_credentials import diagnose_llm_access

@@ -35,9 +35,9 @@ def main() -> int:
     names = {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     for need in ("show_state", "set_installing", "mark_need_node", "_open_node_download", "_save_key"):
         assert need in names, need
-    assert "① 安装环境" in gate_src
-    assert "② 填写密钥" in gate_src
-    assert "③ 启动使用" in gate_src
+    assert "安装环境" in gate_src
+    assert "填写密钥" in gate_src
+    assert "启动使用" in gate_src
     assert "去安装 Node.js" in gate_src
     assert "保存并启动" in gate_src
 
