@@ -74,8 +74,7 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 | 口径 | DMS 可售专业系统；TOA freemium；看板不进 `local_free` |
 | Harness | 默认内嵌呈现；揭罩切到 WebView 修闪/假死；浏览器为可选 CTA；点按反馈+刷新 |
 | 本轮落地 | 桌面浏览 Markdown：**源码 / 预览**双模式；预览①只滚②③调宽；导入记事本跟踪落点 |
-| 发版 | **五步**：打包 → `sync_portal_installer` 上传 → 运营台设当前版 → `--from-live --commit` → 验收。v3.1.12 已上传，待设当前版 |
+| 发版 | **v3.1.12** 完成：stable = APP_VERSION = update_manifest；直链可用 |
 | 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.12.exe |
-| 运营台 | https://toa-service.yczh.tech/admin/ → 发布 **3.1.12** → 试链 → 设为当前版 |
 | 验收 | 记事本新增 gaps 待点验 |
 | 验收 | Harness 已重启可用；换装/招聘/看板 gaps 仍待点验 |
