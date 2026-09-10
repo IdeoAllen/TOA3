@@ -30,7 +30,7 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**v3.1.12** 已打包：`packaging/dist/TOA3-Setup-v3.1.12.exe`（桌面浏览 MD 预览滚轮分区、导入记事本落点跟踪；Harness 校验对齐 embed）。  
+**v3.1.12** 已发（Portal 上传 + 运营台当前版；`eec70f3` 版本对齐已提交）。  
 **v3.1.11** 已发；壳层固若金汤已收口。  
 **双产品商业**（已回写）：DMS=专业高门槛可售；TOA=免费钩子+高级付费；腾讯文档轻量轨；并行不强绑。  
 **培训交付看板** `training_delivery_board`：**mvp 已落地**（业务侧栏 order=5，需授权）；班级 handoff + 串链六环；亮点研究 `approved`。待主理人点验清 gaps。  
