@@ -30,7 +30,7 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**v3.1.13** 已打包并上传（图片预览 HiDPI + 记事本底栏防裁切）；待运营台设为当前版。  
+**v3.1.13** 已发（图片预览 HiDPI + 记事本底栏；`72a776a` 版本对齐已提交）。  
 **v3.1.12** 已发。  
 **v3.1.11** 已发；壳层固若金汤已收口。  
 **双产品商业**（已回写）：DMS=专业高门槛可售；TOA=免费钩子+高级付费；腾讯文档轻量轨；并行不强绑。  
@@ -79,8 +79,7 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 | 口径 | DMS 可售专业系统；TOA freemium；看板不进 `local_free` |
 | Harness | 默认内嵌；四步双路线装门（官方/预制 zip）；揭罩切 WebView；浏览器为可选 CTA |
 | 本轮落地 | DSH 双路线安装骨架：`harness_prefab` + SetupGate 四步 + 构建脚本；CDN URL 待运营填写 |
-| 发版 | **v3.1.13** 已上传，待设当前版 |
+| 发版 | **v3.1.13** 完成：stable = APP_VERSION = update_manifest |
 | 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.13.exe |
-| 运营台 | https://toa-service.yczh.tech/admin/ → 发布 **3.1.13** → 试链 → 设为当前版 |
 | 验收 | 记事本新增 gaps 待点验 |
 | 验收 | Harness 已重启可用；换装/招聘/看板 gaps 仍待点验 |
