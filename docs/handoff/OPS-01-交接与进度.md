@@ -30,7 +30,8 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**v3.1.12** 已发（Portal 上传 + 运营台当前版；`eec70f3` 版本对齐已提交）。  
+**v3.1.13** 已打包并上传（图片预览 HiDPI + 记事本底栏防裁切）；待运营台设为当前版。  
+**v3.1.12** 已发。  
 **v3.1.11** 已发；壳层固若金汤已收口。  
 **双产品商业**（已回写）：DMS=专业高门槛可售；TOA=免费钩子+高级付费；腾讯文档轻量轨；并行不强绑。  
 **培训交付看板** `training_delivery_board`：**mvp 已落地**（业务侧栏 order=5，需授权）；班级 handoff + 串链六环；亮点研究 `approved`。待主理人点验清 gaps。  
@@ -43,6 +44,10 @@ python -m app.main
 **引擎 Host 进度契约（同日）**：写入 `STD-01` A4.7 + `ARCH-05` §2.1；`SoftActivityBar` 仅启停；装载遮罩至 loadFinished；`LocalWebHostPage`（OpenPencil/Draw.io/Comfy）与 Hub 适配已对齐；`verify_local_web_host_chrome.py`。  
 **Harness 深链回主（同日）**：内嵌跳到 dsh 新页面后刷新只 reload 深链 → 永久「正在装载」；现改为「刷新 / 更多→回到主界面」强制 `setUrl(web_url())`，装载 8s 看门狗揭罩或回主，失败态同域仍揭开。  
 **Harness 402（同日）**：Host/插件正常；截图「Insufficient Balance / QUOTA」= DeepSeek 账户余额不可用（探测 CNY 透支）；本机 env 脏 Key 已用 `ensure_owned_with_credentials` 接管注入设置页 Key。充值后即可继续，重启 alone 消不了 402。  
+**Harness API Key 无效（同日晚）**：Windows 用户级 `DEEPSEEK_API_KEY` 为过期 Key（401 AUTH）；设置页 YAML Key 正常已充值。已同步 User env；`is_running` 认 401 为存活；启动日志解析 `?token=` 写入 session `web_url`。  
+**Harness 会话损坏（同日）**：`session-ec64…` seq gap → 误提 v3 → `SessionFormatUnsupported`；再因整文件单帧 zstd 导致 dsh 无法启动。已将健康内容降为 v0，并按 dsh 规范「首帧仅 header」重写；服务已起来。若该会话仍打不开，新建会话（备份在 `_corrupt_backup_*` / `_framefix_aside_*`）。  
+**Harness 双路线四步开用（同日）**：未装时 SetupGate 选「官方精简 / 预制必备」→ 分阶段进度下载 zip → 一次 API Key → 检测启动；`harness_prefab` + `build_harness_prefab.py`；CDN URL 待填。  
+**Harness 鉴权拒（2026-09-11）**：内嵌「dsh web authentication required」= 无 `?token=`。根因——① TOA 重启后 session URL 丢；② `setUrl` 破坏 token；③ 鉴权成功 303 后地址栏变裸 URL 被误判重开 → 死循环。已修：日志回补 token、`normalize_nav_url`、正文探测 cookie 就绪、失败分支与 READY 拆开。  
 引擎管家 Hold；Harness 无感就绪仍为主线之一。
 
 ---
@@ -55,7 +60,7 @@ python -m app.main
 - [ ] **培训交付看板点验**（Agent 不得代清 gaps）：绑定后串链根目录/名单；无 DMS/无 OAuth 粘贴开跑；打开文档与清除会话
 - [ ] Wave★ / Wave F **主理人点验**清 gaps
 - [ ] Harness：装插件前可「备份当前配置」；搞挂后「修复运行环境」或「恢复上次可用配置」；点验日志/卸载
-- [ ] Harness 无感就绪；达标前禁 Hub 半残 UI
+- [ ] Harness 无感就绪：填 CDN URL 后点验双路线四步；达标前禁 Hub 半残 UI
 
 机读任务：同目录 `collab_tasks.json`。
 
@@ -72,9 +77,10 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 | 更新 | 2026-09-10 · **v3.1.12** Setup 已出 |
 | 规范 | STD-01 B1.1：research=挖亮点不落俗套；短规则 mdc 已同步 |
 | 口径 | DMS 可售专业系统；TOA freemium；看板不进 `local_free` |
-| Harness | 默认内嵌呈现；揭罩切到 WebView 修闪/假死；浏览器为可选 CTA；点按反馈+刷新 |
-| 本轮落地 | 桌面浏览 Markdown：**源码 / 预览**双模式；预览①只滚②③调宽；导入记事本跟踪落点 |
-| 发版 | **v3.1.12** 完成：stable = APP_VERSION = update_manifest；直链可用 |
-| 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.12.exe |
+| Harness | 默认内嵌；四步双路线装门（官方/预制 zip）；揭罩切 WebView；浏览器为可选 CTA |
+| 本轮落地 | DSH 双路线安装骨架：`harness_prefab` + SetupGate 四步 + 构建脚本；CDN URL 待运营填写 |
+| 发版 | **v3.1.13** 已上传，待设当前版 |
+| 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.13.exe |
+| 运营台 | https://toa-service.yczh.tech/admin/ → 发布 **3.1.13** → 试链 → 设为当前版 |
 | 验收 | 记事本新增 gaps 待点验 |
 | 验收 | Harness 已重启可用；换装/招聘/看板 gaps 仍待点验 |

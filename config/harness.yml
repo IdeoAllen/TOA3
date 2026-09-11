@@ -3,7 +3,8 @@
 # 发版模板 packaging/shipped_config/harness.yml 须与下列行为字段保持一致（enabled/auto_start/browser/3082）
 
 harness:
-  # 默认空路径；未覆盖时进页走一键安装引导。勿绑 WorkBuddy/.dsh（由运行时自愈迁到 ~/.toa3/harness-runtime/.dsh）
+  # 默认空路径；未覆盖时进页走四步开用（选版本 → 等待 → Key → 检测启动）。
+  # 勿绑 WorkBuddy/.dsh（由运行时自愈迁到 ~/.toa3/harness-runtime/.dsh）
   enabled: true
   dsh_home: ""
   node_exe: ""
@@ -20,6 +21,17 @@ harness:
   web_readability_boost: false
   theme_harmonize: false
   feed_auto_inject: false
+  # 双路线预制包（上传 CDN 后填写；空 URL 时若本机有 Node 可回落 npm）
+  official_bundle_url: ""
+  official_sha256: ""
+  official_bundle_version: ""
+  official_size_hint_mb: null
+  prefab_bundle_url: ""
+  prefab_sha256: ""
+  prefab_bundle_version: ""
+  prefab_size_hint_mb: null
+  # 预制必备插件白名单（不得含 boot-killer；空=与官方插件集相同直至主理人确认）
+  prefab_essential_plugins: []
   cost_currency: 元
   cost_input_per_million: 2
   cost_output_per_million: 8

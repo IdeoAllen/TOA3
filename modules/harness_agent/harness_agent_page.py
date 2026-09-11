@@ -21,6 +21,7 @@ from modules.harness_agent.feed_strip import FeedStrip
 from modules.harness_agent.setup_gate import SetupGate
 from services.harness_chrome import BusyPhase, compute_chrome, infer_busy_phase
 from services.harness_config import load_harness_config, web_url
+from services.shared_local_webengine import normalize_nav_url
 from services.harness_progress import (
     HINT,
     IDLE,
@@ -137,6 +138,21 @@ class _HarnessF11Filter(QObject):
         else:
             shell._toggle_fullscreen()
         return True
+
+
+def _harness_entry_url() -> str:
+    """内嵌/浏览器入口：强制从 sidecar 日志回补 launch-token。"""
+    try:
+        from services.harness_sidecar import _capture_auth_url_from_log
+
+        _capture_auth_url_from_log()
+    except Exception:
+        pass
+    return web_url()
+
+
+def _url_has_launch_token(url: str) -> bool:
+    return "token=" in (url or "")
 
 
 def _make_harness_accept_nav(*, base_url: str):
@@ -1094,8 +1110,12 @@ class HarnessAgentPage(BasePage):
         except RuntimeError:
             self._view = None
             return False
-        target = web_url().rstrip("/")
-        return bool(current.startswith(target))
+        target = _harness_entry_url().rstrip("/")
+        base = target.split("?")[0].rstrip("/")
+        # 鉴权成功后地址栏常收成裸 URL；同 host 且已揭罩即可保留
+        if not current:
+            return False
+        return current.startswith(base) or current.rstrip("/") == base
 
     def apply_pending_feed_from_stash(self) -> None:
         self._apply_pending_feed()
@@ -1383,7 +1403,7 @@ class HarnessAgentPage(BasePage):
             pass
 
         self._show_web_idle("正在准备 DeepSeek Harness…")
-        url = web_url()
+        url = _harness_entry_url()
         view = acquire(
             "harness_agent",
             url,
@@ -1422,7 +1442,14 @@ class HarnessAgentPage(BasePage):
         painted = ""
         try:
             painted = (view.url().toString() or "").rstrip("/")
-            already_ok = bool(painted.startswith(url.rstrip("/")))
+            # 裸地址 / 无 token 画面绝不能当「已就绪」（鉴权拒页会挡住输入）
+            if _url_has_launch_token(url):
+                already_ok = _url_has_launch_token(painted) and (
+                    painted.split("?")[0].rstrip("/")
+                    == url.split("?")[0].rstrip("/")
+                )
+            else:
+                already_ok = False  # 无 token 时禁止揭罩；交给延迟回补
         except Exception:
             already_ok = False
         # 画面仍是其它引擎时必须遮罩/占位，禁止 Host=Harness 内容=Draw.io
@@ -1441,7 +1468,40 @@ class HarnessAgentPage(BasePage):
         else:
             self._web_embedded_ok = False
             self._show_web_idle("正在连接 DeepSeek Harness…")
+            # acquire 已按 url 导航；仅当画面仍无 token 时再强制一次
+            if _url_has_launch_token(url) and not _url_has_launch_token(painted):
+                try:
+                    from PySide6.QtCore import QUrl
+
+                    view.setUrl(QUrl(normalize_nav_url(url)))
+                except Exception:
+                    pass
+            elif not _url_has_launch_token(url):
+                QTimer.singleShot(400, self._retry_embed_with_token)
         self._apply_web_zoom()
+
+    def _retry_embed_with_token(self) -> None:
+        """sidecar 日志晚于 HTTP 就绪时，回补 token 并强制导航。"""
+        if not self._page_active() or not _qt_alive(self._view):
+            return
+        n = int(getattr(self, "_token_retry_n", 0) or 0)
+        if n >= 12:
+            self._token_retry_n = 0
+            self.report_status("未拿到鉴权入口，请点「刷新」或「重新启动」", level=StatusLevel.WARNING)
+            return
+        self._token_retry_n = n + 1
+        url = _harness_entry_url()
+        if not _url_has_launch_token(url):
+            QTimer.singleShot(500, self._retry_embed_with_token)
+            return
+        self._token_retry_n = 0
+        try:
+            painted = (self._view.url().toString() or "")
+        except RuntimeError:
+            painted = ""
+        if _url_has_launch_token(painted) and url.split("?")[0] in painted:
+            return
+        self._begin_home_navigation(url, force=True)
 
     def _apply_web_zoom(self) -> None:
         if self._view is None:
@@ -1485,7 +1545,7 @@ class HarnessAgentPage(BasePage):
         self._ensure_view()
         if self._view is None or not self._page_active():
             return
-        url = web_url()
+        url = _harness_entry_url()
         current = (self._view.url().toString() or "").rstrip("/")
         target = url.rstrip("/")
         if not force and current.startswith(target) and self._web_embedded_ok:
@@ -1499,7 +1559,7 @@ class HarnessAgentPage(BasePage):
             self._ensure_view()
         if not _qt_alive(self._view):
             return
-        home = (url or web_url()).rstrip("/")
+        home = (url or _harness_entry_url()).rstrip("/")
         current = (self._view.url().toString() or "").rstrip("/")
         self._web_nav_overlay = True
         self._web_embedded_ok = False
@@ -1518,7 +1578,7 @@ class HarnessAgentPage(BasePage):
         if force and current.rstrip("/") == home:
             self._view.reload()
             return
-        self._view.setUrl(QUrl(home if home.endswith("/") else home + "/"))
+        self._view.setUrl(QUrl(normalize_nav_url(home)))
 
     def _arm_loading_watchdog(self) -> None:
         """装载遮罩超时：同域则揭罩，异域则再拉主页——禁止永久白屏。"""
@@ -1535,19 +1595,47 @@ class HarnessAgentPage(BasePage):
         if not _qt_alive(self._view):
             self._set_progress(Progress.FAILED, extra="界面未装载，请再点「刷新」或「一键修复」")
             return
-        home = web_url().rstrip("/")
+        home = _harness_entry_url().rstrip("/")
         try:
             current = (self._view.url().toString() or "").rstrip("/")
         except RuntimeError:
             current = ""
-        # 仍停在装载遮罩：同域揭开当前页；否则强制回主页
-        same_home = bool(current) and (
+        home_base = home.split("?")[0].rstrip("/")
+        same_host = bool(current) and (
             current == home
-            or current.startswith(home + "/")
-            or current.startswith(home + "#")
-            or current.startswith(home + "?")
+            or current.startswith(home_base)
+            or current.startswith(home)
         )
-        if same_home:
+        # 无 token 且可能是鉴权拒：用正文探测，勿盲揭罩
+        if same_host and not _url_has_launch_token(current) and _qt_alive(self._view):
+
+            def _wd_body(text) -> None:
+                if token != self._load_watch_token or not self._page_active(visit):
+                    return
+                body = (text or "").lower()
+                if "authentication required" in body or "reopen the url" in body:
+                    self.report_status("鉴权未就绪，正在重开入口…", level=StatusLevel.WARNING)
+                    self._begin_home_navigation(home, force=True)
+                    return
+                self._web_nav_overlay = False
+                self._web_embedded_ok = True
+                self._set_action_progress_visible(False)
+                self._reveal_web_embed_now()
+                self._set_progress(Progress.READY, idle=False, toast=False)
+                self.report_status(
+                    "装载较慢，已显示当前页；可点「刷新」回到主界面",
+                    level=StatusLevel.INFO,
+                )
+
+            try:
+                self._view.page().runJavaScript(
+                    "(document.body && (document.body.innerText||document.body.textContent))||''",
+                    _wd_body,
+                )
+                return
+            except Exception:
+                pass
+        if same_host and _url_has_launch_token(current):
             self._web_nav_overlay = False
             self._web_embedded_ok = True
             self._set_action_progress_visible(False)
@@ -1634,6 +1722,13 @@ class HarnessAgentPage(BasePage):
         self._web_nav_overlay = False
         self._load_watch_token += 1  # 作废超时揭罩
         try:
+            cur = (self._view.url().toString() if _qt_alive(self._view) else "") or ""
+        except RuntimeError:
+            cur = ""
+        __import__("logging").getLogger("TOA3.harness_agent").info(
+            "web loadFinished ok=%s url=%s", ok, cur[:120]
+        )
+        try:
             from services.webengine_host import ToaWebEnginePage
 
             page = self._view.page() if _qt_alive(self._view) else None
@@ -1651,42 +1746,145 @@ class HarnessAgentPage(BasePage):
                 "if(e.key==='F11'){e.preventDefault();e.stopImmediatePropagation();}},true);"
             )
         if ok:
-            self._web_embedded_ok = True
-            # 装载完成：先硬停活动条，再揭开 Web（遮罩→内容，不半露半闪）
-            self._set_action_progress_visible(False)
-            self._reveal_web_embed_now()
-            QTimer.singleShot(120, self._focus_web_view)
-            self._set_progress(Progress.READY, idle=False, toast=True)
-            if prefer_browser() and not self._browser_surface_opened:
-                QTimer.singleShot(200, self._maybe_auto_open_browser)
-            if self._pending_prepare_after_reload:
-                self._pending_prepare_after_reload = False
-                QTimer.singleShot(700, self._run_prepare_session)
+            # 鉴权成功后 dsh 常会把地址栏收成裸 URL（cookie 已种）——不能只凭无 token 就重开
+            try:
+                landed = (self._view.url().toString() if _qt_alive(self._view) else "") or ""
+            except RuntimeError:
+                landed = ""
+            entry = _harness_entry_url()
+            need_token_check = (
+                _url_has_launch_token(entry)
+                and not _url_has_launch_token(landed)
+                and not getattr(self, "_auth_url_retry", False)
+            )
+            if need_token_check and _qt_alive(self._view):
+                self._auth_url_retry = True
+
+                def _after_auth_probe(text) -> None:
+                    if not self._page_active():
+                        return
+                    body = (text or "").lower()
+                    if "authentication required" in body or "reopen the url" in body:
+                        self.report_status("需要重新打开鉴权入口…", level=StatusLevel.INFO)
+                        self._begin_home_navigation(entry, force=True)
+                        return
+                    # 裸 URL 但正文正常 = token 已换成 cookie，视为就绪
+                    self._auth_url_retry = False
+                    self._finish_web_ready()
+
+                try:
+                    self._view.page().runJavaScript(
+                        "(document.body && (document.body.innerText||document.body.textContent))||''",
+                        _after_auth_probe,
+                    )
+                    return
+                except Exception:
+                    self._auth_url_retry = False
+            self._finish_web_ready()
             return
-        # loadFinished=false：同域仍揭罩；异域再拉主页——禁止永久遮罩
+
+        # loadFinished=false：303→裸 URL 常见；先看正文，勿死循环重开 token
+        self._handle_web_load_failed()
+
+    def _finish_web_ready(self) -> None:
+        """内嵌装载成功：揭罩 + READY（鉴权 cookie / token 均已确认）。"""
+        if not self._page_active():
+            return
+        self._auth_url_retry = False
+        self._web_embedded_ok = True
         self._set_action_progress_visible(False)
-        home = web_url().rstrip("/")
+        self._reveal_web_embed_now()
+        QTimer.singleShot(120, self._focus_web_view)
+        self._set_progress(Progress.READY, idle=False, toast=True)
+        if prefer_browser() and not self._browser_surface_opened:
+            QTimer.singleShot(200, self._maybe_auto_open_browser)
+        if self._pending_prepare_after_reload:
+            self._pending_prepare_after_reload = False
+            QTimer.singleShot(700, self._run_prepare_session)
+
+    def _handle_web_load_failed(self) -> None:
+        """loadFinished=false：同域可揭罩；鉴权拒才重开 token（最多一次）。"""
+        self._set_action_progress_visible(False)
+        home = _harness_entry_url().rstrip("/")
         current = ""
         try:
             if _qt_alive(self._view):
                 current = (self._view.url().toString() or "").rstrip("/")
         except RuntimeError:
             pass
-        if current.startswith(home) or current.startswith(home + "/") or current.startswith(home + "#"):
-            self._web_embedded_ok = True
-            self._reveal_web_embed_now()
-            self._set_progress(Progress.READY, idle=False, toast=False)
-            self.report_status("页面未完整响应，已显示当前内容；可再点「刷新」回主界面", level=StatusLevel.WARNING)
-            if self._pending_prepare_after_reload:
-                self._pending_prepare_after_reload = False
+        entry = _harness_entry_url()
+        home_base = home.split("?")[0].rstrip("/")
+        same_host = bool(current) and current.startswith(home_base)
+
+        def _probe_and_settle() -> None:
+            if not _qt_alive(self._view):
+                self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」或「一键修复」")
+                return
+
+            def _on_body(text) -> None:
+                if not self._page_active():
+                    return
+                body = (text or "").lower()
+                if "authentication required" in body or "reopen the url" in body:
+                    if not getattr(self, "_auth_url_retry", False):
+                        self._auth_url_retry = True
+                        self.report_status(
+                            "鉴权未通过，正在打开带 token 的入口…",
+                            level=StatusLevel.WARNING,
+                        )
+                        QTimer.singleShot(
+                            80,
+                            lambda: self._begin_home_navigation(entry, force=True)
+                            if self._page_active()
+                            else None,
+                        )
+                        return
+                    self._web_embedded_ok = False
+                    self._set_progress(
+                        Progress.FAILED,
+                        extra="鉴权失败，请点「重新启动」或「在浏览器打开」",
+                    )
+                    return
+                # 正文正常（含 303 后裸 URL）：揭罩可用
+                self._web_embedded_ok = True
+                self._reveal_web_embed_now()
+                self._set_progress(Progress.READY, idle=False, toast=False)
+                self.report_status(
+                    "页面未完整响应，已显示当前内容；可再点「刷新」回主界面",
+                    level=StatusLevel.WARNING,
+                )
+                if self._pending_prepare_after_reload:
+                    self._pending_prepare_after_reload = False
+
+            try:
+                self._view.page().runJavaScript(
+                    "(document.body && (document.body.innerText||document.body.textContent))||''",
+                    _on_body,
+                )
+            except Exception:
+                if same_host:
+                    self._web_embedded_ok = True
+                    self._reveal_web_embed_now()
+                    self._set_progress(Progress.READY, idle=False, toast=False)
+                else:
+                    self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」")
+
+        if same_host:
+            _probe_and_settle()
             return
-        self._web_embedded_ok = False
-        # 异域/空白：再拉一次主页，避免永久遮罩
-        self.report_status("页面未响应，正在回到主界面…", level=StatusLevel.WARNING)
-        QTimer.singleShot(200, lambda: self._begin_home_navigation(force=True) if self._page_active() else None)
+        # 异域/空白：再拉一次主页（仅一次）
+        if not getattr(self, "_auth_url_retry", False):
+            self._auth_url_retry = True
+            self.report_status("页面未响应，正在回到主界面…", level=StatusLevel.WARNING)
+            QTimer.singleShot(
+                200,
+                lambda: self._begin_home_navigation(force=True) if self._page_active() else None,
+            )
+        else:
+            self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」或「一键修复」")
         if self._pending_prepare_after_reload:
             self._pending_prepare_after_reload = False
-        return
+
 
     def _run_bg(self, fn, *, busy_label: str, on_ok, on_err=None, phase: BusyPhase | None = None) -> None:
         if self._action_busy:

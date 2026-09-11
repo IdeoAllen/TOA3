@@ -177,7 +177,37 @@ def resolve_harness_path(key: str, default: str = "") -> Path:
         return p
 
 
+_SESSION_WEB_URL: str = ""
+
+
+def set_session_web_url(url: str) -> None:
+    """Sidecar 启动后写入带 launch-token 的入口 URL。"""
+    global _SESSION_WEB_URL
+    _SESSION_WEB_URL = (url or "").strip()
+
+
+def clear_session_web_url() -> None:
+    global _SESSION_WEB_URL
+    _SESSION_WEB_URL = ""
+
+
 def web_url() -> str:
+    """浏览器/内嵌入口。优先本轮 Sidecar 的 launch-token URL。
+
+    TOA 进程重启后内存 session 会丢，但 sidecar_last.log 仍有 token——
+    须从日志回补，否则内嵌裸 `127.0.0.1:port` 会得到
+    「dsh web authentication required」。
+    """
+    if _SESSION_WEB_URL:
+        return _SESSION_WEB_URL
+    try:
+        from services.harness_sidecar import _capture_auth_url_from_log
+
+        captured = _capture_auth_url_from_log()
+        if captured:
+            return captured
+    except Exception:
+        pass
     port = int(load_harness_config().get("web_port") or PRODUCT_WEB_PORT)
     return f"http://127.0.0.1:{port}"
 

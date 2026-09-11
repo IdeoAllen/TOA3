@@ -18,7 +18,20 @@ from PySide6.QtGui import (
 from modules.column_preview.folder_tags import TAG_COLORS, tag_color
 from services.office_preview import OFFICE_EXTENSIONS
 
-_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff"}
+_IMAGE_EXT = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".bmp",
+    ".gif",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".ico",
+    ".svg",
+    ".svgz",
+}
 _PDF_EXT = {".pdf"}
 
 _DOC_BLUE = "#2B579A"

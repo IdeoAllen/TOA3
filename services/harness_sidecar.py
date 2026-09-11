@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 _PROCESS: subprocess.Popen | None = None
 _OWNED: bool = False
 _LAST_START_LOG: Path | None = None
+_AUTH_WEB_URL: str = ""
 _LOCK = threading.Lock()
 
 
@@ -72,12 +73,66 @@ def _cfg() -> dict[str, Any]:
 
 
 def is_running(*, timeout: float = 1.5) -> bool:
-    url = web_url()
+    """Sidecar 是否在响应。
+
+    新版 dsh web 有 launch-token 鉴权：无 cookie/token 时根路径返回 401，
+    但仍表示服务已起来——不得当成「未运行」。
+    """
+    url = _base_web_url()
     try:
         with urllib.request.urlopen(url, timeout=max(0.3, float(timeout))) as resp:
-            return resp.status < 500
+            return int(getattr(resp, "status", 200) or 200) < 500
+    except urllib.error.HTTPError as exc:
+        # 401/403 = 鉴权门；服务活着
+        return int(getattr(exc, "code", 0) or 0) in (401, 403) or (
+            100 <= int(getattr(exc, "code", 0) or 0) < 500
+        )
     except (urllib.error.URLError, OSError, ValueError):
         return False
+
+
+def _base_web_url() -> str:
+    from services.harness_config import PRODUCT_WEB_PORT
+
+    port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
+    return f"http://127.0.0.1:{port}"
+
+
+def _capture_auth_url_from_log(log_path: Path | None = None) -> str:
+    """从 sidecar 日志解析 `dsh web: http://...?token=...`。"""
+    global _AUTH_WEB_URL
+    path = Path(log_path) if log_path is not None else (_LAST_START_LOG or _sidecar_log_path())
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return _AUTH_WEB_URL or ""
+    import re
+
+    matches = re.findall(
+        r"dsh web:\s*(https?://\S+\?token=[^\s]+)",
+        text,
+    )
+    if not matches:
+        return _AUTH_WEB_URL or ""
+    url = matches[-1].rstrip(")")
+    if " " in url:
+        url = url.split()[0]
+    _AUTH_WEB_URL = url
+    try:
+        from services.harness_config import set_session_web_url
+
+        set_session_web_url(url)
+    except Exception:
+        pass
+    return url
+
+
+def authenticated_web_url() -> str:
+    """浏览器/内嵌应打开的地址（含 launch token）；未知时回落 base。"""
+    captured = _capture_auth_url_from_log()
+    if captured:
+        return captured
+    return _base_web_url()
 
 
 def sidecar_local_snapshot(*, http_ok: bool | None = None) -> dict[str, Any]:
@@ -203,6 +258,8 @@ def prepare_sidecar_start() -> tuple[bool, str, bool]:
     if not ok_setup:
         return False, setup_hint, False
     if is_running():
+        # 复用外部/上次进程时必须回补 launch-token，否则内嵌裸 URL → 鉴权拒
+        _capture_auth_url_from_log()
         hint = "Harness 已在运行"
         st = health_status()
         if st.get("owned"):
@@ -267,8 +324,8 @@ def spawn_sidecar_process() -> tuple[bool, str]:
     ]
     log_path = _sidecar_log_path()
     try:
-        # 子进程存活期间保持句柄打开，避免 Windows 上日志丢失
-        log_f = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
+    # 子进程存活期间保持句柄打开，避免 Windows 上日志丢失；行缓冲以便尽早读到 token
+        log_f = open(log_path, "w", encoding="utf-8", buffering=1)  # noqa: SIM115
     except OSError:
         log_f = subprocess.DEVNULL
     try:
@@ -311,8 +368,17 @@ def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
                 "Node/dsh 路径错误或 Web 组件未装全。"
                 "请点「更多 → 修复运行环境」后重试，或打开启动日志。"
             )
-        if is_running():
-            return True, f"Harness 已启动：{web_url()}"
+        # 尽早抓 launch-token；HTTP 401 可能早于日志落盘，稍等几帧
+        auth = _capture_auth_url_from_log(log_path)
+        if is_running() or _port_open(port):
+            if not auth:
+                for _ in range(15):
+                    time.sleep(0.2)
+                    auth = _capture_auth_url_from_log(log_path)
+                    if auth:
+                        break
+            url = auth or authenticated_web_url()
+            return True, f"Harness 已启动：{url}"
         time.sleep(0.35)
     return False, f"Harness 启动超时（{timeout_sec}s），请检查端口 {port}，或打开启动日志"
 
@@ -326,6 +392,7 @@ def sidecar_start_progress() -> tuple[str, str]:
         # 用户可见短句；完整日志只给 heal / 「打开启动日志」
         return "failed", "Harness 进程已退出"
     if is_running(timeout=0.8):
+        _capture_auth_url_from_log(log_path)
         return "ready", f"Harness 已启动：{web_url()}"
     return "pending", ""
 
@@ -336,6 +403,7 @@ def start(*, wait_ready: bool = True, timeout_sec: float = 25.0) -> tuple[bool, 
     if not ok:
         return False, msg
     if already:
+        _capture_auth_url_from_log()
         return True, msg
     ok_spawn, spawn_msg = spawn_sidecar_process()
     if not ok_spawn:
@@ -395,7 +463,14 @@ def _kill_pids(pids: list[int]) -> list[int]:
 
 def stop(*, force: bool = False) -> tuple[bool, str]:
     """停止 Sidecar；force=True 时结束占用 Web 端口的外部进程。"""
-    global _PROCESS, _OWNED
+    global _PROCESS, _OWNED, _AUTH_WEB_URL
+    _AUTH_WEB_URL = ""
+    try:
+        from services.harness_config import clear_session_web_url
+
+        clear_session_web_url()
+    except Exception:
+        pass
     if _PROCESS is not None and _PROCESS.poll() is None:
         log_f = getattr(_PROCESS, "_toa_log_f", None)
         try:

@@ -19,7 +19,7 @@ from PySide6.QtCore import (
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QBrush, QImageReader, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QBrush, QCursor, QImageReader, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QTabBar,
     QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
@@ -77,16 +78,31 @@ from widgets import (
     ReadOnlyPlainTextEdit,
     SecondaryButton,
     SectionTitle,
+    TextEdit,
 )
 from widgets.list_edit import FormEditDialog
 
-_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff"}
+_IMAGE_EXT = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".bmp",
+    ".gif",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".ico",
+    ".svg",
+    ".svgz",
+}
 _PDF_EXT = {".pdf"}
 _TEXT_EXT = {
     ".txt",
     ".md",
     ".markdown",
     ".mdown",
+    ".mkd",
     ".csv",
     ".json",
     ".jsonl",
@@ -100,13 +116,15 @@ _TEXT_EXT = {
     ".js",
     ".ts",
     ".html",
+    ".htm",
     ".css",
     ".bat",
     ".ps1",
     ".sql",
     ".text",
 }
-_MARKDOWN_EXT = {".md", ".markdown", ".mdown"}
+_MARKDOWN_EXT = {".md", ".markdown", ".mdown", ".mkd"}
+_HTML_EXT = {".html", ".htm"}
 _JSON_EXT = {".json", ".jsonl", ".jsonc"}
 _VIDEO_EXT = {
     ".mp4",
@@ -471,15 +489,26 @@ def _read_markdown_preview(path: Path) -> tuple[str, str]:
 
 
 def _load_image_as_displayed(path: Path, *, parent=None) -> QPixmap:
+    """解码图片为 1× 像素缓冲（不设 DPR）。
+
+    预览缩放交给 `_fit_pixmap`：按视口逻辑尺寸 × 屏 DPR 生成清晰图。
+    若在此处对原图 setDevicePixelRatio，HiDPI 下会出现「大空白 + 角落小图」。
+    """
+    del parent  # 签名兼容；解码不依赖屏 DPR
     reader = QImageReader(str(path))
     reader.setAutoTransform(True)
+    # 超大图先降采样，避免预览吃爆内存
+    max_edge = 4096
+    size = reader.size()
+    if size.isValid() and (size.width() > max_edge or size.height() > max_edge):
+        if size.width() >= size.height():
+            reader.setScaledSize(size * (max_edge / max(1, size.width())))
+        else:
+            reader.setScaledSize(size * (max_edge / max(1, size.height())))
     img = reader.read()
     if img.isNull():
         return QPixmap()
-    dpr = device_pixel_ratio(parent)
-    pm = QPixmap.fromImage(img)
-    pm.setDevicePixelRatio(dpr)
-    return pm
+    return QPixmap.fromImage(img)
 
 
 def _load_pdf_first_page(
@@ -497,29 +526,38 @@ def _load_pdf_first_page(
     pt = doc.pagePointSize(0)
     w_pt = max(1.0, float(pt.width()))
     h_pt = max(1.0, float(pt.height()))
+    dpr = max(device_pixel_ratio(parent), 1.0)
     scale = min(max_w / w_pt, max_h / h_pt, 4.0)
-    rw = max(160, int(w_pt * scale))
-    rh = max(160, int(h_pt * scale))
+    # 按物理像素渲染，稍后由 _fit_pixmap 统一设 DPR
+    rw = max(160, int(w_pt * scale * dpr))
+    rh = max(160, int(h_pt * scale * dpr))
     img = doc.render(0, QSize(rw, rh))
     if img.isNull():
         return QPixmap(), pages
-    dpr = device_pixel_ratio(parent)
-    pm = QPixmap.fromImage(img)
-    pm.setDevicePixelRatio(dpr)
-    return pm, pages
+    return QPixmap.fromImage(img), pages
 
 
 def _fit_pixmap(pm: QPixmap, max_w: int, max_h: int, *, parent=None) -> QPixmap:
+    """把图片缩进逻辑视口，并生成带正确 DPR 的清晰 pixmap。"""
     if pm.isNull():
         return pm
-    dpr = pm.devicePixelRatio() or device_pixel_ratio(parent) or 1.0
-    logical_w = max(1, int(pm.width() / dpr))
-    logical_h = max(1, int(pm.height() / dpr))
-    if logical_w <= max_w and logical_h <= max_h:
-        return pm
-    scaled = pm.scaled(
-        int(max_w * dpr),
-        int(max_h * dpr),
+    dpr = max(device_pixel_ratio(parent), 1.0)
+    src_dpr = float(pm.devicePixelRatio() or 1.0)
+    # 源图按「逻辑像素」计（若误带了 DPR 先还原）
+    logical_w = max(1, int(round(pm.width() / src_dpr)))
+    logical_h = max(1, int(round(pm.height() / src_dpr)))
+    scale = min(max_w / logical_w, max_h / logical_h, 1.0)
+    out_logical_w = max(1, int(round(logical_w * scale)))
+    out_logical_h = max(1, int(round(logical_h * scale)))
+    phys_w = max(1, int(round(out_logical_w * dpr)))
+    phys_h = max(1, int(round(out_logical_h * dpr)))
+    # 用原图像素缓冲缩放，避免 DPR 二次压缩
+    src = pm
+    if src_dpr != 1.0:
+        src = QPixmap.fromImage(pm.toImage())
+    scaled = src.scaled(
+        phys_w,
+        phys_h,
         Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
@@ -579,6 +617,12 @@ class ColumnPreviewPage(BasePage):
         self._updating = False
         self._raw_preview_pm = QPixmap()
         self._mode_btns: dict[str, QToolButton] = {}
+        self._html_view_mode = "web"  # code | web（HTML 会话内记住）
+        self._md_view_mode = "preview"  # code | preview（Markdown）
+        self._doc_kind: str | None = None  # html | md | None
+        self._html_web = None
+        self._html_web_ready = False
+        self._html_web_error = ""
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 6, 8, 6)
@@ -804,13 +848,14 @@ class ColumnPreviewPage(BasePage):
         il = QVBoxLayout(image_page)
         il.setContentsMargins(4, 4, 4, 2)
         self._image_scroll = QScrollArea()
-        self._image_scroll.setWidgetResizable(True)
+        # False：由 _relayout_image 按 pixmap 设固定逻辑尺寸，避免 Resizable 与 DPR 抢尺寸成「白框」
+        self._image_scroll.setWidgetResizable(False)
         self._image_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._image_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_image = QLabel()
         self._preview_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_image.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
         self._image_scroll.setWidget(self._preview_image)
         il.addWidget(self._image_scroll, 1)
@@ -819,23 +864,70 @@ class ColumnPreviewPage(BasePage):
         text_page = QWidget()
         tl = QVBoxLayout(text_page)
         tl.setContentsMargins(0, 0, 0, 0)
+        tl.setSpacing(4)
+
+        self._html_mode_host = QFrame()
+        self._html_mode_host.setObjectName("EditorViewTabs")
+        html_mode_lay = QHBoxLayout(self._html_mode_host)
+        html_mode_lay.setContentsMargins(0, 0, 0, 0)
+        html_mode_lay.setSpacing(0)
+        self._html_mode_tabs = QTabBar()
+        self._html_mode_tabs.setObjectName("EditorViewTabBar")
+        self._html_mode_tabs.setDrawBase(False)
+        self._html_mode_tabs.setExpanding(False)
+        self._html_mode_tabs.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._html_mode_tabs.addTab("源码")
+        self._html_mode_tabs.addTab("预览")
+        self._html_mode_tabs.currentChanged.connect(self._on_doc_mode_changed)
+        html_mode_lay.addWidget(self._html_mode_tabs)
+        html_mode_lay.addStretch(1)
+        self._html_mode_host.setVisible(False)
+        tl.addWidget(self._html_mode_host)
+
+        self._text_stack = QStackedWidget()
         self._preview_text = ReadOnlyPlainTextEdit()
-        tl.addWidget(self._preview_text)
+        self._text_stack.addWidget(self._preview_text)
+        self._html_web_host = QWidget()
+        self._html_web_host.setObjectName("HtmlPreviewHost")
+        web_host_lay = QVBoxLayout(self._html_web_host)
+        web_host_lay.setContentsMargins(0, 0, 0, 0)
+        web_host_lay.setSpacing(0)
+        self._html_web_fallback = HintLabel("网页预览需要 WebEngine 组件。")
+        self._html_web_fallback.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        web_host_lay.addWidget(self._html_web_fallback, 1)
+        self._text_stack.addWidget(self._html_web_host)
+        self._md_render = TextEdit()
+        self._md_render.setObjectName("DesktopMarkdownPreview")
+        self._md_render.setReadOnly(True)
+        try:
+            # 固定 100% 字号，禁止 Ctrl+滚轮缩放正文
+            self._md_render.setProperty("zoomFactor", 1.0)
+        except Exception:
+            pass
+        self._text_stack.addWidget(self._md_render)
+        tl.addWidget(self._text_stack, 1)
         self._stack.addWidget(text_page)
         self._stack.addWidget(_EmptyState("无法内嵌预览", "点「打开」用系统程序查看。"))
         pl.addWidget(self._stack, 1)
 
+        footer = QWidget()
+        footer.setObjectName("FinderPreviewFooter")
+        fl = QVBoxLayout(footer)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(6)
         self._preview_meta = HintLabel("")
-        pl.addWidget(self._preview_meta)
+        fl.addWidget(self._preview_meta)
         btn_row = QHBoxLayout()
         self._btn_open = PrimaryButton("打开")
         self._btn_open.clicked.connect(self._open_current)
         self._btn_open.setEnabled(False)
+        self._btn_open.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         btn_row.addWidget(self._btn_open)
         self._btn_reveal = SecondaryButton("显示")
         self._btn_reveal.setToolTip("在资源管理器中显示")
         self._btn_reveal.clicked.connect(self._reveal_current)
         self._btn_reveal.setEnabled(False)
+        self._btn_reveal.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         btn_row.addWidget(self._btn_reveal)
         self._btn_import_note = SecondaryButton("导入记事本")
         self._btn_import_note.setToolTip(
@@ -843,9 +935,14 @@ class ColumnPreviewPage(BasePage):
         )
         self._btn_import_note.clicked.connect(self._import_current_to_notepad)
         self._btn_import_note.setEnabled(False)
+        self._btn_import_note.setSizePolicy(
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+        )
         btn_row.addWidget(self._btn_import_note)
         btn_row.addStretch(1)
-        pl.addLayout(btn_row)
+        fl.addLayout(btn_row)
+        pl.addWidget(footer)
+        self._preview_footer = footer
         self._preview_pane = preview
         split.addWidget(preview)
 
@@ -860,12 +957,28 @@ class ColumnPreviewPage(BasePage):
         self._preview_pane.installEventFilter(self)
         self._stack.installEventFilter(self)
         self._preview_text.viewport().installEventFilter(self)
+        self._md_render.viewport().installEventFilter(self)
+        # ②标题/Tab、③底栏：直接收滚轮以调预览宽度
+        for w in (
+            self._preview_name,
+            self._html_mode_host,
+            self._html_mode_tabs,
+            self._preview_footer,
+            self._preview_meta,
+            self._btn_open,
+            self._btn_reveal,
+            self._btn_import_note,
+        ):
+            w.installEventFilter(self)
         self._preview_pane.setToolTip(
-            "预览内容区：有滚动条时滚轮优先滚动；悬停在标题/按钮等控件外区域时滚轮调节预览宽度"
+            "①正文区滚轮只滚动；②标题/Tab 与 ③底栏滚轮调节预览宽度"
         )
-        self._image_scroll.setToolTip("有滚动条时滚轮滚动预览；到顶/底后再滚可调节宽度")
-        self._preview_text.setToolTip("有滚动条时滚轮滚动正文；到顶/底后再滚可调节宽度")
-
+        self._image_scroll.setToolTip("滚轮只滚动预览内容")
+        self._preview_text.setToolTip("滚轮只滚动正文")
+        self._md_render.setToolTip("滚轮只滚动 Markdown 预览")
+        self._preview_name.setToolTip("滚轮左右调节预览窗宽度")
+        self._html_mode_host.setToolTip("滚轮左右调节预览窗宽度")
+        self._preview_footer.setToolTip("滚轮左右调节预览窗宽度")
         QShortcut(QKeySequence(Qt.Key.Key_F2), self, activated=self._rename_current)
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self, activated=self._delete_current)
         QShortcut(QKeySequence.StandardKey.Copy, self, activated=self._copy_files)
@@ -960,12 +1073,25 @@ class ColumnPreviewPage(BasePage):
 
     def eventFilter(self, obj, event):  # noqa: N802
         if event.type() == QEvent.Type.Wheel and self._is_under_preview(obj):
-            scroll = self._preview_content_scroll_for(obj)
-            if scroll is not None and self._scroll_can_consume_wheel(scroll, event):
-                # 内容区有可滚动余量：放行，让滚动条优先
-                return False
-            # 控件外（标题/按钮/边距）或已滚到顶底：调节预览框宽度
-            self._resize_preview_by_wheel(event)
+            zone = self._preview_wheel_zone(obj)
+            mods = event.modifiers()
+            # ① 正文区：只滚上下；到顶/底也吞掉事件，禁止冒泡调宽
+            if zone == "content":
+                if mods & Qt.KeyboardModifier.ControlModifier:
+                    web = getattr(self, "_html_web", None)
+                    if web is not None and self._is_under_widget(obj, web):
+                        try:
+                            web.setZoomFactor(1.0)
+                        except Exception:
+                            pass
+                    return True
+                if self._is_direct_content_scroll_target(obj):
+                    return False  # 交给控件滚垂直条
+                return True  # 冒泡/边距：吃掉，绝不调宽
+            # ② 标题/Tab、③ 底栏：滚轮调节预览主窗口宽度
+            if zone == "chrome":
+                self._resize_preview_by_wheel(event)
+                return True
             return True
         if event.type() == QEvent.Type.Resize:
             if obj is self._scroll.viewport():
@@ -995,42 +1121,75 @@ class ColumnPreviewPage(BasePage):
             w = w.parentWidget()
         return False
 
-    def _preview_content_scroll_for(self, obj):
-        """返回预览正文/图片滚动控件；非内容区返回 None。"""
-        text = getattr(self, "_preview_text", None)
-        if text is not None and self._is_under_widget(obj, text):
-            return text
-        img = getattr(self, "_image_scroll", None)
-        if img is not None and self._is_under_widget(obj, img):
-            return img
-        return None
-
-    @staticmethod
-    def _scroll_can_consume_wheel(area, event) -> bool:
-        """该方向上滚动条仍有行程则可消费滚轮。"""
-        dy = int(event.angleDelta().y())
-        dx = int(event.angleDelta().x())
-        if dy == 0 and dx == 0:
-            dy = int(event.pixelDelta().y())
-            dx = int(event.pixelDelta().x())
-        if dy != 0:
-            bar = area.verticalScrollBar()
-            if bar is None or bar.maximum() <= bar.minimum():
-                return False
-            if dy > 0:
-                return bar.value() > bar.minimum()
-            return bar.value() < bar.maximum()
-        if dx != 0:
-            bar = area.horizontalScrollBar()
-            if bar is None or bar.maximum() <= bar.minimum():
-                return False
-            if dx > 0:
-                return bar.value() > bar.minimum()
-            return bar.value() < bar.maximum()
+    def _is_preview_chrome(self, obj) -> bool:
+        """② 文件名/源码预览 Tab；③ 元信息与底栏按钮。"""
+        for host in (
+            getattr(self, "_preview_name", None),
+            getattr(self, "_html_mode_host", None),
+            getattr(self, "_preview_footer", None),
+        ):
+            if host is not None and host.isVisible() and self._is_under_widget(obj, host):
+                return True
         return False
 
+    def _is_preview_content(self, obj) -> bool:
+        """① 预览正文/图片/网页（不含 ② Tab 条）。"""
+        if self._is_preview_chrome(obj):
+            return False
+        for host in (
+            getattr(self, "_text_stack", None),
+            getattr(self, "_image_scroll", None),
+            getattr(self, "_preview_text", None),
+            getattr(self, "_md_render", None),
+            getattr(self, "_html_web", None),
+            getattr(self, "_html_web_host", None),
+            getattr(self, "_stack", None),
+        ):
+            if host is not None and self._is_under_widget(obj, host):
+                return True
+        return False
+
+    def _is_direct_content_scroll_target(self, obj) -> bool:
+        """仅真正的滚动视口放行滚轮；父级冒泡一律不放行。"""
+        candidates = []
+        for w in (
+            getattr(self, "_preview_text", None),
+            getattr(self, "_md_render", None),
+            getattr(self, "_image_scroll", None),
+        ):
+            if w is None:
+                continue
+            candidates.append(w)
+            vp = getattr(w, "viewport", None)
+            if callable(vp):
+                try:
+                    candidates.append(vp())
+                except Exception:
+                    pass
+        web = getattr(self, "_html_web", None)
+        if web is not None:
+            candidates.append(web)
+            if self._is_under_widget(obj, web):
+                return True
+        return obj in candidates
+
+    def _preview_wheel_zone(self, obj) -> str:
+        """按事件对象 + 光标落点判定 ①content / ②③chrome。"""
+        if self._is_preview_chrome(obj):
+            return "chrome"
+        if self._is_preview_content(obj):
+            return "content"
+        # 事件落在 pane 自身边距时，用光标再判一次
+        hit = QApplication.widgetAt(QCursor.pos())
+        if hit is not None and self._is_under_preview(hit):
+            if self._is_preview_chrome(hit):
+                return "chrome"
+            if self._is_preview_content(hit):
+                return "content"
+        return "content"
+
     def _resize_preview_by_wheel(self, event) -> None:
-        """预览框外/滚到尽头：放大/缩小右侧预览窗宽度（上滚加宽，下滚收窄）。"""
+        """②③：放大/缩小右侧预览主窗口宽度（上滚加宽，下滚收窄）。"""
         split = getattr(self, "_main_split", None)
         if split is None:
             return
@@ -1658,6 +1817,10 @@ class ColumnPreviewPage(BasePage):
         if not note_id:
             show_warning(self, f"导入失败：{err or '未知错误'}")
             return
+        from modules.quick_notepad.quick_notepad_page import QuickNotepadPage
+
+        # 先挂起 id：记事页若尚未建好，会在 on_enter 再定位；已缓存则立刻打开
+        QuickNotepadPage.stash_reveal(note_id)
         w = self.window()
         if w is not None and hasattr(w, "navigate"):
             w.navigate("quick_notepad")
@@ -2115,15 +2278,190 @@ class ColumnPreviewPage(BasePage):
     def _show_idle(self) -> None:
         self._current_path = None
         self._raw_preview_pm = QPixmap()
+        self._preview_image.clear()
         self._preview_name.setText("未选择")
         self._preview_meta.setText("")
+        self._set_doc_mode(None)
+        self._clear_html_web()
         self._stack.setCurrentIndex(_PAGE_IDLE)
         self._btn_open.setEnabled(False)
         self._btn_reveal.setEnabled(False)
         self._sync_import_note_btn()
 
+    def _set_doc_mode(self, kind: str | None) -> None:
+        """kind: html | md | None。控制右侧双模式页签。"""
+        self._doc_kind = kind if kind in ("html", "md") else None
+        host = getattr(self, "_html_mode_host", None)
+        tabs = getattr(self, "_html_mode_tabs", None)
+        if host is None or tabs is None:
+            return
+        if self._doc_kind is None:
+            host.setVisible(False)
+            stack = getattr(self, "_text_stack", None)
+            if stack is not None:
+                stack.setCurrentIndex(0)
+            return
+        if self._doc_kind == "html":
+            tabs.setTabText(0, "代码")
+            tabs.setTabText(1, "网页")
+            tabs.setTabToolTip(0, "查看 HTML 源码")
+            tabs.setTabToolTip(1, "用内嵌浏览器渲染")
+            mode = self._html_view_mode if self._html_view_mode in ("code", "web") else "web"
+            want = 1 if mode == "web" else 0
+        else:
+            tabs.setTabText(0, "源码")
+            tabs.setTabText(1, "预览")
+            tabs.setTabToolTip(0, "查看 Markdown 源码")
+            tabs.setTabToolTip(1, "渲染预览")
+            mode = self._md_view_mode if self._md_view_mode in ("code", "preview") else "preview"
+            want = 1 if mode == "preview" else 0
+        host.setVisible(True)
+        if tabs.currentIndex() != want:
+            tabs.blockSignals(True)
+            tabs.setCurrentIndex(want)
+            tabs.blockSignals(False)
+
+    def _set_html_mode_visible(self, on: bool) -> None:
+        # 兼容旧调用：仅 HTML 开关
+        if on:
+            self._set_doc_mode("html")
+        elif self._doc_kind == "html":
+            self._set_doc_mode(None)
+
+    def _on_doc_mode_changed(self, index: int) -> None:
+        kind = self._doc_kind
+        path = self._current_path
+        if path is None or not path.is_file() or kind not in ("html", "md"):
+            return
+        if kind == "html":
+            self._html_view_mode = "web" if int(index) == 1 else "code"
+            self._apply_html_view_mode(path)
+        else:
+            self._md_view_mode = "preview" if int(index) == 1 else "code"
+            self._apply_md_view_mode(path)
+
+    def _on_html_mode_changed(self, index: int) -> None:
+        self._on_doc_mode_changed(index)
+
+    def _apply_html_view_mode(self, path: Path) -> None:
+        mode = self._html_view_mode if self._html_view_mode in ("code", "web") else "web"
+        tabs = getattr(self, "_html_mode_tabs", None)
+        if tabs is not None:
+            want = 1 if mode == "web" else 0
+            if tabs.currentIndex() != want:
+                tabs.blockSignals(True)
+                tabs.setCurrentIndex(want)
+                tabs.blockSignals(False)
+        stack = getattr(self, "_text_stack", None)
+        if stack is None:
+            return
+        if mode == "code":
+            stack.setCurrentIndex(0)
+            return
+        if not self._ensure_html_web():
+            stack.setCurrentIndex(1)
+            tip = self._html_web_error or "网页预览不可用，请用「打开」查看。"
+            self._html_web_fallback.setText(tip)
+            self._html_web_fallback.setVisible(True)
+            return
+        self._html_web_fallback.setVisible(False)
+        stack.setCurrentIndex(1)
+        try:
+            url = QUrl.fromLocalFile(str(path.resolve()))
+            self._html_web.setUrl(url)
+            try:
+                self._html_web.setZoomFactor(1.0)
+            except Exception:
+                pass
+        except Exception as exc:
+            self._html_web_fallback.setText(f"网页加载失败：{exc}")
+            self._html_web_fallback.setVisible(True)
+
+    def _apply_md_view_mode(self, path: Path) -> None:
+        mode = self._md_view_mode if self._md_view_mode in ("code", "preview") else "preview"
+        tabs = getattr(self, "_html_mode_tabs", None)
+        if tabs is not None:
+            want = 1 if mode == "preview" else 0
+            if tabs.currentIndex() != want:
+                tabs.blockSignals(True)
+                tabs.setCurrentIndex(want)
+                tabs.blockSignals(False)
+        stack = getattr(self, "_text_stack", None)
+        if stack is None:
+            return
+        if mode == "code":
+            stack.setCurrentIndex(0)
+            return
+        # 渲染预览
+        text = self._preview_text.toPlainText()
+        self._md_render.blockSignals(True)
+        try:
+            if not (text or "").strip():
+                self._md_render.clear()
+            else:
+                self._md_render.setMarkdown(text)
+        finally:
+            self._md_render.blockSignals(False)
+        stack.setCurrentIndex(2)
+
+    def _ensure_html_web(self) -> bool:
+        if self._html_web is not None:
+            return True
+        if self._html_web_error:
+            return False
+        try:
+            from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+
+            from services.webengine_host import ToaWebEnginePage, theme_surface_color
+        except Exception as exc:
+            self._html_web_error = f"未安装 WebEngine：{exc}"
+            return False
+        try:
+            view = QWebEngineView(self._html_web_host)
+            page = ToaWebEnginePage(QWebEngineProfile.defaultProfile(), view)
+            view.setPage(page)
+            try:
+                view.page().setBackgroundColor(theme_surface_color())
+            except Exception:
+                pass
+            settings = view.settings()
+            settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+            settings.setAttribute(
+                QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
+            )
+            settings.setAttribute(
+                QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False
+            )
+            lay = self._html_web_host.layout()
+            if lay is not None:
+                self._html_web_fallback.setVisible(False)
+                lay.insertWidget(0, view, 1)
+            self._html_web = view
+            self._html_web_ready = True
+            view.installEventFilter(self)
+            try:
+                view.setZoomFactor(1.0)
+            except Exception:
+                pass
+            return True
+        except Exception as exc:
+            self._html_web_error = f"创建网页预览失败：{exc}"
+            return False
+
+    def _clear_html_web(self) -> None:
+        view = getattr(self, "_html_web", None)
+        if view is None:
+            return
+        try:
+            view.setUrl(QUrl("about:blank"))
+        except Exception:
+            pass
+
     def _show_folder(self, path: Path) -> None:
         self._raw_preview_pm = QPixmap()
+        self._set_doc_mode(None)
+        self._clear_html_web()
         tag = self._tags.get(path_key(path))
         tag_txt = f" · {TAG_COLORS[tag][0]}色" if tag else ""
         dpr = device_pixel_ratio(self)
@@ -2169,11 +2507,20 @@ class ColumnPreviewPage(BasePage):
             size = 0
         size_txt = f"{size:,} 字节" if size < 1024 else f"{size / 1024:.1f} KB"
         self._preview_meta.setText(f"{ext or '无扩展名'} · {size_txt}\n{path}")
+        # 非 HTML/Markdown 先收起双模式
+        if ext not in _HTML_EXT and ext not in _MARKDOWN_EXT:
+            self._set_doc_mode(None)
+            self._clear_html_web()
 
         if ext in _IMAGE_EXT and path.is_file():
             pm = _load_image_as_displayed(path, parent=self)
             if pm.isNull():
-                self._stack.setCurrentIndex(_PAGE_OTHER)
+                self._raw_preview_pm = QPixmap()
+                self._preview_image.clear()
+                self._preview_text.setPlainText(
+                    f"无法解码图片预览\n\n{path.name}\n\n请点「打开」用系统看图软件查看。"
+                )
+                self._stack.setCurrentIndex(_PAGE_TEXT)
                 return
             self._raw_preview_pm = pm
             self._stack.setCurrentIndex(_PAGE_IMAGE)
@@ -2182,6 +2529,8 @@ class ColumnPreviewPage(BasePage):
         if ext in _PDF_EXT and path.is_file():
             pm, pages = _load_pdf_first_page(path, parent=self)
             if pm.isNull():
+                self._raw_preview_pm = QPixmap()
+                self._preview_image.clear()
                 self._stack.setCurrentIndex(_PAGE_OTHER)
                 return
             self._raw_preview_pm = pm
@@ -2192,6 +2541,7 @@ class ColumnPreviewPage(BasePage):
             return
         if is_office_preview_path(path) and path.is_file():
             self._raw_preview_pm = QPixmap()
+            self._preview_image.clear()
             kind = office_kind_label(path)
             try:
                 kind, text = read_office_preview(path)
@@ -2207,6 +2557,7 @@ class ColumnPreviewPage(BasePage):
             return
         if is_xmind_path(path) and path.is_file():
             self._raw_preview_pm = QPixmap()
+            self._preview_image.clear()
             try:
                 text = read_xmind_outline(path)
                 self._preview_text.setPlainText(text)
@@ -2223,25 +2574,43 @@ class ColumnPreviewPage(BasePage):
             return
         if ext in _TEXT_EXT and path.is_file():
             self._raw_preview_pm = QPixmap()
+            self._preview_image.clear()
             try:
                 if ext in _JSON_EXT:
                     text, kind = _read_json_preview(path)
                     self._preview_text.setPlainText(text)
                     self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
+                    self._set_doc_mode(None)
+                    self._clear_html_web()
                 elif ext in _MARKDOWN_EXT:
                     text, kind = _read_markdown_preview(path)
                     self._preview_text.setPlainText(text)
                     self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
+                    self._set_doc_mode("md")
+                    self._clear_html_web()
+                    self._apply_md_view_mode(path)
+                elif ext in _HTML_EXT:
+                    self._preview_text.setPlainText(_read_text_preview(path))
+                    self._preview_meta.setText(f"HTML · {size_txt}\n{path}")
+                    self._set_doc_mode("html")
+                    self._apply_html_view_mode(path)
                 else:
                     self._preview_text.setPlainText(_read_text_preview(path))
                     self._preview_meta.setText(f"文本 · {ext} · {size_txt}\n{path}")
+                    self._set_doc_mode(None)
+                    self._clear_html_web()
             except OSError as e:
                 self._preview_text.setPlainText(f"读取失败：{e}")
                 self._preview_meta.setText(f"{ext or '文本'} · {size_txt}\n{path}")
+                self._set_doc_mode(None)
+                self._clear_html_web()
             self._stack.setCurrentIndex(_PAGE_TEXT)
             return
+        self._set_doc_mode(None)
+        self._clear_html_web()
         if ext in _VIDEO_EXT and path.is_file():
             self._raw_preview_pm = QPixmap()
+            self._preview_image.clear()
             self._preview_text.setPlainText(
                 f"视频文件\n\n"
                 f"名称：{path.name}\n"
@@ -2255,6 +2624,7 @@ class ColumnPreviewPage(BasePage):
             return
         if ext in _AUDIO_EXT and path.is_file():
             self._raw_preview_pm = QPixmap()
+            self._preview_image.clear()
             self._preview_text.setPlainText(
                 f"音频文件\n\n"
                 f"名称：{path.name}\n"
@@ -2267,18 +2637,23 @@ class ColumnPreviewPage(BasePage):
             self._stack.setCurrentIndex(_PAGE_TEXT)
             return
         self._raw_preview_pm = QPixmap()
+        self._preview_image.clear()
         self._stack.setCurrentIndex(_PAGE_OTHER)
 
     def _relayout_image(self) -> None:
         if self._raw_preview_pm.isNull():
             return
         vp = self._image_scroll.viewport()
-        fitted = _fit_pixmap(
-            self._raw_preview_pm, max(120, vp.width() - 16), max(120, vp.height() - 16), parent=self
-        )
+        max_w = max(120, vp.width() - 16)
+        max_h = max(120, vp.height() - 16)
+        fitted = _fit_pixmap(self._raw_preview_pm, max_w, max_h, parent=self)
         self._preview_image.setPixmap(fitted)
         dpr = fitted.devicePixelRatio() or 1.0
-        self._preview_image.setFixedSize(int(fitted.width() / dpr), int(fitted.height() / dpr))
+        # 逻辑尺寸 = 物理宽高 / DPR，保证铺满可用预览区而非「白框角点」
+        self._preview_image.setFixedSize(
+            max(1, int(round(fitted.width() / dpr))),
+            max(1, int(round(fitted.height() / dpr))),
+        )
 
     def _open_current(self) -> None:
         if self._current_path is None or not self._current_path.exists():

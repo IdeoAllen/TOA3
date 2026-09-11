@@ -68,6 +68,13 @@ _PERSONAL_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"WorkBuddy/", re.IGNORECASE),
 )
 
+# Harness 预制 zip 构建产物不得进主安装包（体积大；走 CDN 双路线下载）
+FORBIDDEN_RELEASE_NAME_PREFIXES_HARNESS: tuple[str, ...] = (
+    "harness-official-",
+    "harness-prefab-",
+    "harness-bundles-",
+)
+
 _TEXT_SCAN_SUFFIXES: frozenset[str] = frozenset(
     {".yml", ".yaml", ".json", ".txt", ".md", ".env", ".ini", ".cfg", ".log"}
 )
@@ -198,6 +205,12 @@ def scan_release_tree(root: Path) -> list[str]:
             continue
         if any(name.startswith(p) for p in FORBIDDEN_RELEASE_NAME_PREFIXES):
             errors.append(f"禁止文件: {path.as_posix()}")
+            continue
+        if any(name.startswith(p) for p in FORBIDDEN_RELEASE_NAME_PREFIXES_HARNESS):
+            errors.append(f"禁止把 Harness 预制 zip 打进主安装包（走 CDN）: {path.as_posix()}")
+            continue
+        if name in (".credentials.yaml", ".credentials.yml"):
+            errors.append(f"禁止打包 Harness 密钥文件: {path.as_posix()}")
             continue
         if name.startswith("license.json.") and name != "license.json.example":
             errors.append(f"禁止打包授权备份: {path.as_posix()}")

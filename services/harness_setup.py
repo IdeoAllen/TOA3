@@ -496,7 +496,7 @@ def uninstall_harness_runtime(*, delete_install: bool = True, keep_user_data: bo
     load_harness_config(force=True)
     tip = "Harness 已卸载。"
     if keep_user_data:
-        tip += "会话数据已保留；需要时可再点「一键安装」。"
+        tip += "会话数据已保留；需要时可再进页选择官方/预制版安装。"
     else:
         tip += "安装与会话均已清除。"
     notes.append(tip)
