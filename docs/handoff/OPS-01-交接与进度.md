@@ -90,7 +90,7 @@ python -m app.main
 - [x] Harness 自动化交付：默认沙箱干净机（13082）+ 契约；**不**动用户 3082/`~/.toa3`；`--live` 才碰本机  
 - [x] Harness CDN URL/sha256 已填且探测可达；诊断包已落地；BOM 自清  
 - [x] Harness CDN：`0.1.5-rc.1.1` 已上传并切 yml（官方 `0d655f2e…` / 预制 `8b50ba65…`）  
-- [x] **运营台设当前版 v3.1.18** 后：`python scripts/sync_release_version.py --from-live --require-match --commit`
+- [ ] **运营台设当前版 v3.1.18** 后：`python scripts/sync_release_version.py --from-live --require-match --commit`
 
 机读任务：同目录 `collab_tasks.json`。
 
@@ -113,7 +113,7 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 | 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.18.exe |
 | Harness CDN | https://www.yczh.tech/downloads/harness-{official,prefab}-0.1.5-rc.1.1.zip |
 | Harness 升级 | 进页：更新 / 不更新 / 今日不提醒；完成后「已升级完成」→ 启动服务 |
-| 待主理人 | ① 运营台设当前版 v3.1.18；② 邮箱 §3.5；③ 指定下一批并行开轨模块（若有） |
+| 待主理人 | ① 运营台设当前版 v3.1.18；② Wave★/换装/招聘/看板**点验**（不审 research） |
 | 验收 | 记事本新增 gaps 待点验 |
 | 验收 | Harness 已重启可用；换装/招聘/看板 gaps 仍待点验 |
 | 主理人意见 | 能力接入堆 Harness 不伦不类 → 三轨：系统/引擎页/扩展；环境维护人话收拢 |
