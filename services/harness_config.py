@@ -19,6 +19,8 @@ _ALIGNED_ONCE = False
 # 与 config/harness.yml · packaging/shipped_config/harness.yml 同源行为默认
 PRODUCT_WEB_PORT = 3082
 PRODUCT_SURFACE_MODE = "embed"
+# 一次回迁：曾短暂改为 browser 自动外开；主理人裁定默认 TOA 内嵌，外开须用户自点
+_SURFACE_EMBED_DEFAULT_FLAG = "surface_embed_default_20260911b"
 
 
 def _user_harness_path() -> Path:
@@ -47,6 +49,35 @@ def preferred_dsh_home() -> Path:
     return Path.home() / ".toa3" / "harness-runtime" / ".dsh"
 
 
+# 用户覆盖为空字符串时仍用仓库/发版默认（避免旧 user harness.yml 抹掉 CDN）
+_CDN_KEYS = frozenset(
+    {
+        "official_bundle_url",
+        "official_sha256",
+        "official_bundle_version",
+        "official_size_hint_mb",
+        "prefab_bundle_url",
+        "prefab_sha256",
+        "prefab_bundle_version",
+        "prefab_size_hint_mb",
+        "prefab_essential_plugins",
+    }
+)
+
+
+def _merge_user_block(merged: dict[str, Any], block: dict[str, Any]) -> None:
+    for key, val in block.items():
+        if key in _CDN_KEYS:
+            if val is None:
+                continue
+            if isinstance(val, str) and not val.strip():
+                continue
+            if isinstance(val, (list, dict)) and not val and merged.get(key):
+                # 用户空列表不覆盖仓库已填白名单；首轮仓库亦为空则照写
+                continue
+        merged[key] = val
+
+
 def load_harness_config(force: bool = False) -> dict:
     global _CACHE
     if _CACHE is not None and not force:
@@ -65,7 +96,7 @@ def load_harness_config(force: bool = False) -> dict:
         if isinstance(data, dict):
             block = data.get("harness") or data
             if isinstance(block, dict):
-                merged.update(block)
+                _merge_user_block(merged, block)
     _CACHE = merged
     return _CACHE
 
@@ -109,8 +140,9 @@ def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -
     """
     对齐正式版/开发版 Harness 行为：
     - WorkBuddy/.dsh → ~/.toa3/harness-runtime/.dsh
-    - 旧发版模板把 enabled/auto_start 关掉时，若已具备 node+dsh 则恢复开启
+    - 旧发版模板把 enabled 关掉时，若已具备 node+dsh 则恢复启用
     - 默认端口/内嵌与产品配置一致（仅在明显为旧默认时纠正）
+    - **不**强行打开 auto_start：用户在环境维护关掉后必须跨重启仍生效
     """
     global _ALIGNED_ONCE
     if _ALIGNED_ONCE and not force:
@@ -136,9 +168,7 @@ def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -
         if not bool(cfg.get("enabled", True)):
             updates["enabled"] = True
             notes.append("已恢复启用编码智能体（正式版与开发版对齐）")
-        if not bool(cfg.get("auto_start", True)):
-            updates["auto_start"] = True
-            notes.append("已恢复进页自动启动")
+        # auto_start 尊重用户在「环境维护」的选择，禁止悄悄改回 True
 
     # 旧发版模板：3081 + 内嵌；产品默认 3082 + 浏览器优先（doc 33 / C-11）
     try:
@@ -150,11 +180,17 @@ def align_harness_runtime_config(*, persist: bool = True, force: bool = False) -
         notes.append(f"Web 端口对齐为 {PRODUCT_WEB_PORT}")
 
     mode = str(cfg.get("surface_mode") or "").strip().lower()
-    migrating_home = bool(is_workbuddy_home(home_s) or updates.get("dsh_home"))
-    if mode not in ("embed", "browser"):
+    # 2026-09-11b：默认套件内嵌；外开须用户自点「在浏览器打开」。
+    # 能力不及 Chrome 处用文案提示「浏览器打开效果更佳」，禁止自动弹出浏览器。
+    embed_flag = bool(cfg.get(_SURFACE_EMBED_DEFAULT_FLAG))
+    if not embed_flag:
+        updates[_SURFACE_EMBED_DEFAULT_FLAG] = True
+        if mode != "embed":
+            updates["surface_mode"] = "embed"
+            notes.append("显示方式改回套件内嵌（外开请自行点「在浏览器打开」）")
+    elif mode not in ("embed", "browser"):
         updates["surface_mode"] = PRODUCT_SURFACE_MODE
         notes.append("显示方式对齐为套件内嵌")
-    # 用户已选 embed/browser 时一律保留；禁止安装/修复把内嵌改回浏览器
 
     if updates and persist:
         save_harness_config(updates)

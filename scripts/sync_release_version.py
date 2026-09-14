@@ -56,7 +56,6 @@ RELEASE_COMMIT_PATHS: tuple[str, ...] = (
     "scripts/verify_harness_release_align.py",
     "scripts/verify_harness_simple_setup.py",
     "modules/harness_agent/",
-    "modules/system_settings/harness_section.py",
     "services/harness_config.py",
     "services/harness_guide.py",
     "services/harness_setup.py",
@@ -246,16 +245,17 @@ def main() -> int:
     print(f"APP_VERSION={app_v}")
 
     if args.from_live:
-        live = sync_from_live()
+        live = _fetch_live_stable()
         live_v = _live_version(live)
-        print(f"已从线上 stable 同步 update_manifest → {live_v}")
         if args.require_match and live_v != app_v:
             print(
                 f"错误: 线上 {live_v} ≠ APP_VERSION {app_v}。"
-                "请先 bump 版本或等运营台设为当前版。",
+                "请先在运营台设为当前版，再跑 --from-live（未改写本地 update_manifest）。",
                 file=sys.stderr,
             )
             return 1
+        sync_from_live()
+        print(f"已从线上 stable 同步 update_manifest → {live_v}")
         _patch_todo_overview(live_v if args.require_match else app_v)
     elif args.from_app:
         sync_from_app(release_notes=args.notes)

@@ -138,13 +138,13 @@ class SetupGate(QWidget):
         self._btn_node.clicked.connect(self._open_node_download)
         self._btn_node.hide()
         btn_row.addWidget(self._btn_node)
-        self._btn_secondary = SecondaryButton("高级路径…")
+        self._btn_secondary = SecondaryButton("环境维护…")
         self._btn_secondary.clicked.connect(self.open_settings_requested.emit)
         btn_row.addWidget(self._btn_secondary)
         btn_row.addStretch(1)
         card_inner.addLayout(btn_row)
 
-        self._footer = HintLabel("日常请选版本安装；高级路径仅供改端口或指定本机已有环境。")
+        self._footer = HintLabel("日常请选版本安装；密钥与修复请用「环境维护」。")
         self._footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._footer.setWordWrap(True)
         card_inner.addWidget(self._footer)
@@ -253,7 +253,9 @@ class SetupGate(QWidget):
                 self._last_flavor = flavor
             label = FLAVOR_LABELS.get(self._last_flavor, "运行环境")
             self._set_active_step(2)
-            self._body.setText(f"正在安装{label}…")
+            self._body.setText(
+                f"正在安装{label}…体积较大，请稍候；可随时取消。"
+            )
             self._flavor_row.hide()
             self._flavor_hints.hide()
             self._key_row.hide()
@@ -343,8 +345,8 @@ class SetupGate(QWidget):
     def _open_node_download(self) -> None:
         QDesktopServices.openUrl(QUrl(NODE_DOWNLOAD_URL))
         self._body.setText(
-            "已打开 Node.js 下载页。装完 LTS 后可再点「安装官方版/预制版」；"
-            "若预制地址未就绪，高级路径也可登记本机环境。"
+            "已打开 Node.js 下载页。装完 LTS 后可再点「安装官方版/预制版」。"
+            "若仍无法安装，请到「环境维护」点「修一下」或联系管理员。"
         )
 
     def _save_key(self) -> None:

@@ -166,11 +166,17 @@ def read_harness_status(*, probe_http: bool = True, http_timeout: float = 0.8) -
     elif http_ok and not owned:
         service = ServiceState.RUNNING_EXTERNAL
         summary = "已安装 · 运行中"
-        detail = "服务已在运行。若对话异常，请点「更多 → 重启服务」。"
+        detail = (
+            "本机已有 Harness 在运行（不一定由运营宝启动）。"
+            "已可直接使用；若要改由本页托管，再点「启动服务」确认接管。"
+        )
     elif port_busy and not http_ok:
         service = ServiceState.PORT_CONFLICT
         summary = "已安装 · 端口占用"
-        detail = f"端口 {port} 被占用但服务未响应，请改端口或点「一键修复」。"
+        detail = (
+            f"端口 {port} 被占用但暂未响应。"
+            "请点「刷新」再试；仍不行再「启动服务」或改端口。"
+        )
     else:
         service = ServiceState.STOPPED
         summary = "已安装 · 服务未启动"

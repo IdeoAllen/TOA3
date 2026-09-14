@@ -205,14 +205,14 @@ modules:
     office_freq: high
     toa2_ref: —
     note: >-
-      Harness 薄 Host 六件套 + chrome 状态机（启停/进度/忙碌互斥）；
-      启动前 denylist；健康快照；插件搞挂自愈；默认浏览器干活；
+      Harness 薄 Host 六件套 + chrome 状态机；四步双路线 CDN（dsh 0.1.5-rc.1）；
+      启动前 denylist；健康快照；升级运行时；默认内嵌；G0 自用自排错。
       `scripts/verify_harness_host_lifecycle.py --live` 覆盖启停往返
     gaps:
-      - 主理人点验：启动→浏览器打开→停止→再启，按钮与状态行同步
-      - 主理人点验：忙碌中主钮全禁用；完成后恢复
-      - 主理人点验：一键修复后自动重启且不再二次确认
-      - 主理人点验：更多 → 打开… / 恢复 / 卸载（保留会话）
+      - 主理人点验：干净机四步（官方/预制 CDN）→ Key → 内嵌可用（全程无 WorkBuddy）
+      - 主理人点验：更多 → 环境维护（修一下 / 还原 / 更新 / 导出诊断包）
+      - 主理人点验：启停/忙碌互斥；卸载保留会话后再装
+      - 预制必备插件白名单仍空（与官方同核；名单确认后重建 prefab）
 
   open_pencil:
     status: mvp

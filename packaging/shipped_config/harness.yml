@@ -1,5 +1,5 @@
 # 发版默认（无个人路径）。与 config/harness.yml 行为对齐：
-# 默认套件内嵌；「在浏览器打开」仍为可用 CTA；路径空 → 进页走四步开用引导。
+# 默认套件内嵌；路径空 → 进页走四步开用；双路线 CDN zip。
 
 harness:
   enabled: true
@@ -18,14 +18,14 @@ harness:
   web_readability_boost: false
   theme_harmonize: false
   feed_auto_inject: false
-  official_bundle_url: ""
-  official_sha256: ""
-  official_bundle_version: ""
-  official_size_hint_mb: null
-  prefab_bundle_url: ""
-  prefab_sha256: ""
-  prefab_bundle_version: ""
-  prefab_size_hint_mb: null
+  official_bundle_url: https://www.yczh.tech/downloads/harness-official-0.1.5-rc.1.1.zip
+  official_sha256: 0d655f2ee47684fcbb54c0bac0454545ab074d48839c3a8cea1087dfb89fe3af
+  official_bundle_version: "0.1.5-rc.1.1"
+  official_size_hint_mb: 459
+  prefab_bundle_url: https://www.yczh.tech/downloads/harness-prefab-0.1.5-rc.1.1.zip
+  prefab_sha256: 8b50ba656873e64eabe0ce54940b2aac8b2c07336e1f81118f50c08cc87fafdb
+  prefab_bundle_version: "0.1.5-rc.1.1"
+  prefab_size_hint_mb: 459
   prefab_essential_plugins: []
   cost_currency: 元
   cost_input_per_million: 2

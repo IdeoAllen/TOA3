@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 # SetupGate 识别：缺 Node 时展示「去安装 Node.js」
 NEED_NODE_PREFIX = "NEED_NODE:"
 
+# npm 回落钉扎（与已知可用预制核一致；禁止长期漂 latest）
+DSH_NPM_PACKAGE = "@deepseek-ai/dsh@0.1.5-rc.1"
+DSH_PINNED_VERSION = "0.1.5-rc.1"
+
 
 def _workbuddy_roots() -> list[Path]:
     home = Path.home()
@@ -90,7 +94,7 @@ def npm_install_dsh(node_exe: Path, install_root: Path, *, timeout: float = 300.
         npm = node_exe.parent / "npm"
     if not npm.is_file():
         return False, "未找到 npm，请使用完整 Node 安装包。"
-    cmd = [str(npm), "install", "@deepseek-ai/dsh", "--prefix", str(install_root), "--no-fund", "--no-audit"]
+    cmd = [str(npm), "install", DSH_NPM_PACKAGE, "--prefix", str(install_root), "--no-fund", "--no-audit"]
     try:
         result = subprocess.run(
             cmd,
@@ -310,7 +314,10 @@ def _install_harness_runtime_inner() -> tuple[bool, str]:
 
 
 def repair_harness_runtime() -> tuple[bool, str]:
-    """修复：剔除拖死插件、重建 Web 组件、可选回退上次可用配置，并检查 API Key。"""
+    """修复：读上次启动日志自诊 → 清僵锁 → 剔杀手插件 → 重建 Web → 快照；人话结果。
+
+    不要求用户打开日志；日志只给 Host 对照常见错自动处理。
+    """
     from services.harness_config import (
         align_harness_runtime_config,
         is_workbuddy_home,
@@ -318,6 +325,7 @@ def repair_harness_runtime() -> tuple[bool, str]:
         save_harness_config,
     )
     from services.harness_credentials import (
+        clear_stale_credential_locks,
         diagnose_llm_access,
         has_api_key,
         sanitize_credentials_document,
@@ -329,12 +337,14 @@ def repair_harness_runtime() -> tuple[bool, str]:
         link_web_profile_node_modules,
         sanitize_web_profile_package,
         strip_boot_killer_plugins,
+        strip_utf8_bom_in_profile,
         web_profile_ready,
     )
     from services.harness_profile_versions import (
         ensure_baseline_snapshot,
         snapshot_web_profile,
     )
+    from services.harness_sidecar import diagnose_start_log
 
     align_notes = align_harness_runtime_config(persist=True, force=True)
     cfg = load_harness_config(force=True)
@@ -354,7 +364,21 @@ def repair_harness_runtime() -> tuple[bool, str]:
         return False, "无法创建 DSH 数据目录"
 
     notes: list[str] = list(align_notes)
+    last_cause = diagnose_start_log()
+    if last_cause:
+        notes.append(f"根据上次启动记录：{last_cause}")
+
+    ok_lock, lock_msg = clear_stale_credential_locks(home)
+    if lock_msg:
+        notes.append(lock_msg)
+    if not ok_lock:
+        return False, lock_msg or "无法清除凭证锁"
+
     ensure_baseline_snapshot(home=home)
+
+    ok_bom, bom_msg = strip_utf8_bom_in_profile(home)
+    if bom_msg and "正常" not in bom_msg:
+        notes.append(bom_msg)
 
     ok_cred, cred_msg = sanitize_credentials_document()
     if not ok_cred:
@@ -414,16 +438,16 @@ def repair_harness_runtime() -> tuple[bool, str]:
 
     key_ok, key_msg = diagnose_llm_access(probe_balance=True)
     if not has_api_key():
-        return False, "环境组件已检查，但未配置 API Key。请到系统设置 → 能力接入 → Harness 保存密钥后「重启服务」。"
+        return False, "环境已检查，但未配置 API Key。请在本页保存密钥后再启动。"
     if not key_ok:
         notes.append(key_msg)
         if "余额" in key_msg or "402" in key_msg or "QUOTA" in key_msg:
             notes.append("运行环境已就绪；对话失败需充值 DeepSeek，不是插件损坏。")
             return True, "\n".join(notes)
-        notes.append("请点「更多 → 重启服务」，由 TOA 用正确密钥重新拉起（勿继续用外部脏环境实例）。")
+        notes.append("即将自动重新启动服务。")
         return True, "\n".join(notes)
     notes.append(key_msg)
-    notes.append("请点「更多 → 重启服务」刷新页面；若仍 Failed to load plugins，再点「恢复上次可用配置」。")
+    notes.append("即将自动重新启动服务。")
     return True, "\n".join(notes)
 
 

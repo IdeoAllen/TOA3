@@ -58,6 +58,42 @@ def log_suggests_plugin_boot_failure(text: str) -> bool:
     return any(n in t for n in needles)
 
 
+def diagnose_start_log(text: str | None = None) -> str:
+    """把 sidecar 日志译成用户能懂的短因（不甩堆栈、不叫人去「打开日志」）。"""
+    raw = text if text is not None else _read_log_tail(_sidecar_log_path(), limit=4000)
+    if not (raw or "").strip():
+        return ""
+    low = raw.lower()
+    if "writer lock" in low or ".credentials.yaml.lock" in low:
+        return "上次异常退出留下了凭证锁，服务起不来"
+    if "unknown top-level key" in low:
+        return "凭证文件格式不对（有非法字段）"
+    if "unexpected token" in low and ("json" in low or "\ufeff" in raw or "bom" in low):
+        return "插件清单文件带了异常字符（已可一键清理）"
+    if "syntaxerror" in low and "json.parse" in low:
+        return "插件配置文件无法解析"
+    if log_suggests_plugin_boot_failure(raw):
+        return "插件加载失败，拖死了启动"
+    if "eaddrinuse" in low or "address already in use" in low:
+        return "端口已被占用"
+    if "api key" in low and ("missing" in low or "invalid" in low or "unauthorized" in low):
+        return "API Key 无效或未配置"
+    if "error: dsh:" in low or "\nerror:" in low:
+        return "启动进程异常退出"
+    return ""
+
+
+def humanize_start_failure(*, default: str = "服务未能启动") -> str:
+    """启动失败时的用户短句：优先用日志自诊；引导再启/维护，不吓「必须修一下」。"""
+    cause = diagnose_start_log()
+    if cause:
+        # 凭证锁 / 插件拖死才强调修；普通异常退出先请再启
+        if "凭证锁" in cause or "插件" in cause:
+            return f"{cause}。请点「修一下」或「更多 → 环境维护」"
+        return f"{cause}。请再点「启动服务」；仍不行再「更多 → 环境维护」"
+    return f"{default}。请再点「启动服务」；仍不行再「更多 → 环境维护」"
+
+
 def _read_log_tail(path: Path, limit: int = 600) -> str:
     if not path.is_file():
         return ""
@@ -189,7 +225,7 @@ def validate_setup() -> tuple[bool, str]:
     node = node_exe_path()
     dsh = dsh_bin_path()
     if not node.is_file():
-        return False, f"未找到 Node：{node}\n请在设置 → 能力接入 → Harness 配置路径。"
+        return False, f"未找到 Node：{node}\n请安装 Node.js LTS，或到「编码智能体 → 更多 → 环境维护」处理。"
     if not dsh.is_file():
         return False, f"未找到 dsh：{dsh}\n请确认 @deepseek-ai/dsh 已安装。"
     port = int(_cfg().get("web_port") or PRODUCT_WEB_PORT)
@@ -217,14 +253,38 @@ def _build_env() -> dict[str, str]:
 
 
 def preflight_web_profile(*, home: Path | None = None) -> tuple[bool, str]:
-    """启动前轻量自愈：凭证格式 + 剔除已知启动杀手插件（不重装、不联网）。
+    """启动前轻量自愈：清僵锁 + 凭证格式 + 剔除已知启动杀手插件（不重装、不联网）。
 
     稳定方案核心：任何启停路径都先过这一关，避免 Harness Web「Failed to load plugins」。
+    Host 读上次启动日志做自愈，不要求用户打开日志。
     """
-    from services.harness_credentials import sanitize_credentials_document
-    from services.harness_plugins import strip_boot_killer_plugins
+    from services.harness_credentials import (
+        clear_stale_credential_locks,
+        sanitize_credentials_document,
+    )
+    from services.harness_plugins import strip_boot_killer_plugins, strip_utf8_bom_in_profile
 
     notes: list[str] = []
+    h = Path(home) if home is not None else dsh_home_path()
+
+    try:
+        ok_lock, lock_msg = clear_stale_credential_locks(h)
+        if lock_msg:
+            notes.append(lock_msg)
+        if not ok_lock:
+            return False, lock_msg
+    except Exception as exc:
+        logger.warning("clear credential locks failed: %s", exc)
+
+    try:
+        ok_bom, bom_msg = strip_utf8_bom_in_profile(h)
+        if bom_msg and "正常" not in bom_msg:
+            notes.append(bom_msg)
+        if not ok_bom:
+            return False, bom_msg
+    except Exception as exc:
+        logger.warning("strip utf8 bom failed: %s", exc)
+
     try:
         ok_cred, cred_msg = sanitize_credentials_document()
         if cred_msg and "跳过" not in cred_msg and "正常" not in cred_msg:
@@ -235,7 +295,6 @@ def preflight_web_profile(*, home: Path | None = None) -> tuple[bool, str]:
         logger.warning("sanitize credentials failed: %s", exc)
         notes.append(f"凭证整理异常：{exc}")
 
-    h = Path(home) if home is not None else dsh_home_path()
     try:
         ok_pl, pl_msg = strip_boot_killer_plugins(h)
         if pl_msg:
@@ -265,7 +324,7 @@ def prepare_sidecar_start() -> tuple[bool, str, bool]:
         if st.get("owned"):
             hint += "（本应用托管）"
         else:
-            hint += "（本机已有进程，可停止后由本页重新启动）"
+            hint += "（本机已有进程，可直接使用）"
         if setup_hint:
             hint = f"{hint}\n{setup_hint}"
         return True, hint, True
@@ -363,11 +422,7 @@ def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
         with _LOCK:
             proc = _PROCESS
         if proc is not None and proc.poll() is not None:
-            return False, (
-                "Harness 进程已退出。常见原因：API Key 未配置、"
-                "Node/dsh 路径错误或 Web 组件未装全。"
-                "请点「更多 → 修复运行环境」后重试，或打开启动日志。"
-            )
+            return False, humanize_start_failure(default="Harness 进程已退出")
         # 尽早抓 launch-token；HTTP 401 可能早于日志落盘，稍等几帧
         auth = _capture_auth_url_from_log(log_path)
         if is_running() or _port_open(port):
@@ -380,7 +435,18 @@ def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
             url = auth or authenticated_web_url()
             return True, f"Harness 已启动：{url}"
         time.sleep(0.35)
-    return False, f"Harness 启动超时（{timeout_sec}s），请检查端口 {port}，或打开启动日志"
+    cause = diagnose_start_log()
+    if cause:
+        if "凭证锁" in cause or "插件" in cause:
+            return False, f"{cause}（等待 {timeout_sec:.0f}s）。请点「修一下」或「更多 → 环境维护」"
+        return False, (
+            f"{cause}（等待 {timeout_sec:.0f}s）。请再点「启动服务」；"
+            "仍不行再「更多 → 环境维护」"
+        )
+    return False, (
+        f"启动超时（{timeout_sec:.0f}s）。请再点「启动服务」；"
+        "仍不行再「更多 → 环境维护」"
+    )
 
 
 def sidecar_start_progress() -> tuple[str, str]:
@@ -389,8 +455,8 @@ def sidecar_start_progress() -> tuple[str, str]:
     with _LOCK:
         proc = _PROCESS
     if proc is not None and proc.poll() is not None:
-        # 用户可见短句；完整日志只给 heal / 「打开启动日志」
-        return "failed", "Harness 进程已退出"
+        # 用户可见短句；完整日志只给 Host 自诊 / 一键修复
+        return "failed", diagnose_start_log() or "Harness 进程已退出"
     if is_running(timeout=0.8):
         _capture_auth_url_from_log(log_path)
         return "ready", f"Harness 已启动：{web_url()}"

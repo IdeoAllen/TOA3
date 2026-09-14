@@ -18,7 +18,9 @@ from core.status_service import StatusLevel
 from core.ui_spec import page_content_margins
 from core.user_messages import ask_confirm, show_saved, show_warning
 from modules.harness_agent.feed_strip import FeedStrip
+from modules.harness_agent.instance_strip import InstanceStrip
 from modules.harness_agent.setup_gate import SetupGate
+from modules.harness_agent.upgrade_strip import UpgradeStrip
 from services.harness_chrome import BusyPhase, compute_chrome, infer_busy_phase
 from services.harness_config import load_harness_config, web_url
 from services.shared_local_webengine import normalize_nav_url
@@ -49,6 +51,7 @@ from services.harness_sidecar import (
 )
 from services.harness_status import HarnessStatus, InstallState, ServiceState, read_harness_status
 from services.harness_surface import (
+    BROWSER_BETTER_HINT,
     open_in_system_browser,
     prefer_browser,
     prefer_embed,
@@ -306,6 +309,35 @@ class _HarnessWebHost(QWidget):
         except RuntimeError:
             pass
 
+    def show_browser_mode(self) -> None:
+        """用户主动外开后：主区占位（不自动弹浏览器）。"""
+        try:
+            if self._view is not None:
+                self._view.hide()
+            self._placeholder.setText(
+                f"已在系统浏览器打开同一服务\n"
+                f"侧栏预览等能力{BROWSER_BETTER_HINT}；本页仍可启停"
+            )
+            self._stack.setCurrentWidget(self._placeholder)
+        except Exception:
+            pass
+
+    def show_embed_mode(self) -> None:
+        """套件内嵌：有 View 则显示。"""
+        try:
+            if self._view is not None:
+                self._view.show()
+                self._stack.setCurrentWidget(self._view)
+            else:
+                self._stack.setCurrentWidget(self._placeholder)
+        except Exception:
+            pass
+
+    def show_capability_hint(self) -> None:
+        """内嵌能力不及处：轻提示，不打断主区。"""
+        # 占位仅在无 View 时使用；有 View 时由页级 HintLabel 提示
+        pass
+
 
 class HarnessAgentPage(BasePage):
     page_id = "harness_agent"
@@ -345,6 +377,15 @@ class HarnessAgentPage(BasePage):
         self._load_watch_token = 0
         self._cred_heal_tried = False
         self._plugin_heal_tried = False
+        # 显式「更新环境」：装门可见进度；成功后强制刷新 last_good
+        self._upgrade_in_progress = False
+        self._force_good_snapshot = False
+        # 本会话已点「不更新」的目标版本（避免进页反复刷）
+        self._upgrade_nudge_snoozed: str = ""
+        # 升级成功后等用户点「启动服务」（禁止 auto_start 抢跑）
+        self._awaiting_start_after_upgrade = False
+        # True=用户点「启动服务」；False=进页自动启（外部实例只接上、不弹接管）
+        self._start_from_user = False
         # 进/离页代次：作废回调
         self._visit_gen = 0
         self._install_thread: QThread | None = None
@@ -384,19 +425,22 @@ class HarnessAgentPage(BasePage):
         self._start_stop_stack.addWidget(self._btn_stop)
         bar.addWidget(self._start_stop_stack)
 
-        # 失败时一眼能点到，不藏「更多」里
-        self._btn_repair = SecondaryButton("一键修复")
+        # 事故底牌：默认藏；仅 NEED_REPAIR / FAILED 临时露工具栏
+        self._btn_repair = SecondaryButton("修一下")
         self._btn_repair.setMinimumWidth(88)
         self._btn_repair.setMinimumHeight(32)
-        self._btn_repair.setToolTip("修复运行环境后自动重启（坏了优先点这个）")
+        self._btn_repair.setToolTip("出问题了：自动整理环境并重新启动（完整入口在「更多 → 环境维护」）")
         self._btn_repair.clicked.connect(self._on_repair_env)
+        self._btn_repair.hide()
         bar.addWidget(self._btn_repair)
 
-        # 浏览器 = 另开同一地址，不是另一套启停；次要按钮
+        # 外开：用户自点；内嵌能力不及处提示「浏览器打开效果更佳」
         self._btn_open_browser = SecondaryButton("在浏览器打开")
         self._btn_open_browser.setMinimumWidth(120)
         self._btn_open_browser.setMinimumHeight(32)
-        self._btn_open_browser.setToolTip("另开系统浏览器（与本页同一服务地址）")
+        self._btn_open_browser.setToolTip(
+            f"另开系统浏览器（同一服务）。侧栏预览等能力{BROWSER_BETTER_HINT}"
+        )
         self._btn_open_browser.clicked.connect(self._open_external)
         bar.addWidget(self._btn_open_browser)
 
@@ -422,6 +466,26 @@ class HarnessAgentPage(BasePage):
         self._service_line = HintLabel("状态：检测中…")
         self._service_line.setWordWrap(True)
         outer.addWidget(self._service_line)
+
+        self._capability_hint = HintLabel(
+            f"侧栏预览等能力在内嵌中可能受限，{BROWSER_BETTER_HINT}"
+        )
+        self._capability_hint.setWordWrap(True)
+        self._capability_hint.hide()
+        outer.addWidget(self._capability_hint)
+
+        self._upgrade_strip = UpgradeStrip(self)
+        self._upgrade_strip.upgrade_requested.connect(self._on_upgrade_runtime)
+        self._upgrade_strip.dismissed.connect(self._on_upgrade_nudge_dismiss)
+        self._upgrade_strip.snooze_today_requested.connect(self._on_upgrade_nudge_snooze_today)
+        self._upgrade_strip.start_requested.connect(self._on_start_after_upgrade)
+        outer.addWidget(self._upgrade_strip)
+
+        self._instance_strip = InstanceStrip(self)
+        self._instance_strip.refresh_requested.connect(self._on_instance_refresh_load)
+        self._instance_strip.update_requested.connect(self._on_upgrade_runtime)
+        self._instance_strip.dismissed.connect(self._instance_strip.clear)
+        outer.addWidget(self._instance_strip)
 
         self._action_progress = SoftActivityBar()
         outer.addWidget(self._action_progress)
@@ -478,26 +542,18 @@ class HarnessAgentPage(BasePage):
         self._more_menu_signature = signature
         self._more_menu.clear()
 
-        # 日常：重启 / 回退（「一键修复」已在工具栏，勿重复）
-        self._more_menu.addAction("重启服务", self._on_restart)
+        # 日常收拢：环境维护（密钥/修/还原/更新）；打开目录等仍在此
+        self._more_menu.addAction("环境维护…", self._open_maintain)
+        self._more_menu.addAction("重新启动", self._on_restart)
         self._more_menu.addAction("回到主界面", self._on_go_home)
-        self._more_menu.addAction("恢复上次可用配置", self._on_restore_last_good)
 
         open_menu = self._more_menu.addMenu("打开…")
-        open_menu.addAction("启动日志", self._open_sidecar_log)
+        open_menu.addAction("启动记录", self._open_sidecar_log)
         open_menu.addAction("安装目录", self._open_install_root)
-        open_menu.addAction("会话数据目录", self._open_dsh_home)
+        open_menu.addAction("会话数据", self._open_dsh_home)
         open_menu.addAction("导出最近会话", self._export_recent)
 
         self._more_menu.addSeparator()
-        # 表面偏好：只影响是否默认另开浏览器，启停/主区装载口径不变
-        if embed:
-            self._more_menu.addAction("偏好：启动后另开系统浏览器", self._switch_to_browser_surface)
-        else:
-            self._more_menu.addAction("偏好：以套件内嵌为主", self._switch_to_embed_surface)
-
-        self._more_menu.addSeparator()
-        self._more_menu.addAction("设置…", self._open_settings)
         self._more_menu.addAction("卸载…", self._on_uninstall)
 
     def primary_focus_widget(self):
@@ -520,23 +576,44 @@ class HarnessAgentPage(BasePage):
         return True
 
     def on_enter(self) -> None:
-        """切页：已在跑 → 直接装载；已停 → 结果态；勿无故重启。"""
+        """切页：本机已在跑 → 直接装载；端口占用未贴上 → 提示刷新加载。"""
         self._visit_gen += 1
         visit = self._visit_gen
-        # 快速路径：本机已在跑 → 直接揭罩装载，禁止再走启动/修密钥重启
+        # 快速路径：本机已在跑（含外部实例）→ 直接揭罩装载
         if not self._user_stopped:
             try:
-                st0 = read_harness_status(probe_http=True, http_timeout=0.45)
+                st0 = read_harness_status(probe_http=True, http_timeout=0.8)
             except Exception:
                 st0 = None
             if st0 is not None and st0.running and st0.install == InstallState.READY:
                 self._status = st0
                 self._status_checked_at = time.time()
+                self._instance_strip.clear()
                 self._show_workspace()
                 self._sync_service_bar()
                 self._set_progress(Progress.LOADING_UI, idle=True, toast=False)
                 self._sync_web_for_status(st0)
                 QTimer.singleShot(0, lambda v=visit: self._on_enter_soft(v))
+                return
+            # 端口占用但 HTTP 未确认：先提示「识别到本机有实例」
+            if (
+                st0 is not None
+                and st0.install == InstallState.READY
+                and bool(st0.port_busy)
+                and not st0.running
+            ):
+                self._status = st0
+                self._status_checked_at = time.time()
+                self._show_workspace()
+                self._sync_service_bar()
+                self._show_instance_strip(st0)
+                self._set_progress(
+                    Progress.NEED_START,
+                    extra="识别到本机有 Harness，请点「刷新加载」",
+                    toast=False,
+                    idle=True,
+                )
+                QTimer.singleShot(40, lambda v=visit: self._on_enter_deferred(v))
                 return
         if self._user_stopped or (
             self._status_is_fresh()
@@ -710,12 +787,47 @@ class HarnessAgentPage(BasePage):
                 pass
 
     def _present_start_failed(self, msg: str) -> None:
-        """启动失败统一出口：清 busy、对齐启停钮、短文案、可触发自愈。"""
+        """启动失败统一出口：清 busy、对齐启停钮；有新版本时不吓「修一下」。"""
         self._set_action_busy(False)
         self._align_chrome_not_running()
+        detail = clip_user_detail(msg)
+        update = None
+        try:
+            from services.harness_prefab import runtime_update_available
+
+            update = runtime_update_available()
+        except Exception:
+            update = None
+        # 凭证锁 / 插件拖死 → 才进 NEED_REPAIR 露「修一下」
+        need_repair = bool(detail) and (
+            "凭证锁" in detail or "插件" in detail or "拖死" in detail
+        )
+        if update and not need_repair:
+            tip = (
+                f"{detail}\n发现运行环境有新版本，可先点上方「更新」，"
+                "或再点「启动服务」。"
+                if detail
+                else "启动未成功。发现运行环境有新版本，可先「更新」或再点「启动服务」。"
+            )
+            self._set_progress(Progress.NEED_START, extra=tip, level=StatusLevel.WARNING)
+            self._show_web_idle(
+                "启动未成功\n可先更新运行环境，或再点「启动服务」",
+                block_input=False,
+            )
+            self._refresh_upgrade_nudge()
+            return
+        if need_repair:
+            self._set_progress(
+                Progress.NEED_REPAIR,
+                extra=detail,
+                level=StatusLevel.WARNING,
+            )
+            self._show_web_idle(IDLE[Progress.NEED_REPAIR], block_input=False)
+            self._maybe_auto_heal_plugins(msg)
+            return
         self._set_progress(
             Progress.FAILED,
-            extra=clip_user_detail(msg),
+            extra=detail,
             level=StatusLevel.WARNING,
         )
         self._maybe_auto_heal_plugins(msg)
@@ -746,11 +858,12 @@ class HarnessAgentPage(BasePage):
         # 忙碌时仍允许「刷新」探测，避免假死感且可救急
         self._btn_refresh.setEnabled(True)
         self._btn_more.setEnabled(view.more_enabled)
-        # 一键修复：工具栏常显（不藏「更多」）
+        # 事故底牌：仅 NEED_REPAIR 露「修一下」；普通启动失败只留「启动服务」
         try:
-            self._btn_repair.setVisible(True)
-            self._btn_repair.setEnabled(bool(ready) and not view.busy)
-            self._btn_repair.setText("一键修复")
+            accident = self._progress == Progress.NEED_REPAIR
+            self._btn_repair.setVisible(bool(ready) and accident)
+            self._btn_repair.setEnabled(bool(ready) and accident and not view.busy)
+            self._btn_repair.setText("修一下")
         except RuntimeError:
             pass
         self._status_label.setText(view.title)
@@ -875,6 +988,16 @@ class HarnessAgentPage(BasePage):
         def _done(status: HarnessStatus) -> None:
             if not self._page_active(visit):
                 return
+            # 端口已占用但首探未认运行：再探一次（外部实例常见），禁止立刻抢启
+            if (
+                status.install == InstallState.READY
+                and not status.running
+                and bool(status.port_busy)
+            ):
+                try:
+                    status = read_harness_status(probe_http=True, http_timeout=1.2)
+                except Exception:
+                    pass
             self._status = status
             self._status_checked_at = time.time()
             self._sync_service_bar()
@@ -886,19 +1009,41 @@ class HarnessAgentPage(BasePage):
                 self._refresh_setup_sync()
                 return
             if status.service == ServiceState.PORT_CONFLICT:
-                self._set_progress(Progress.NEED_REPAIR, extra=status.detail)
-                self._show_web_idle(IDLE[Progress.NEED_REPAIR], block_input=False)
+                self._show_instance_strip(status)
+                self._set_progress(
+                    Progress.NEED_START,
+                    extra="识别到本机端口有进程，请点「刷新加载」",
+                    level=StatusLevel.WARNING,
+                )
+                self._show_web_idle(
+                    "识别到本机有 Harness\n请点上方「刷新加载」",
+                    block_input=False,
+                )
                 return
             if status.running:
+                self._instance_strip.clear()
                 self._set_progress(Progress.STARTED, idle=False)
                 QTimer.singleShot(80, lambda v=visit: self._enter_load_ui(v))
                 return
             if self._user_stopped:
+                self._instance_strip.clear()
                 self._set_progress(Progress.STOPPED)
                 self._sync_web_for_status(status)
                 return
+            if bool(status.port_busy):
+                self._show_instance_strip(status)
+                self._set_progress(
+                    Progress.NEED_START,
+                    extra="识别到本机有 Harness，请点「刷新加载」",
+                )
+                self._show_web_idle(
+                    "识别到本机有 Harness\n请点上方「刷新加载」",
+                    block_input=False,
+                )
+                return
             if self._maybe_auto_start(status):
                 return
+            self._instance_strip.clear()
             self._set_progress(Progress.NEED_START)
             self._sync_web_for_status(status)
 
@@ -931,19 +1076,19 @@ class HarnessAgentPage(BasePage):
         if st is None or not st.running:
             self._set_progress(Progress.NEED_START)
             return
-        # 内嵌 / 浏览器偏好：启停结果态同一套文案；有 WebEngine 就装载主区
+        # 默认套件内嵌；外开须用户自点（禁止自动弹浏览器）
         self._set_progress(Progress.LOADING_UI, idle=True)
         self._sync_web_for_status(st)
         if not self._web_ready:
-            # 无内嵌能力时与有内嵌时状态文案仍一致，仅提示可用浏览器
             self._set_progress(Progress.READY, idle=True, toast=True)
             self._show_web_idle(
-                "服务已启动\n本机暂无内嵌引擎，可点「在浏览器打开」（同一地址）",
+                f"服务已启动\n本机暂无内嵌引擎，可点「在浏览器打开」（{BROWSER_BETTER_HINT}）",
                 block_input=False,
             )
 
     def _finish_ready_surface(self) -> None:
         """服务已启动后的统一结果态：硬停活动条，再揭开界面。"""
+        self._instance_strip.clear()
         self._set_action_progress_visible(False)
         self._set_progress(Progress.READY, idle=False, toast=True)
         if self._view is not None and self._web_embedded_ok:
@@ -1135,6 +1280,8 @@ class HarnessAgentPage(BasePage):
 
     def _maybe_auto_start(self, status: HarnessStatus) -> bool:
         """进页自动启动：仅当用户未主动停止，且设置勾选 auto_start。"""
+        if self._awaiting_start_after_upgrade:
+            return False
         if self._user_stopped:
             return False
         if self._action_busy or self._auto_start_tried:
@@ -1143,10 +1290,22 @@ class HarnessAgentPage(BasePage):
             return False
         if status.service == ServiceState.PORT_CONFLICT:
             return False
+        # 端口已占用：多半是外部/它处已起的实例，禁止抢启（避免失败吓「修一下」）
+        if bool(getattr(status, "port_busy", False)):
+            return False
+        # 有待更新时禁止抢启：旧核自动启失败会吓出「修一下」，应先让用户选更新/启动
+        try:
+            from services.harness_prefab import runtime_update_available
+
+            if runtime_update_available():
+                return False
+        except Exception:
+            pass
         cfg = load_harness_config()
         if not bool(cfg.get("auto_start", True)):
             return False
         self._auto_start_tried = True
+        self._start_from_user = False
         self._set_progress(Progress.STARTING, toast=True)
         self._run_sidecar_start(busy_label="正在启动服务…")
         return True
@@ -1189,11 +1348,145 @@ class HarnessAgentPage(BasePage):
         if state in (HarnessPageState.NOT_INSTALLED, HarnessPageState.NEEDS_KEY):
             self._body_stack.setCurrentIndex(0)
             self._setup_gate.show_state(state, msg)
+            self._upgrade_strip.clear()
+            self._instance_strip.clear()
             return
         self._show_workspace()
 
     def _show_workspace(self) -> None:
         self._body_stack.setCurrentIndex(1)
+        self._refresh_upgrade_nudge()
+
+    def _refresh_upgrade_nudge(self) -> None:
+        """已装用户：yml 钉扎新于 MANIFEST 时弱提示（不静默下载）。"""
+        if self._awaiting_start_after_upgrade:
+            return
+        if self._upgrade_in_progress or self._install_thread is not None:
+            return
+        if self._body_stack.currentIndex() != 1:
+            self._upgrade_strip.clear()
+            return
+        try:
+            from services.harness_prefab import runtime_update_available
+            from services.harness_upgrade_nudge import is_snoozed_today
+
+            info = runtime_update_available()
+        except Exception:
+            info = None
+            is_snoozed_today = None  # type: ignore[assignment]
+        if not info:
+            self._upgrade_strip.clear()
+            return
+        available = str(info.get("available_version_raw") or info.get("available_version") or "")
+        if available and available == self._upgrade_nudge_snoozed:
+            self._upgrade_strip.clear()
+            return
+        if available and is_snoozed_today and is_snoozed_today(available):
+            self._upgrade_strip.clear()
+            return
+        self._upgrade_strip.show_update(
+            label=str(info.get("label") or "运行环境"),
+            installed=str(info.get("installed_version") or "?"),
+            available=str(info.get("available_version") or available or "?"),
+            size_hint_mb=int(info.get("size_hint_mb") or 0),
+        )
+
+    def _on_upgrade_nudge_dismiss(self) -> None:
+        """不更新：本会话免打扰。"""
+        try:
+            from services.harness_prefab import runtime_update_available
+
+            info = runtime_update_available()
+        except Exception:
+            info = None
+        if info:
+            self._upgrade_nudge_snoozed = str(
+                info.get("available_version_raw") or info.get("available_version") or ""
+            )
+        self._upgrade_strip.clear()
+
+    def _show_instance_strip(self, status: HarnessStatus | None = None) -> None:
+        """识别到本机实例但界面未贴上时：提示刷新加载 / 更新环境。"""
+        st = status or self._status
+        if st is None:
+            return
+        if self._web_embedded_ok and st.running:
+            self._instance_strip.clear()
+            return
+        offer_update = False
+        try:
+            from services.harness_prefab import runtime_update_available
+
+            offer_update = runtime_update_available() is not None
+        except Exception:
+            offer_update = False
+        self._instance_strip.show_detected(
+            port=int(st.port or 3082),
+            owned=bool(st.owned),
+            http_ok=bool(st.http_ok or st.running),
+            offer_update=offer_update,
+        )
+
+    def _on_instance_refresh_load(self) -> None:
+        """用户点「刷新加载」：再探并直接装入本机正在运行的服务。"""
+        self._instance_strip.clear()
+        self._user_stopped = False
+        self.report_status("正在接上本机 Harness…", level=StatusLevel.INFO)
+        self._set_progress(Progress.CHECK_SERVICE, idle=False)
+
+        def _done(status: HarnessStatus) -> None:
+            if not self._page_active():
+                return
+            self._status = status
+            self._status_checked_at = time.time()
+            self._sync_service_bar()
+            if status.running:
+                self._instance_strip.clear()
+                self._set_progress(Progress.LOADING_UI, idle=True)
+                self._sync_web_for_status(status)
+                QTimer.singleShot(40, lambda: self._enter_present(self._visit_gen))
+                return
+            if status.port_busy:
+                self._show_instance_strip(status)
+                self._set_progress(
+                    Progress.NEED_START,
+                    extra="仍未确认服务响应，可再点「刷新加载」或「更新环境」",
+                    level=StatusLevel.WARNING,
+                )
+                return
+            self._instance_strip.clear()
+            self._set_progress(Progress.NEED_START, extra="未检测到运行中的服务")
+            self._sync_web_for_status(status)
+
+        self.run_safe(
+            lambda: read_harness_status(probe_http=True, http_timeout=1.5),
+            on_success=_done,
+        )
+
+    def _on_upgrade_nudge_snooze_today(self) -> None:
+        """今日不提醒：落盘到当日结束。"""
+        try:
+            from services.harness_prefab import runtime_update_available
+            from services.harness_upgrade_nudge import snooze_today
+
+            info = runtime_update_available()
+            if info:
+                ver = str(
+                    info.get("available_version_raw")
+                    or info.get("available_version")
+                    or ""
+                )
+                snooze_today(ver)
+                self._upgrade_nudge_snoozed = ver
+        except Exception:
+            pass
+        self._upgrade_strip.clear()
+        self.report_status("今日不再提醒此版本更新", level=StatusLevel.INFO)
+
+    def _on_start_after_upgrade(self) -> None:
+        self._awaiting_start_after_upgrade = False
+        self._upgrade_strip.clear()
+        self._on_start()
 
     def _apply_status(self, status: HarnessStatus) -> None:
         if not self._page_active():
@@ -1226,16 +1519,21 @@ class HarnessAgentPage(BasePage):
         self._apply_chrome(phase=BusyPhase.IDLE)
 
     def _sync_web_for_status(self, status: HarnessStatus) -> None:
-        """启停结果态与表面偏好无关：能内嵌就装主区；浏览器只是另开同一地址。"""
+        """默认内嵌装载；外开仅用户点击。prefer_browser 时主区提示自点外开，不自动弹窗。"""
         if status.install != InstallState.READY:
             return
         if status.running:
+            if prefer_browser():
+                # 偏好外开：主区占位 + 能力提示；绝不自动 webbrowser.open
+                self._present_browser_surface(auto_open=False)
+                return
             if not self._web_ready:
                 self._set_progress(Progress.READY, idle=True, toast=False)
                 self._show_web_idle(
-                    "服务已启动\n本机暂无内嵌引擎，可点「在浏览器打开」（同一地址）",
+                    f"服务已启动\n本机暂无内嵌引擎，可点「在浏览器打开」（{BROWSER_BETTER_HINT}）",
                     block_input=False,
                 )
+                self._set_capability_hint(True)
                 return
             if self._view is not None:
                 current = (self._view.url().toString() or "").rstrip("/")
@@ -1243,6 +1541,7 @@ class HarnessAgentPage(BasePage):
                 if self._web_embedded_ok and current.startswith(target):
                     self._show_web_embed()
                     self._set_progress(Progress.READY, idle=False, toast=False)
+                    self._set_capability_hint(True)
                     return
             self._set_progress(Progress.LOADING_UI, idle=True, toast=False)
             self._schedule_load_web(delay_ms=120)
@@ -1250,6 +1549,7 @@ class HarnessAgentPage(BasePage):
             interim_busy = status.port_busy and not status.http_ok
             if not interim_busy:
                 self._web_embedded_ok = False
+            self._set_capability_hint(False)
             if status.service == ServiceState.PORT_CONFLICT:
                 self._set_progress(Progress.NEED_REPAIR, extra=sanitize_user_text(status.detail or ""))
             elif interim_busy and self._should_keep_embed_on_enter():
@@ -1258,15 +1558,35 @@ class HarnessAgentPage(BasePage):
                 step = Progress.STOPPED if self._user_stopped else Progress.NEED_START
                 self._set_progress(step, toast=False)
 
+    def _set_capability_hint(self, visible: bool) -> None:
+        try:
+            self._capability_hint.setVisible(bool(visible) and prefer_embed())
+        except RuntimeError:
+            pass
+
+    def _present_browser_surface(self, *, auto_open: bool = False) -> None:
+        """外开偏好/用户已外开：主区占位。auto_open 恒为 False（禁止自动弹窗）。"""
+        try:
+            if isinstance(self._host, _HarnessWebHost):
+                self._host.show_browser_mode()
+        except Exception:
+            pass
+        self._set_progress(Progress.READY_BROWSER, idle=False, toast=False)
+        self._set_action_progress_visible(False)
+        self._set_capability_hint(True)
+        # 刻意忽略 auto_open：外开必须用户点「在浏览器打开」
+        _ = auto_open
+
     def _apply_browser_surface(self, status: HarnessStatus, *, open_browser: bool = False) -> None:
-        """仅「在浏览器打开」：另开窗口；主区仍保持与内嵌相同的就绪态文案。"""
+        """兼容旧入口：仅当 open_browser=True（用户点击）时才外开。"""
         if open_browser:
             open_in_system_browser()
             self._browser_surface_opened = True
-            self.report_status("已在系统浏览器打开（与本页同一服务）", level=StatusLevel.SUCCESS)
-        # 不再清空主区、不再切 READY_BROWSER 分叉文案
-        if status.running:
-            self._set_progress(Progress.READY, idle=False, toast=False)
+            self.report_status(
+                f"已在系统浏览器打开（{BROWSER_BETTER_HINT}）",
+                level=StatusLevel.SUCCESS,
+            )
+        self._present_browser_surface(auto_open=False)
 
     def _set_action_busy(
         self,
@@ -1593,7 +1913,7 @@ class HarnessAgentPage(BasePage):
         if self._web_embedded_ok:
             return
         if not _qt_alive(self._view):
-            self._set_progress(Progress.FAILED, extra="界面未装载，请再点「刷新」或「一键修复」")
+            self._set_progress(Progress.FAILED, extra="界面未装载，请再点「刷新」或「修一下」")
             return
         home = _harness_entry_url().rstrip("/")
         try:
@@ -1796,8 +2116,8 @@ class HarnessAgentPage(BasePage):
         self._reveal_web_embed_now()
         QTimer.singleShot(120, self._focus_web_view)
         self._set_progress(Progress.READY, idle=False, toast=True)
-        if prefer_browser() and not self._browser_surface_opened:
-            QTimer.singleShot(200, self._maybe_auto_open_browser)
+        self._set_capability_hint(True)
+        # 禁止自动外开；能力不及处由 capability_hint 提示
         if self._pending_prepare_after_reload:
             self._pending_prepare_after_reload = False
             QTimer.singleShot(700, self._run_prepare_session)
@@ -1818,7 +2138,7 @@ class HarnessAgentPage(BasePage):
 
         def _probe_and_settle() -> None:
             if not _qt_alive(self._view):
-                self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」或「一键修复」")
+                self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」或「修一下」")
                 return
 
             def _on_body(text) -> None:
@@ -1881,7 +2201,7 @@ class HarnessAgentPage(BasePage):
                 lambda: self._begin_home_navigation(force=True) if self._page_active() else None,
             )
         else:
-            self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」或「一键修复」")
+            self._set_progress(Progress.FAILED, extra="页面未响应，可点「刷新」或「修一下」")
         if self._pending_prepare_after_reload:
             self._pending_prepare_after_reload = False
 
@@ -1935,9 +2255,18 @@ class HarnessAgentPage(BasePage):
         self._set_progress(Progress.STARTED)
         QTimer.singleShot(80, self._after_started_load_ui)
         try:
-            from services.harness_profile_versions import maybe_snapshot_after_healthy
+            from services.harness_profile_versions import (
+                maybe_snapshot_after_healthy,
+                snapshot_web_profile,
+            )
 
-            snap_ok, snap_msg = maybe_snapshot_after_healthy()
+            if self._force_good_snapshot:
+                self._force_good_snapshot = False
+                snap_ok, snap_msg, _ = snapshot_web_profile(
+                    reason="upgrade", mark_good=True
+                )
+            else:
+                snap_ok, snap_msg = maybe_snapshot_after_healthy()
             if snap_ok:
                 logger = __import__("logging").getLogger("TOA3.harness_agent")
                 logger.info("%s", snap_msg)
@@ -1959,15 +2288,8 @@ class HarnessAgentPage(BasePage):
             QTimer.singleShot(80, self._finish_ready_surface)
 
     def _maybe_auto_open_browser(self) -> None:
-        """偏好 browser 时另开系统窗；不改变主区启停态。"""
-        if not prefer_browser() or self._browser_surface_opened:
-            return
-        st = self._status
-        if st is None or not st.running:
-            return
-        open_in_system_browser()
-        self._browser_surface_opened = True
-        self.report_status("已另开系统浏览器（与本页同一服务）", level=StatusLevel.INFO)
+        """已废弃：禁止自动弹浏览器；保留空实现以免旧调用炸。"""
+        return
 
     def _maybe_auto_heal_plugins(self, msg: str) -> None:
         """启动失败且日志像插件杀手时：自动剔除 denylist 并再启一次。"""
@@ -2036,6 +2358,21 @@ class HarnessAgentPage(BasePage):
             return
         if already:
             st = read_harness_status(probe_http=True, http_timeout=0.6)
+            # 外部占口：进页自动启 → 静默接上；仅用户点「启动服务」才问是否接管重启
+            if st.running and not st.owned and not self._user_stopped:
+                if self._start_from_user and ask_confirm(
+                    self,
+                    "本机已有 Harness 在运行（不一定由运营宝启动）。\n"
+                    "要改为由运营宝接管并重新启动吗？\n"
+                    "取消则直接使用当前已运行的服务。",
+                    title="本机服务已在运行",
+                ):
+                    self._set_progress(Progress.RESTARTING, extra="正在接管…")
+                    QTimer.singleShot(0, self._takeover_restart_on_main)
+                    return
+                self._set_action_busy(False)
+                self._after_sidecar_started(True, "已接上本机正在运行的服务")
+                return
             try:
                 from services.harness_credentials import needs_credential_takeover
 
@@ -2043,13 +2380,17 @@ class HarnessAgentPage(BasePage):
                     running=bool(st.running), owned=bool(st.owned)
                 )
             except Exception:
-                need = bool(st.running and not st.owned)
-            if need and not self._user_stopped:
+                need = False
+            # 自动启路径：外部实例不做密钥强接管重启
+            if need and self._start_from_user and not self._user_stopped:
                 self._set_progress(Progress.RESTARTING, extra="正在同步密钥…")
                 QTimer.singleShot(0, self._takeover_restart_on_main)
                 return
             self._set_action_busy(False)
-            self._after_sidecar_started(True, "服务已启动")
+            self._after_sidecar_started(
+                True,
+                "已接上本机正在运行的服务" if not st.owned else "服务已启动",
+            )
             return
         QTimer.singleShot(0, self._spawn_sidecar_on_main)
 
@@ -2074,7 +2415,9 @@ class HarnessAgentPage(BasePage):
                 tail = sidecar_log_path().read_text(encoding="utf-8", errors="replace")[-800:]
             except OSError:
                 tail = ""
-            self._present_start_failed("启动超时，请一键修复或打开启动日志")
+            from services.harness_sidecar import humanize_start_failure
+
+            self._present_start_failed(humanize_start_failure(default="启动超时"))
             self._maybe_auto_heal_plugins(tail)
             return
         phase, msg = sidecar_start_progress()
@@ -2092,7 +2435,11 @@ class HarnessAgentPage(BasePage):
         if self._action_busy:
             self.report_status("上一项操作仍在进行", level=StatusLevel.WARNING)
             return
+        self._awaiting_start_after_upgrade = False
+        if self._upgrade_strip.isVisible() and getattr(self._upgrade_strip, "_mode", "") == "done":
+            self._upgrade_strip.clear()
         self._user_stopped = False
+        self._start_from_user = True
         self._begin_click_feedback(
             "正在启动服务…",
             phase=BusyPhase.STARTING,
@@ -2251,9 +2598,21 @@ class HarnessAgentPage(BasePage):
         try:
             open_in_system_browser()
             self._browser_surface_opened = True
-            self.report_status("已在浏览器打开", level=StatusLevel.SUCCESS)
-            # 保持与内嵌一致的「服务已启动」口径，不改主区
-            self._set_progress(Progress.READY, idle=False, toast=False)
+            self.report_status(
+                f"已在浏览器打开（{BROWSER_BETTER_HINT}）",
+                level=StatusLevel.SUCCESS,
+            )
+            # 用户主动外开后仍可保留内嵌视图；仅偏好外开时切占位
+            if prefer_browser():
+                try:
+                    if isinstance(self._host, _HarnessWebHost):
+                        self._host.show_browser_mode()
+                except Exception:
+                    pass
+                self._set_progress(Progress.READY_BROWSER, idle=False, toast=False)
+            else:
+                self._set_progress(Progress.READY, idle=False, toast=False)
+                self._set_capability_hint(True)
         finally:
             self._btn_open_browser.setText("在浏览器打开")
             self._btn_open_browser.setEnabled(True)
@@ -2265,21 +2624,27 @@ class HarnessAgentPage(BasePage):
         self._more_menu_signature = None
         self._rebuild_more_menu()
         self.report_status(
-            "已设为偏好另开系统浏览器 · 启停与主区装载不变",
+            f"已设为外开提示模式 · 请自行点「在浏览器打开」（{BROWSER_BETTER_HINT}）",
             level=StatusLevel.INFO,
         )
         st = self._status
         if st is not None and st.running:
-            # 主区继续装载；可选立刻另开一窗
-            self._sync_web_for_status(st)
-            self._maybe_auto_open_browser()
+            self._present_browser_surface(auto_open=False)
 
     def _switch_to_embed_surface(self) -> None:
         set_surface_mode("embed")
         self._browser_surface_opened = False
         self._more_menu_signature = None
         self._rebuild_more_menu()
-        self.report_status("已设为以套件内嵌为主 · 启停口径不变", level=StatusLevel.INFO)
+        self.report_status(
+            f"已设为套件内嵌（默认）· 侧栏预览等能力{BROWSER_BETTER_HINT}",
+            level=StatusLevel.INFO,
+        )
+        try:
+            if isinstance(self._host, _HarnessWebHost):
+                self._host.show_embed_mode()
+        except Exception:
+            pass
         st = self._status
         if st is not None and st.running:
             self._show_web_idle("正在装载界面…", block_input=True)
@@ -2287,18 +2652,27 @@ class HarnessAgentPage(BasePage):
         else:
             self._set_progress(Progress.NEED_START if not self._user_stopped else Progress.STOPPED)
 
-    def _open_settings(self) -> None:
-        w = self.window()
-        if w is not None and hasattr(w, "navigate"):
-            w.navigate("system_settings")
-            page = getattr(w, "_pages", {}).get("system_settings")
-            if page is not None and hasattr(page, "open_tab"):
-                from modules.system_settings.settings_page import TAB_INTEGRATIONS
+    def _open_maintain(self) -> None:
+        from modules.harness_agent.maintain_dialog import HarnessMaintainDialog
 
-                page.open_tab(TAB_INTEGRATIONS)
-            self.report_status("系统设置 · 能力接入 → DeepSeek Harness", level=StatusLevel.INFO)
-        else:
-            self.report_status("请从侧栏进入「系统设置」", level=StatusLevel.WARNING)
+        dlg = HarnessMaintainDialog(
+            self,
+            on_repair=self._on_repair_env,
+            on_restore=self._on_restore_last_good,
+            on_upgrade=self._on_upgrade_runtime,
+            on_restart=lambda: self._on_restart(confirm=True),
+        )
+        dlg.exec()
+        # 保存显示方式后刷新主区
+        st = self._status
+        if st is not None and st.running:
+            self._more_menu_signature = None
+            self._rebuild_more_menu()
+            self._sync_web_for_status(st)
+
+    def _open_settings(self) -> None:
+        """安装门等旧入口：改开环境维护，不再跳系统设置填路径。"""
+        self._open_maintain()
 
     def _on_one_click_install(self, flavor: str = "") -> None:
         from services.harness_prefab import FLAVOR_PREFAB, make_cancel_event, normalize_flavor
@@ -2310,6 +2684,8 @@ class HarnessAgentPage(BasePage):
         self._install_flavor = f
         cancel_ev, _ = make_cancel_event()
         self._install_cancel = cancel_ev
+        # 更新环境时主区可能在工作区：切到装门才能看见进度
+        self._body_stack.setCurrentIndex(0)
         self._setup_gate.set_installing(True, flavor=f)
         self.report_status("正在安装运行环境…", level=StatusLevel.INFO)
 
@@ -2339,6 +2715,8 @@ class HarnessAgentPage(BasePage):
         self._install_thread = None
         self._install_worker = None
         self._install_cancel = None
+        was_upgrade = self._upgrade_in_progress
+        self._upgrade_in_progress = False
         self._setup_gate.set_installing(False)
         if not ok:
             from services.harness_setup import NEED_NODE_PREFIX
@@ -2350,11 +2728,35 @@ class HarnessAgentPage(BasePage):
                 self._setup_gate.show_install_failed(detail, flavor=flavor)
                 if detail and "已取消" not in detail:
                     show_warning(self, detail)
+            # 升级失败：若已装过，回到工作区让用户继续修
+            if was_upgrade and Path(str(load_harness_config().get("dsh_bin") or "")).is_file():
+                self._body_stack.setCurrentIndex(1)
             self._deferred_enter()
             return
         self.report_status(text, level=StatusLevel.SUCCESS)
         self._auto_start_tried = False
         self._cred_heal_tried = False
+        if was_upgrade:
+            self._force_good_snapshot = True
+            self._upgrade_nudge_snoozed = ""
+            try:
+                from services.harness_upgrade_nudge import clear_snooze
+
+                clear_snooze()
+            except Exception:
+                pass
+            # 升级完成：页上明示，并提示用户点启动（禁止 auto_start）
+            self._awaiting_start_after_upgrade = True
+            self._user_stopped = True
+            self._body_stack.setCurrentIndex(1)
+            from services.harness_prefab import read_installed_manifest
+            from services.harness_setup import default_install_root
+
+            ver = str(read_installed_manifest(default_install_root()).get("version") or "")
+            self._upgrade_strip.show_upgraded_done(version=ver)
+            self.report_status("运行环境已升级完成，请启动服务", level=StatusLevel.SUCCESS)
+            self._deferred_enter()
+            return
         self._deferred_enter()
 
     def _after_key_saved(self) -> None:
@@ -2639,7 +3041,7 @@ class HarnessAgentPage(BasePage):
 
         self._run_bg(
             repair_harness_runtime,
-            busy_label="正在修复环境…",
+            busy_label="正在整理环境…",
             on_ok=_after,
             phase=BusyPhase.REPAIRING,
         )
@@ -2695,6 +3097,45 @@ class HarnessAgentPage(BasePage):
     def _open_sidecar_log(self) -> None:
         path = open_sidecar_log()
         show_saved(self, "启动日志", str(path))
+
+    def _on_upgrade_runtime(self) -> None:
+        """方案 A：显式换装程序树，默认保留 .dsh 会话与 Key。"""
+        from services.harness_prefab import (
+            FLAVOR_LABELS,
+            FLAVOR_PREFAB,
+            normalize_flavor,
+            read_installed_manifest,
+            runtime_update_available,
+        )
+        from services.harness_setup import default_install_root
+
+        root = default_install_root()
+        manifest = read_installed_manifest(root)
+        flavor = normalize_flavor(str(manifest.get("flavor") or FLAVOR_PREFAB))
+        label = FLAVOR_LABELS.get(flavor, flavor)
+        update = runtime_update_available(root)
+        size_mb = int((update or {}).get("size_hint_mb") or 0)
+        size_s = f"约 {size_mb} MB，" if size_mb > 0 else ""
+        ver_s = ""
+        if update:
+            ver_s = (
+                f"\n版本：{update.get('installed_version')} → "
+                f"{update.get('available_version')}"
+            )
+        if not ask_confirm(
+            self,
+            f"将下载并覆盖本机运行环境（当前口味：{label}）。{ver_s}\n"
+            f"{size_s}会话与 API Key 默认保留。是否继续？",
+            title="更新环境",
+        ):
+            return
+        self._upgrade_strip.clear()
+        self._upgrade_nudge_snoozed = ""
+        self._awaiting_start_after_upgrade = False
+        self._upgrade_in_progress = True
+        self._force_good_snapshot = False
+        # 复用四步安装通道（进度条 + 可取消）；装门会切到前台
+        self._on_one_click_install(flavor)
 
     def _on_uninstall(self) -> None:
         if not ask_confirm(

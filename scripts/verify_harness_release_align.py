@@ -67,7 +67,8 @@ def _assert_align_migrates_workbuddy(tmp: Path) -> None:
         cfg = hc.load_harness_config(force=True)
         assert not hc.is_workbuddy_home(str(cfg.get("dsh_home") or ""))
         assert bool(cfg.get("enabled")) is True
-        assert bool(cfg.get("auto_start")) is True
+        # auto_start 尊重用户关闭，align 不得强开
+        assert bool(cfg.get("auto_start")) is False
         assert int(cfg.get("web_port") or 0) == hc.PRODUCT_WEB_PORT
         assert str(cfg.get("surface_mode")) == hc.PRODUCT_SURFACE_MODE
         home = hc.dsh_home_path()

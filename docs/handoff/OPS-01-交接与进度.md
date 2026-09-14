@@ -30,9 +30,12 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**v3.1.13** 已发（图片预览 HiDPI + 记事本底栏；`72a776a` 版本对齐已提交）。  
-**v3.1.12** 已发。  
-**v3.1.11** 已发；壳层固若金汤已收口。  
+**v3.1.18** Setup **已上传**（CDN 200）；本地 `APP_VERSION`/`update_manifest`=3.1.18。  
+直链：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.18.exe  
+说明：全局介入档案与配置点（双击Ctrl/拖入开桌面/F11/退出可关）；SOP-04 发版说明标准。  
+**待主理人**：运营台「设为当前版」→ 再说一声对齐提交。  
+**全局介入档案**：`ARCH-11` + `global_shell_features` + `verify_global_shell`；Mac 仅口径。  
+**v3.1.17** 热键/预览；**v3.1.16** Harness CDN；**v3.1.14** 图片预览。
 **双产品商业**（已回写）：DMS=专业高门槛可售；TOA=免费钩子+高级付费；腾讯文档轻量轨；并行不强绑。  
 **培训交付看板** `training_delivery_board`：**mvp 已落地**（业务侧栏 order=5，需授权）；班级 handoff + 串链六环；亮点研究 `approved`。待主理人点验清 gaps。  
 **助教招聘稿** `assistant_recruit_post`：**mvp 已落地**（业务侧栏 order=45）；命名即表单 + 话术锁定 + 复制即发；research `approved`。待点验清 gaps。  
@@ -48,19 +51,34 @@ python -m app.main
 **Harness 会话损坏（同日）**：`session-ec64…` seq gap → 误提 v3 → `SessionFormatUnsupported`；再因整文件单帧 zstd 导致 dsh 无法启动。已将健康内容降为 v0，并按 dsh 规范「首帧仅 header」重写；服务已起来。若该会话仍打不开，新建会话（备份在 `_corrupt_backup_*` / `_framefix_aside_*`）。  
 **Harness 双路线四步开用（同日）**：未装时 SetupGate 选「官方精简 / 预制必备」→ 分阶段进度下载 zip → 一次 API Key → 检测启动；`harness_prefab` + `build_harness_prefab.py`；CDN URL 待填。  
 **Harness 鉴权拒（2026-09-11）**：内嵌「dsh web authentication required」= 无 `?token=`。根因——① TOA 重启后 session URL 丢；② `setUrl` 破坏 token；③ 鉴权成功 303 后地址栏变裸 URL 被误判重开 → 死循环。已修：日志回补 token、`normalize_nav_url`、正文探测 cookie 就绪、失败分支与 READY 拆开。  
-引擎管家 Hold；Harness 无感就绪仍为主线之一。
+**Harness 小白原则（同日）**：主理人裁定——用户不懂技术，复杂配置是摆设；日常只走引擎页四步，系统设置 Harness 标「高级排障 · 日常勿改」（ARCH-05 §4.2）。  
+**Harness 整改波次（2026-09-11）**：G0 live 启停修通过（无 WorkBuddy）；钉扎 `dsh@0.1.5-rc.1`；便携 Node；双包已上 `yczh.tech/downloads/harness-*-0.1.5-rc.1.zip`（nginx 已放行）；更多→升级运行时；设置页默认内嵌；ARCH-10 执行中，待干净机点验。  
+**预制版构包（2026-09-11）**：已从本机 runtime 打出分离 CDN 双包至 `packaging/dist/harness/`（各 ~459MB）；**未**打进 TOA Setup（gitignore + release_config_guard）。  
+**Harness CDN 发版自动化（同日）**：对标 Setup 两段式——`sync_portal_harness.ps1` 上传 → **主理人确认切配置** → `sync_harness_bundles.py --apply --verify-cdn`（SOP-04 §5）。当前新包待步 2 上传。  
+**Harness 已装升级（同日）**：进页提示（更新 / 不更新 / 今日不提醒）→ 确认后更新 → **页示已升级完成并提示启动服务**；禁静默下大包。基础版白名单已含 `harness_agent`。  
+**Harness cost-manager（同日晚）**：本地 link `@dachengge/dsh-cost-manager` 因 tool 无 output schema 启动注册失败拖死；已入 `_BOOT_KILLER_PLUGINS` 剔除并重启 `3082`（日志仅剩 skill-catalog）。  
+**Harness 误报「修一下」（同日）**：有待更新时禁进页 auto_start；普通启败改「再启动」；工具栏「修一下」仅凭证锁/插件类 NEED_REPAIR；端口冲突不再直接 NEED_REPAIR。  
+**Harness 外部实例（同日）**：本机已跑着且 HTTP 通 → **直接装入**；端口占用但未确认 → 条提示「识别到本机有 Harness」→ **刷新加载**（主）/ **更新环境**（次）/ 知道了；仅用户点「启动服务」才问是否接管重启。  
+引擎管家 Hold。  
+**邮箱代理研判（2026-09-14）**：`email_client` 稳定 MVP（单账号 IMAP+SMTP+附件）约 **4–7 人周**；对标企微全量 **不追**；仓库仅有 SMTP 通知。research 已落 `docs/research/email_client-top3.md`（**research**，待主理人确认 §3.5）；PROD-01 登 P2；**禁止写业务码**直至 approved；§3.5 后可 **独立开轨** 与 Wave★ 并行。  
+**并行推进 + 统筹（同日主理人裁定）**：计划推快；板块分头并行；**本会话作统筹**——质量门禁、OPS 进度、SOP-04 发版、壳/授权等全局面收口；对外版须 **A10.4 商用可交付**。已回写 STD-01 A0.8/A0.9/A10.4/B9 · PROD-01 §0/§5 · OPS-02 §6。  
+**专家组论证（同日）**：组建常设编制（B10）；对并行+统筹方案四席表决均为 **修订后通过**。已落修订：WIP≤3、文件所有权、合入冻结、默认 `show:false`/A9.4、A10.5 凭证分桶、SOP-04 商用冒烟、发版节奏（日合入/周候选/点验后当前版）。结论：方案保证可商用底线；「最好产品」另靠 Wave★ 点验 + Top3 + 主理人否决。
 
 ---
 
 ## 2. 下一待办
 
+- [ ] **统筹轨**：WIP≤3；Wave★ / 换装 / 招聘 / 看板点验；合入与发版前 `verify_all` + A10.4 + 商用冒烟
+- [ ] **邮箱代理 §3.5**：主理人确认三独到处 → `approved` → 独立开轨（须 OPS-01 登记独占路径；默认 `show:false`）
 - [ ] **快速记事点验**：Ctrl+V 插图可见；拖角缩放不闪、不扯乱上下文；段距/行距/空段
 - [ ] **助教打卡换装点验**（Agent 不得代清 gaps）：张数对齐；水印仍在仅服装变；旁路输出；单张失败不堵批
 - [ ] **助教招聘稿点验**（Agent 不得代清 gaps）：示例班名城市/天数/费用；生成并复制一致；改日薪固定段不变
 - [ ] **培训交付看板点验**（Agent 不得代清 gaps）：绑定后串链根目录/名单；无 DMS/无 OAuth 粘贴开跑；打开文档与清除会话
 - [ ] Wave★ / Wave F **主理人点验**清 gaps
-- [ ] Harness：装插件前可「备份当前配置」；搞挂后「修复运行环境」或「恢复上次可用配置」；点验日志/卸载
-- [ ] Harness 无感就绪：填 CDN URL 后点验双路线四步；达标前禁 Hub 半残 UI
+- [x] Harness 自动化交付：默认沙箱干净机（13082）+ 契约；**不**动用户 3082/`~/.toa3`；`--live` 才碰本机
+- [x] Harness CDN URL/sha256 已填且探测可达；诊断包已落地；BOM 自清
+- [x] Harness CDN：`0.1.5-rc.1.1` 已上传并切 yml（官方 `0d655f2e…` / 预制 `8b50ba65…`）
+- [ ] **运营台设当前版 v3.1.18** 后：`python scripts/sync_release_version.py --from-live --require-match --commit`
 
 机读任务：同目录 `collab_tasks.json`。
 
@@ -74,12 +92,16 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 
 | 项 | 说明 |
 |----|------|
-| 更新 | 2026-09-10 · **v3.1.12** Setup 已出 |
-| 规范 | STD-01 B1.1：research=挖亮点不落俗套；短规则 mdc 已同步 |
-| 口径 | DMS 可售专业系统；TOA freemium；看板不进 `local_free` |
-| Harness | 默认内嵌；四步双路线装门（官方/预制 zip）；揭罩切 WebView；浏览器为可选 CTA |
-| 本轮落地 | DSH 双路线安装骨架：`harness_prefab` + SetupGate 四步 + 构建脚本；CDN URL 待运营填写 |
-| 发版 | **v3.1.13** 完成：stable = APP_VERSION = update_manifest |
-| 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.13.exe |
+| 更新 | 2026-09-14 · **专家组组建并论证通过（修订后）** |
+| 规范回写 | STD-01 A0.8/A0.9/A9.4/A10.4–A10.5/B9–B10；PROD-01；SOP-04 §1.1；OPS-02 §6 |
+| 专家组 | 工程管理·发版质量·产品架构·安全合规·主理人；表决：修订后通过 |
+| 统筹角色 | 本会话：质量/进度/发版/全局；WIP≤3；升显权在统筹 |
+| 邮箱代理 | 中高复杂度；稳定 MVP 4–7 人周；不追企微；research 待 §3.5；可后开独立轨 |
+| 发版 | **v3.1.18** Setup 已上传；**等运营台设为当前版**；对外须过 A10.4 |
+| 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.18.exe |
+| Harness CDN | https://www.yczh.tech/downloads/harness-{official,prefab}-0.1.5-rc.1.1.zip |
+| Harness 升级 | 进页：更新 / 不更新 / 今日不提醒；完成后「已升级完成」→ 启动服务 |
+| 待主理人 | ① 运营台设当前版 v3.1.18；② 邮箱 §3.5；③ 指定下一批并行开轨模块（若有） |
 | 验收 | 记事本新增 gaps 待点验 |
 | 验收 | Harness 已重启可用；换装/招聘/看板 gaps 仍待点验 |
+| 主理人意见 | 能力接入堆 Harness 不伦不类 → 三轨：系统/引擎页/扩展；环境维护人话收拢 |

@@ -21,7 +21,9 @@ class HarnessWebHost(QWidget):
         self._embed_slot.setObjectName("HarnessWebEmbedSlot")
         lay.addWidget(self._embed_slot, 1)
 
-        self._external_hint = HintLabel("已在浏览器打开 · 点工具栏「内嵌」收回套件内")
+        self._external_hint = HintLabel(
+            "请点工具栏「在浏览器打开」· 侧栏预览等能力浏览器打开效果更佳"
+        )
         self._external_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._external_hint.hide()
         lay.addWidget(self._external_hint, 1)

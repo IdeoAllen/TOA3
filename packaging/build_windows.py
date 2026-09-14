@@ -144,6 +144,8 @@ def collect_frozen_hidden_imports() -> list[str]:
         "modules.harness_agent.setup_gate",
         "modules.harness_agent.feed_strip",
         "modules.harness_agent.web_host",
+        "modules.harness_agent.maintain_dialog",
+        "services.harness_diagnose",
     ]
     if sections_dir.is_dir():
         for py in sections_dir.glob("*.py"):

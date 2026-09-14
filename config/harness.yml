@@ -21,16 +21,16 @@ harness:
   web_readability_boost: false
   theme_harmonize: false
   feed_auto_inject: false
-  # 双路线预制包（上传 CDN 后填写；空 URL 时若本机有 Node 可回落 npm）
-  official_bundle_url: ""
-  official_sha256: ""
-  official_bundle_version: ""
-  official_size_hint_mb: null
-  prefab_bundle_url: ""
-  prefab_sha256: ""
-  prefab_bundle_version: ""
-  prefab_size_hint_mb: null
-  # 预制必备插件白名单（不得含 boot-killer；空=与官方插件集相同直至主理人确认）
+  # 双路线预制包（钉扎 dsh 0.1.5-rc.1；zip 在 Portal downloads）
+  official_bundle_url: https://www.yczh.tech/downloads/harness-official-0.1.5-rc.1.1.zip
+  official_sha256: 0d655f2ee47684fcbb54c0bac0454545ab074d48839c3a8cea1087dfb89fe3af
+  official_bundle_version: "0.1.5-rc.1.1"
+  official_size_hint_mb: 459
+  prefab_bundle_url: https://www.yczh.tech/downloads/harness-prefab-0.1.5-rc.1.1.zip
+  prefab_sha256: 8b50ba656873e64eabe0ce54940b2aac8b2c07336e1f81118f50c08cc87fafdb
+  prefab_bundle_version: "0.1.5-rc.1.1"
+  prefab_size_hint_mb: 459
+  # 预制必备插件白名单（首轮空=与官方同核；主理人后续补包名，禁 boot-killer）
   prefab_essential_plugins: []
   cost_currency: 元
   cost_input_per_million: 2

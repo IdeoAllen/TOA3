@@ -67,10 +67,10 @@ def main() -> int:
     page_src = (ROOT / "modules" / "harness_agent" / "harness_agent_page.py").read_text(
         encoding="utf-8"
     )
-    assert "_HarnessInstallWorker" in page_src
-    assert "_on_cancel_install" in page_src
-    assert "set_install_progress" in page_src
-    assert "_auto_start_tried = False" in page_src
+    assert "_on_upgrade_runtime" in page_src
+    assert "更新环境" in page_src or "title=\"更新环境\"" in page_src
+    assert "show_upgraded_done" in page_src
+    assert "DSH_NPM_PACKAGE" in (ROOT / "services" / "harness_setup.py").read_text(encoding="utf-8")
 
     setup_src = (ROOT / "services" / "harness_setup.py").read_text(encoding="utf-8")
     assert "flavor" in setup_src
