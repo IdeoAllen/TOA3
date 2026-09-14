@@ -12,7 +12,7 @@
 |----|----|
 | 产品 | 运营宝 / TOA3，PySide6 桌面办公套件 |
 | 只改哪 | 只改本仓库 TOA3；TOA2 封板 |
-| 写码门禁 | 产品亮点研究 + 恰好 3 条不落俗套独到处，主理人确认后再写业务码（SOP-01 / STD-01 B1.1） |
+| 写码门禁 | 产品亮点研究 + 恰好 3 条不落俗套独到处，经 **专家组** `approved` 后再写业务码（主理人 **不审** §3.5；点验仍属主理人） |
 | 完成 | `migration_manifest` gaps 空且主理人认可才 `done` |
 | 进度 | **只改本文（OPS-01）** |
 | 排期 | `docs/PROD-01-功能清单与优先级.md` |
@@ -30,10 +30,11 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**v3.1.18** Setup **已上传**（CDN 200）；本地 `APP_VERSION`/`update_manifest`=3.1.18。  
+**v3.1.18** 已发：stable = APP = update_manifest；直链可用；**更新说明已补写**（发布时曾留空，已入库并门禁：设当前版必须填说明）。  
 直链：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.18.exe  
-说明：全局介入档案与配置点（双击Ctrl/拖入开桌面/F11/退出可关）；SOP-04 发版说明标准。  
-**待主理人**：运营台「设为当前版」→ 再说一声对齐提交。  
+说明：全局介入档案与配置点：双击Ctrl唤起、拖入开桌面、沉浸全屏(F11)、退出/托盘均可配置；发版说明与版本对齐流程标准化。  
+对齐提交：`699ce72`（manifest）+ 扩白名单后补交壳/热键/ARCH-11（见最新 `release: TOA3 v3.1.18`）。  
+**发版提交口径**：上传脚本自动 commit 多数跳过；**设当前版后 Agent 必须再跑** `--from-live --require-match --commit` 并回报 hash。  
 **全局介入档案**：`ARCH-11` + `global_shell_features` + `verify_global_shell`；Mac 仅口径。  
 **v3.1.17** 热键/预览；**v3.1.16** Harness CDN；**v3.1.14** 图片预览。
 **双产品商业**（已回写）：DMS=专业高门槛可售；TOA=免费钩子+高级付费；腾讯文档轻量轨；并行不强绑。  
@@ -60,25 +61,36 @@ python -m app.main
 **Harness 误报「修一下」（同日）**：有待更新时禁进页 auto_start；普通启败改「再启动」；工具栏「修一下」仅凭证锁/插件类 NEED_REPAIR；端口冲突不再直接 NEED_REPAIR。  
 **Harness 外部实例（同日）**：本机已跑着且 HTTP 通 → **直接装入**；端口占用但未确认 → 条提示「识别到本机有 Harness」→ **刷新加载**（主）/ **更新环境**（次）/ 知道了；仅用户点「启动服务」才问是否接管重启。  
 引擎管家 Hold。  
-**邮箱代理研判（2026-09-14）**：`email_client` 稳定 MVP（单账号 IMAP+SMTP+附件）约 **4–7 人周**；对标企微全量 **不追**；仓库仅有 SMTP 通知。research 已落 `docs/research/email_client-top3.md`（**research**，待主理人确认 §3.5）；PROD-01 登 P2；**禁止写业务码**直至 approved；§3.5 后可 **独立开轨** 与 Wave★ 并行。  
-**并行推进 + 统筹（同日主理人裁定）**：计划推快；板块分头并行；**本会话作统筹**——质量门禁、OPS 进度、SOP-04 发版、壳/授权等全局面收口；对外版须 **A10.4 商用可交付**。已回写 STD-01 A0.8/A0.9/A10.4/B9 · PROD-01 §0/§5 · OPS-02 §6。  
-**专家组论证（同日）**：组建常设编制（B10）；对并行+统筹方案四席表决均为 **修订后通过**。已落修订：WIP≤3、文件所有权、合入冻结、默认 `show:false`/A9.4、A10.5 凭证分桶、SOP-04 商用冒烟、发版节奏（日合入/周候选/点验后当前版）。结论：方案保证可商用底线；「最好产品」另靠 Wave★ 点验 + Top3 + 主理人否决。
+**邮箱代理研判（2026-09-14）**：稳定 MVP 约 4–7 人周；不追企微；**专家组已 `approved`**（主理人不审 §3.5）；排队等 WIP 空位开轨；默认 `show:false`。  
+**并行推进 + 统筹（同日）**：WIP≤3；T1 截图翻译 / T2 记事本 / T3 OCR 已开跑。  
+**专家组（同日续）**：写码过门改为 **B10.1 专家组审 §3.5**；主理人只点验 / 设当前版。已回写 STD/SOP-01/模板/短规则。  
+**专家组论证并行制度（同日）**：四席修订后通过（WIP/所有权/冻结/升显/冒烟等）。
 
 ---
 
 ## 2. 下一待办
 
-- [ ] **统筹轨**：WIP≤3；Wave★ / 换装 / 招聘 / 看板点验；合入与发版前 `verify_all` + A10.4 + 商用冒烟
-- [ ] **邮箱代理 §3.5**：主理人确认三独到处 → `approved` → 独立开轨（须 OPS-01 登记独占路径；默认 `show:false`）
-- [ ] **快速记事点验**：Ctrl+V 插图可见；拖角缩放不闪、不扯乱上下文；段距/行距/空段
-- [ ] **助教打卡换装点验**（Agent 不得代清 gaps）：张数对齐；水印仍在仅服装变；旁路输出；单张失败不堵批
-- [ ] **助教招聘稿点验**（Agent 不得代清 gaps）：示例班名城市/天数/费用；生成并复制一致；改日薪固定段不变
-- [ ] **培训交付看板点验**（Agent 不得代清 gaps）：绑定后串链根目录/名单；无 DMS/无 OAuth 粘贴开跑；打开文档与清除会话
-- [ ] Wave★ / Wave F **主理人点验**清 gaps
-- [x] Harness 自动化交付：默认沙箱干净机（13082）+ 契约；**不**动用户 3082/`~/.toa3`；`--live` 才碰本机
-- [x] Harness CDN URL/sha256 已填且探测可达；诊断包已落地；BOM 自清
-- [x] Harness CDN：`0.1.5-rc.1.1` 已上传并切 yml（官方 `0d655f2e…` / 预制 `8b50ba65…`）
-- [ ] **运营台设当前版 v3.1.18** 后：`python scripts/sync_release_version.py --from-live --require-match --commit`
+### 2.1 并行轨板（WIP≤3 · STD-01 B9 · 2026-09-14 开跑）
+
+| 轨 | module | 状态 | 独占路径 | 本轮目标 |
+|----|--------|------|----------|----------|
+| **T1** | `screenshot_translate` | **doing** | `services/screenshot_translate*.py`；截图工具栏挂点（只读协调） | Top3 已 approved；做强 OCR→对照→译→复制；补 verify；manifest `missing`→`mvp` |
+| **T2** | `quick_notepad` | **doing** | `modules/quick_notepad/**` | 自测加固 Ctrl+V 插图/拖角缩放/PDF/HTML；**不代清**主理人点验 gaps |
+| **T3** | `ocr_tool` | **doing** | `modules/ocr_tool/**`（若有）+ 截图 OCR 相关 services | 中文引擎评估与安装引导（manifest gap） |
+| **排队** | `email_client` | **ready**（专家组已 approved） | 待插入：`modules/email_client/**` · `services/mail/**` | WIP 满 3；下一空位或让出 T3 后开跑；默认 `show:false` |
+| **点验池** | 换装/招聘/看板/Wave★ 多项 | blocked | — | **仅主理人**；Agent 不代清 gaps |
+
+- [x] **并行开跑**：T1/T2/T3 登记如上  
+- [ ] **邮箱轨**：专家组已 `approved`；等 WIP 空位开跑（或主理人点名让出一轨）  
+- [ ] **快速记事点验**：Ctrl+V 插图可见；拖角缩放不闪、不扯乱上下文；段距/行距/空段  
+- [ ] **助教打卡换装点验**（Agent 不得代清 gaps）：张数对齐；水印仍在仅服装变；旁路输出；单张失败不堵批  
+- [ ] **助教招聘稿点验**（Agent 不得代清 gaps）：示例班名城市/天数/费用；生成并复制一致；改日薪固定段不变  
+- [ ] **培训交付看板点验**（Agent 不得代清 gaps）：绑定后串链根目录/名单；无 DMS/无 OAuth 粘贴开跑；打开文档与清除会话  
+- [ ] Wave★ / Wave F **主理人点验**清 gaps  
+- [x] Harness 自动化交付：默认沙箱干净机（13082）+ 契约；**不**动用户 3082/`~/.toa3`；`--live` 才碰本机  
+- [x] Harness CDN URL/sha256 已填且探测可达；诊断包已落地；BOM 自清  
+- [x] Harness CDN：`0.1.5-rc.1.1` 已上传并切 yml（官方 `0d655f2e…` / 预制 `8b50ba65…`）  
+- [x] **运营台设当前版 v3.1.18** 后：`python scripts/sync_release_version.py --from-live --require-match --commit`
 
 机读任务：同目录 `collab_tasks.json`。
 
@@ -92,11 +104,11 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 
 | 项 | 说明 |
 |----|------|
-| 更新 | 2026-09-14 · **专家组组建并论证通过（修订后）** |
-| 规范回写 | STD-01 A0.8/A0.9/A9.4/A10.4–A10.5/B9–B10；PROD-01；SOP-04 §1.1；OPS-02 §6 |
-| 专家组 | 工程管理·发版质量·产品架构·安全合规·主理人；表决：修订后通过 |
+| 更新 | 2026-09-14 · **写码过门改专家组**（主理人不审 approved） |
+| 规范回写 | STD-01 B1/B10.1；SOP-01；模板；短规则；email_client → approved |
+| 专家组 | §3.5 主审；主理人只点验 / 设当前版 |
+| 邮箱 | 专家组已通过；排队等 WIP |
 | 统筹角色 | 本会话：质量/进度/发版/全局；WIP≤3；升显权在统筹 |
-| 邮箱代理 | 中高复杂度；稳定 MVP 4–7 人周；不追企微；research 待 §3.5；可后开独立轨 |
 | 发版 | **v3.1.18** Setup 已上传；**等运营台设为当前版**；对外须过 A10.4 |
 | 发版直链 | https://www.yczh.tech/downloads/TOA3-Setup-v3.1.18.exe |
 | Harness CDN | https://www.yczh.tech/downloads/harness-{official,prefab}-0.1.5-rc.1.1.zip |

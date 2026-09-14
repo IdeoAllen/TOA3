@@ -64,6 +64,38 @@ def release_toa_running() -> bool:
     return bool(list_release_toa_pids())
 
 
+def _mutex_present(name: str) -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        handle = ctypes.windll.kernel32.OpenMutexW(0x00100000, False, name)  # SYNCHRONIZE
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def peer_hotkey_holder_hint() -> str:
+    """给用户看的占用提示（空=未检出同行 TOA）。"""
+    if is_frozen() and _mutex_present("YCZH_TOA3_DEV_MUTEX"):
+        return "开发版正在运行：正式版已让出全局热键"
+    if (not is_frozen()) and release_toa_running():
+        rel = list_release_toa_pids()
+        return (
+            f"正式版仍在运行（PID {', '.join(map(str, rel))}）；"
+            "开发版优先占用热键，若仍失败请退出正式版托盘"
+        )
+    if is_frozen():
+        rel = list_release_toa_pids()
+        if rel:
+            return f"另有正式版进程（PID {', '.join(map(str, rel))}）"
+    return ""
+
+
 def instance_key() -> str:
     """单实例 QLocalServer 键：开发版与正式版分离。"""
     return "TOA3_YCZH_RELEASE" if is_frozen() else "TOA3_YCZH_DEV"
@@ -75,14 +107,15 @@ def app_mutex_name() -> str:
 
 
 def should_register_global_hotkeys() -> Tuple[bool, str]:
+    """热键归属：仅一方时各自占用；双方并存时开发版优先（方便日常开发）。
+
+    正式版通过 DEV mutex 感知开发版，主动让出；开发版不再因正式版在托盘而整表停用。
+    """
     if is_frozen():
+        if _mutex_present("YCZH_TOA3_DEV_MUTEX"):
+            return False, "开发版运行中：正式版已让出全局热键"
         return True, "正式版占用全局热键"
-    if release_toa_running():
-        return (
-            False,
-            "正式版运行中：开发版已停用全局热键",
-        )
-    return True, "开发版独占全局热键"
+    return True, "开发版占用全局热键"
 
 
 def should_handle_global_hotkey_now() -> bool:

@@ -30,16 +30,13 @@ def _instance_key() -> str:
 
 
 def _try_win_mutex() -> bool:
-    """Windows 正式版：CreateMutex 防止双开（比 QLocalServer 更可靠）。"""
+    """Windows：CreateMutex 防止同 edition 双开（正式版 / 开发版各一把）。"""
     global _WIN_MUTEX
     if sys.platform != "win32":
         return True
     try:
         from services.edition_isolation import app_mutex_name
-        from services.runtime_paths import is_frozen
 
-        if not is_frozen():
-            return True
         import ctypes
 
         name = app_mutex_name()
@@ -47,7 +44,7 @@ def _try_win_mutex() -> bool:
         err = ctypes.windll.kernel32.GetLastError()
         _WIN_MUTEX = handle
         if err == 183:  # ERROR_ALREADY_EXISTS
-            logger.info("检测到已有 TOA3 正式版实例 (mutex=%s)", name)
+            logger.info("检测到已有 TOA3 同版实例 (mutex=%s)", name)
             return False
         return True
     except Exception:

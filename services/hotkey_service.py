@@ -143,20 +143,38 @@ class HotkeyService(QObject):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._callbacks: dict[int, Callable[[], None]] = {}
+        self._specs: dict[int, str] = {}
         self._next_id = 1
         self._filter: _HotkeyFilter | None = None
         self._user32 = None
 
+    def active_count(self) -> int:
+        return len(self._callbacks)
+
+    def active_specs(self) -> list[str]:
+        return [self._specs[i] for i in sorted(self._specs) if i in self._callbacks]
+
     def apply(self, bindings: dict[str, Callable[[], None]]) -> dict[str, str]:
         """bindings: hotkey_spec -> callback. 返回错误表。"""
         self.clear()
+        return self.register_many(bindings)
+
+    def register_many(
+        self,
+        bindings: dict[str, Callable[[], None]],
+        *,
+        only_specs: set[str] | None = None,
+    ) -> dict[str, str]:
+        """增量注册（不清空已成功项）。only_specs 非空时只尝试这些键。"""
         errors: dict[str, str] = {}
         if sys.platform != "win32":
-            return {k: "仅 Windows 支持全局热键" for k in bindings}
+            targets = only_specs or set(bindings)
+            return {k: "仅 Windows 支持全局热键" for k in targets}
 
         import ctypes
 
         self._user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
         if self._filter is None:
             self._filter = _HotkeyFilter(self)
             from PySide6.QtWidgets import QApplication
@@ -165,22 +183,37 @@ class HotkeyService(QObject):
             if app is not None:
                 app.installNativeEventFilter(self._filter)
 
+        already = {str(s) for s in self._specs.values()}
         for spec, cb in bindings.items():
-            parsed = _parse_hotkey(spec)
+            key = str(spec)
+            if only_specs is not None and key not in only_specs:
+                continue
+            if key in already:
+                continue
+            parsed = _parse_hotkey(key)
             if not parsed:
-                errors[spec] = "无法解析热键"
+                errors[key] = "无法解析热键"
                 continue
             mods, vk = parsed
             hid = self._next_id
             self._next_id += 1
+            kernel32.SetLastError(0)
             ok = self._user32.RegisterHotKey(None, hid, mods | MOD_NOREPEAT, vk)
             if not ok:
-                # 旧系统可能不支持 NOREPEAT，再试一次无该标志
+                kernel32.SetLastError(0)
                 ok = self._user32.RegisterHotKey(None, hid, mods, vk)
             if not ok:
-                errors[spec] = "RegisterHotKey 失败（可能被占用）"
+                err = int(kernel32.GetLastError() or 0)
+                if err == 1409:
+                    errors[key] = "已被其它程序占用"
+                elif err:
+                    errors[key] = f"RegisterHotKey 失败(err={err})"
+                else:
+                    errors[key] = "RegisterHotKey 失败（可能被占用）"
                 continue
             self._callbacks[hid] = cb
+            self._specs[hid] = key
+            already.add(key)
         return errors
 
     def _on_hotkey(self, hid: int) -> None:
@@ -203,6 +236,7 @@ class HotkeyService(QObject):
                 except Exception:
                     pass
         self._callbacks.clear()
+        self._specs.clear()
 
     def shutdown(self) -> None:
         self.clear()

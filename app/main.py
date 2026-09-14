@@ -140,6 +140,12 @@ def main() -> int:
     # WebEngine 须共享 GL 上下文，否则首次嵌入易整窗闪白
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
     app = QApplication(sys.argv)
+    try:
+        from services.qt_webengine_bootstrap import apply_frozen_qt_library_paths
+
+        apply_frozen_qt_library_paths(app)
+    except Exception:
+        logger.debug("apply_frozen_qt_library_paths failed", exc_info=True)
     app.setApplicationName("TOA3")
     try:
         from services.app_branding import is_development_profile

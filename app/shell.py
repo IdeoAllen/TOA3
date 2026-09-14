@@ -30,7 +30,7 @@ from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.ui_spec import apply_shell_spec, shell_spec
 from services.config_service import get_hotkeys_config, get_menu_item_by_id, get_ui_config
-from services.icon_registry import brand_logo_pixmap, clear_cache, get_header_icon, get_icon, menu_item_icon
+from services.icon_registry import clear_cache, get_header_icon, get_icon, menu_item_icon
 from services.menu_registry import (
     DOMAIN_TAB_LABELS,
     GROUP_ORDER,
@@ -52,7 +52,6 @@ from widgets import MessageKindButton
 
 logger = logging.getLogger(__name__)
 
-_HEADER_LOGO = 44
 _HEADER_ICON = 18
 _HEADER_BTN = 30
 # 离开这些页时若挂了 WebEngine，需延迟拆 View（切页立刻响应壳，Guest 后清）
@@ -158,6 +157,7 @@ class _ShellNavKeyFilter(QObject):
             if (
                 event.key() == Qt.Key.Key_F11
                 and event.modifiers() == Qt.KeyboardModifier.NoModifier
+                and bool(get_hotkeys_config().get("enable_immersive_hotkey", True))
             ):
                 event.accept()
                 return True
@@ -185,6 +185,7 @@ class _ShellNavKeyFilter(QObject):
         if (
             event.key() == Qt.Key.Key_F11
             and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            and bool(get_hotkeys_config().get("enable_immersive_hotkey", True))
         ):
             self._shell._toggle_fullscreen()
             return True
@@ -280,13 +281,21 @@ class MainShell(QMainWindow):
         mb.setVisible(False)
         mb.setNativeMenuBar(False)
 
-        self._close_to_tray = bool(get_hotkeys_config().get("close_to_background", True))
-        self.setAcceptDrops(True)
+        self._apply_shell_feature_flags()
         if not defer_startup:
             self.complete_startup()
 
+    def _apply_shell_feature_flags(self) -> None:
+        """热键/拖入等全局壳开关（与 settings 保存后 reload 同源）。"""
+        hk = get_hotkeys_config()
+        self._close_to_tray = bool(hk.get("close_to_background", True))
+        self.setAcceptDrops(bool(hk.get("enable_drop_open_desktop", True)))
+
     def open_drop_paths(self, paths: list[str] | list[Path]) -> None:
         """拖入/启动参数：进 MACOS 桌面，根=文件父目录并预览。"""
+        if not bool(get_hotkeys_config().get("enable_drop_open_desktop", True)):
+            self.show_status("已关闭「拖入打开桌面浏览」", level=StatusLevel.WARNING)
+            return
         cleaned: list[str] = []
         for raw in paths or []:
             s = str(raw or "").strip()
@@ -327,18 +336,25 @@ class MainShell(QMainWindow):
         return out
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
-        if self._paths_from_mime(event.mimeData()):
+        if bool(get_hotkeys_config().get("enable_drop_open_desktop", True)) and self._paths_from_mime(
+            event.mimeData()
+        ):
             event.acceptProposedAction()
             return
         super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:  # noqa: N802
-        if self._paths_from_mime(event.mimeData()):
+        if bool(get_hotkeys_config().get("enable_drop_open_desktop", True)) and self._paths_from_mime(
+            event.mimeData()
+        ):
             event.acceptProposedAction()
             return
         super().dragMoveEvent(event)
 
     def dropEvent(self, event) -> None:  # noqa: N802
+        if not bool(get_hotkeys_config().get("enable_drop_open_desktop", True)):
+            super().dropEvent(event)
+            return
         paths = self._paths_from_mime(event.mimeData())
         if paths:
             event.acceptProposedAction()
@@ -420,6 +436,7 @@ class MainShell(QMainWindow):
 
         self.reapply_global_hotkeys()
         self._register_hotkeys()
+        self._start_hotkey_watchdog()
 
     def _run_ocr_hotkey(self) -> None:
         from services.screenshot_service import run_screenshot_ocr
@@ -515,32 +532,24 @@ class MainShell(QMainWindow):
         hlay.setSpacing(4)
         header_align = Qt.AlignmentFlag.AlignVCenter
 
-        from services.system_info import logo_path
-
-        logo_file = logo_path()
-        if logo_file is not None:
-            logo = QLabel()
-            logo.setObjectName("ShellLogo")
-            logo.setFixedSize(_HEADER_LOGO, _HEADER_LOGO)
-            logo.setScaledContents(False)
-            pix = brand_logo_pixmap(_HEADER_LOGO, _HEADER_LOGO, parent=self)
-            if not pix.isNull():
-                logo.setPixmap(pix)
-                logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._header_logo_label = logo
-                hlay.addWidget(logo, 0, header_align)
+        # 顶栏只留文字品牌名，不放 Logo 图（窗口/任务栏图标仍走 app icon）
+        self._header_logo_label = None
 
         brand = QLabel(self._st.brand_name())
         brand.setObjectName("ShellBrand")
         self._brand_label = brand
         hlay.addWidget(brand, 0, header_align)
 
+        # 紧贴品牌名的小号授权标签（间距跟顶栏 spacing=4，不拉开）
         self._license_chip = MessageKindButton("基础版", kind="info")
         self._license_chip.setObjectName("ShellLicenseChip")
         self._license_chip.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._license_chip.setFixedHeight(26)
-        self._license_chip.setMaximumHeight(26)
-        self._license_chip.setMaximumWidth(140)
+        self._license_chip.setFixedHeight(18)
+        self._license_chip.setMaximumHeight(18)
+        self._license_chip.setMaximumWidth(96)
+        self._license_chip.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
+        )
         self._license_chip.clicked.connect(self._on_license_chip_clicked)
         hlay.addWidget(self._license_chip, 0, header_align)
 
@@ -1112,6 +1121,7 @@ class MainShell(QMainWindow):
 
         hk = get_hotkeys_config()
         fs_key = str(hk.get("toggle_fullscreen") or "F11").strip()
+        immersive_on = bool(hk.get("enable_immersive_hotkey", True))
         mapping = {
             str(hk.get("exit_app") or "Ctrl+Q"): self._quit_app,
             str(hk.get("restart_app") or "Ctrl+Shift+R"): self._restart_app,
@@ -1121,11 +1131,11 @@ class MainShell(QMainWindow):
             str(hk.get("open_home") or "Ctrl+H"): self._go_home,
             "Ctrl+K": self._open_command_palette,
         }
-        # F11：ApplicationShortcut + 应用级 eventFilter（WebEngine 内不依赖 OS 全局热键）
-        if fs_key and fs_key.lower() != "none":
+        # 沉浸全屏：仅 ApplicationShortcut（禁止 RegisterHotKey）；可配置关闭
+        if immersive_on and fs_key and fs_key.lower() != "none":
             mapping[fs_key] = self._toggle_fullscreen
-        if fs_key.upper() != "F11":
-            mapping["F11"] = self._toggle_fullscreen
+            if fs_key.upper() != "F11":
+                mapping["F11"] = self._toggle_fullscreen
         from services.module_hotkeys import (
             get_module_shortcut,
             global_module_bindings,
@@ -1152,7 +1162,17 @@ class MainShell(QMainWindow):
                 continue
             mapping[seq] = self.toggle_immersive
 
-        # 截图只走全局 RegisterHotKey（_wire_platform），勿再挂 QAction，否则前台双开多层
+        # 截图：优先 OS 全局 RegisterHotKey；此处 ApplicationShortcut 作窗内兜底
+        # （全局注册成功时系统不会把键交给 Qt，不会双开；全局失败时前台仍可截）
+        if hk.get("enable_screenshot", True):
+            from services.screenshot_service import run_screenshot_hotkey
+
+            shot = str(hk.get("screenshot") or "").strip()
+            if shot and shot.lower() != "none" and shot not in mapping:
+                mapping[shot] = lambda: run_screenshot_hotkey(self, full=False)
+            shot_full = str(hk.get("screenshot_region") or "").strip()
+            if shot_full and shot_full.lower() != "none" and shot_full not in mapping:
+                mapping[shot_full] = lambda: run_screenshot_hotkey(self, full=True)
 
         summon_id = normalize_module_id(hk.get("summon_module_id"))
         tw = str(hk.get("toggle_window") or "").strip()
@@ -1186,10 +1206,34 @@ class MainShell(QMainWindow):
 
         return apply_global_hotkeys_for_shell(self)
 
+    def _start_hotkey_watchdog(self) -> None:
+        """被占用后自动重试；开发版遇正式版时让出。"""
+        if getattr(self, "_hotkey_watch", None) is not None:
+            return
+        from PySide6.QtCore import QTimer
+
+        timer = QTimer(self)
+        timer.setInterval(4000)
+        timer.timeout.connect(self._reconcile_global_hotkeys)
+        timer.start()
+        self._hotkey_watch = timer
+        QTimer.singleShot(1200, self._reconcile_global_hotkeys)
+        QTimer.singleShot(3500, self._reconcile_global_hotkeys)
+
+    def _reconcile_global_hotkeys(self) -> None:
+        try:
+            from services.global_hotkey_bindings import reconcile_global_hotkeys_for_shell
+
+            reconcile_global_hotkeys_for_shell(self)
+        except Exception:
+            logger.debug("hotkey reconcile failed", exc_info=True)
+
     def reload_window_hotkeys(self) -> dict[str, str]:
         """设置页保存后重载应用级 + 全局快捷键。"""
+        self._apply_shell_feature_flags()
         self._register_hotkeys()
         self._update_fullscreen_button_tip()
+        self._start_hotkey_watchdog()
         return self.reapply_global_hotkeys()
 
     def set_page_shortcuts(self, bindings: dict[str, callable] | None) -> None:
@@ -1424,6 +1468,7 @@ class MainShell(QMainWindow):
         if (
             event.key() == Qt.Key.Key_F11
             and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            and bool(get_hotkeys_config().get("enable_immersive_hotkey", True))
         ):
             self._toggle_fullscreen()
             event.accept()
@@ -2275,8 +2320,8 @@ class MainShell(QMainWindow):
             self._status_ver_label.setText(f"v{self._st.app_version()}")
 
     def refresh_brand_chrome(self) -> None:
-        """用户修改系统信息后刷新顶栏品牌与 Logo。"""
-        from services.system_info import get_system_info, logo_path
+        """用户修改系统信息后刷新顶栏品牌。"""
+        from services.system_info import get_system_info
 
         info = get_system_info()
         if self._brand_label is not None:
@@ -2285,10 +2330,6 @@ class MainShell(QMainWindow):
         title = str(info.get("window_title") or ui.get("window_title") or info.get("brand_name") or "")
         if title:
             self._apply_window_title(title)
-        if self._header_logo_label is not None and logo_path() is not None:
-            pix = brand_logo_pixmap(_HEADER_LOGO, _HEADER_LOGO, parent=self)
-            if not pix.isNull():
-                self._header_logo_label.setPixmap(pix)
         if self._user_btn is not None:
             name = self._st.display_name or self._st.username or "用户"
             self._user_btn.setToolTip(f"账号 · {name} · 点击查看/退出")

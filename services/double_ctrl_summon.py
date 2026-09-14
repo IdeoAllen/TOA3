@@ -79,21 +79,34 @@ class DoubleCtrlSummonService(QObject):
             return 0
 
         self._proc = _hook_proc
-        self._hook_id = self._user32.SetWindowsHookExW(
-            WH_KEYBOARD_LL,
-            self._proc,
-            kernel32.GetModuleHandleW(None),
-            0,
-        )
+        # WH_KEYBOARD_LL：hMod 在本进程钩子应为 NULL。PyInstaller 冻结包里
+        # GetModuleHandleW(None) 常失败 → 双击 Ctrl 整段不可用。
+        hmods: list[object] = [None, 0]
+        try:
+            exe = getattr(sys, "executable", None)
+            if exe:
+                hmods.append(kernel32.GetModuleHandleW(str(exe)))
+        except Exception:
+            pass
+        hmods.append(kernel32.GetModuleHandleW(None))
+
+        self._hook_id = None
+        last_err = 0
+        for hmod in hmods:
+            kernel32.SetLastError(0)
+            hid = self._user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc, hmod, 0)
+            if hid:
+                self._hook_id = hid
+                break
+            last_err = int(kernel32.GetLastError() or 0)
         if not self._hook_id:
             self._proc = None
             try:
                 self.summon_requested.disconnect()
             except Exception:
                 pass
-            err = ctypes.windll.kernel32.GetLastError()
-            logger.warning("SetWindowsHookExW failed: %s", err)
-            return "双击 Ctrl 监听安装失败"
+            logger.warning("SetWindowsHookExW failed: %s", last_err)
+            return f"双击 Ctrl 监听安装失败(err={last_err})"
         logger.info("double Ctrl summon hook installed")
         return ""
 

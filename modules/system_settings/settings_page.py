@@ -333,16 +333,7 @@ class SettingsPage(BasePage):
     def _factory_integrations_admin(self) -> QWidget:
         from modules.system_settings.integrations_section import IntegrationsSection
 
-        host = QWidget()
-        lay = QVBoxLayout(host)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-        section = IntegrationsSection(self, admin=True)
-        section.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        lay.addWidget(section, 1)
-        return host
+        return _wrap_scroll(IntegrationsSection(self, admin=True))
 
     def _factory_integrations_user(self) -> QWidget:
         return self._factory_models()

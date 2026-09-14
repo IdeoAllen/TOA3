@@ -63,6 +63,10 @@ home_page:
   use_canvas_home: false
 hotkeys:
   close_to_background: true
+  # 拖入主窗文件/文件夹 → 打开桌面浏览并预览（壳全局；可关）
+  enable_drop_open_desktop: true
+  # 沉浸全屏热键（默认 F11；仅应用前台，不进 RegisterHotKey）
+  enable_immersive_hotkey: true
   tray_modules:
     - quick_notepad
     - clipboard_history
@@ -522,6 +526,28 @@ menu:
     feature_id: teaching_assistant_resume
     requires_license: true
     show: true
+  - class_name: AssistantRecruitPostPage
+    desc: 班级名+地址生成兼职助教招聘稿，一键复制发群
+    group: business
+    icon: assistant_recruit_post
+    id: assistant_recruit_post
+    module_path: modules.assistant_recruit_post.assistant_recruit_post_page
+    name: 助教招聘稿
+    order: 45
+    feature_id: assistant_recruit_post
+    requires_license: true
+    show: true
+  - class_name: AssistantOutfitSwapPage
+    desc: 助教打卡照目录全量换装；只换服装，水印等信息保持不变
+    group: business
+    icon: assistant_outfit_swap
+    id: assistant_outfit_swap
+    module_path: modules.assistant_outfit_swap.assistant_outfit_swap_page
+    name: 助教打卡换装
+    order: 46
+    feature_id: assistant_outfit_swap
+    requires_license: true
+    show: true
   - class_name: ResumeExtractorPage
     desc: 自动提取简历关键信息，支持多种文档格式
     group: business
@@ -531,6 +557,17 @@ menu:
     name: 简历信息提取
     order: 50
     feature_id: resume_extractor
+    requires_license: true
+    show: true
+  - class_name: TrainingDeliveryBoardPage
+    desc: 班级上下文一次绑定，开班到交付串本机工具；配合腾讯文档，不依赖 DMS
+    group: business
+    icon: training_delivery_board
+    id: training_delivery_board
+    module_path: modules.training_delivery_board.training_delivery_board_page
+    name: 培训交付看板
+    order: 5
+    feature_id: training_delivery_board
     requires_license: true
     show: true
   - class_name: ScheduleReminderPage
@@ -694,7 +731,7 @@ settings_menu:
         - key: integrations
           title: 能力接入
           icon: harness_agent
-          subtitle: Harness、OCR 与三方连通
+          subtitle: 截图识字与本机能力状态
         - key: diagnostics
           title: 诊断
           icon: file_text

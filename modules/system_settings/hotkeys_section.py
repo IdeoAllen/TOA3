@@ -80,6 +80,14 @@ class HotkeysSection(FormSection):
         self._close_to_tray.setChecked(bool(hk.get("close_to_background", True)))
         form.addRow("托盘", self._close_to_tray)
 
+        self._enable_drop = CheckBox("拖入文件/文件夹时打开桌面浏览")
+        self._enable_drop.setChecked(bool(hk.get("enable_drop_open_desktop", True)))
+        form.addRow("拖入", self._enable_drop)
+
+        self._enable_immersive = CheckBox("启用沉浸全屏热键（默认 F11，仅应用前台）")
+        self._enable_immersive.setChecked(bool(hk.get("enable_immersive_hotkey", True)))
+        form.addRow("全屏", self._enable_immersive)
+
         self._shot = HotkeyCaptureEdit(str(hk.get("screenshot") or "Alt+A"))
         self._shot_region = HotkeyCaptureEdit(str(hk.get("screenshot_region") or "Alt+Shift+A"))
         self._fullscreen = HotkeyCaptureEdit(str(hk.get("toggle_fullscreen") or "F11"))
@@ -98,7 +106,7 @@ class HotkeysSection(FormSection):
 
         form.addRow("区域截图", self._shot)
         form.addRow("全屏截图", self._shot_region)
-        form.addRow("沉浸全屏", self._fullscreen)
+        form.addRow("沉浸全屏键", self._fullscreen)
         form.addRow("完全退出", self._exit)
         form.addRow("重启应用", self._restart)
         form.addRow("首页跳办公", self._home_k)
@@ -218,6 +226,8 @@ class HotkeysSection(FormSection):
             "toggle_window": toggle_saved,
             "enable_screenshot": self._enable_screenshot.isChecked(),
             "close_to_background": self._close_to_tray.isChecked(),
+            "enable_drop_open_desktop": self._enable_drop.isChecked(),
+            "enable_immersive_hotkey": self._enable_immersive.isChecked(),
             "screenshot": self._shot.text().strip(),
             "screenshot_region": self._shot_region.text().strip(),
             "toggle_fullscreen": self._fullscreen.text().strip(),

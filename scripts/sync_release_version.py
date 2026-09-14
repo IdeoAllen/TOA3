@@ -42,9 +42,13 @@ MANIFEST_URL = (
 )
 
 # 发版提交默认纳入的路径（相对仓库根；不含日志/产物）
+# 含版本钉扎 + 本波常进包的壳/热键/Harness；其它业务仍靠日常提交，勿只靠本名单。
 RELEASE_COMMIT_PATHS: tuple[str, ...] = (
     "app/version.py",
+    "app/shell.py",
+    "app/main.py",
     "config/update_manifest.yml",
+    "config/app.yml",
     "config/harness.yml",
     "config/migration_manifest.yml",
     "packaging/shipped_config/",
@@ -53,15 +57,33 @@ RELEASE_COMMIT_PATHS: tuple[str, ...] = (
     "packaging/INSTALL.md",
     "scripts/sync_release_version.py",
     "scripts/verify_all.py",
+    "scripts/verify_global_shell.py",
+    "scripts/verify_hotkeys.py",
     "scripts/verify_harness_release_align.py",
     "scripts/verify_harness_simple_setup.py",
     "modules/harness_agent/",
+    "modules/system_settings/hotkeys_section.py",
+    "modules/system_settings/integrations_section.py",
+    "modules/system_settings/settings_page.py",
+    "services/global_shell_features.py",
+    "services/double_ctrl_summon.py",
+    "services/edition_isolation.py",
+    "services/global_hotkey_bindings.py",
+    "services/hotkey_service.py",
+    "services/single_instance.py",
+    "services/qt_webengine_bootstrap.py",
     "services/harness_config.py",
     "services/harness_guide.py",
     "services/harness_setup.py",
     "services/harness_sidecar.py",
     "services/harness_status.py",
     "docs/handoff/OPS-01-交接与进度.md",
+    "docs/architecture/ARCH-11-全局介入与热键.md",
+    "docs/规范/SOP-04-打包发版.md",
+    "docs/规范/STD-01-工程标准与流程.md",
+    "docs/规范/00-规范清单.md",
+    "docs/architecture/README.md",
+    ".cursor/skills/toa3-sop-packaging/SKILL.md",
     "docs/README.md",
 )
 
