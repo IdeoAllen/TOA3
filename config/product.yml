@@ -19,12 +19,16 @@ vision:
     - 高频刚需做强，不做功能凑数；每项对标品类头部，宁少勿滥
     - 同类能力一站集成，少「到处找软件」
     - 小白拿来即用：极简路径享受便捷与高效，销售叙事一站式
+    - 提供好用的工具，让用户自己轻松做出好看结果——不是预制内容堆观感
+    - 记事：编辑/预览；组件库=标记全集；工具栏同源；无设计面；详 PROD-01 §0.5.1
     - 有技术门槛 / 有电脑条件时：软件引导探索；探索路径一件安装、配置 ≤2 步，步步有操作引导
     - 键位跟手、步骤尽量少
     - 本地优先、可离线，结果在本机可追溯
     - 截图、记事、剪贴板等日常动作一站直达
   principles:
     - 每个功能在市面上都能找到对应工具；TOA 做集成与一致体验，能力不输头部
+    - 工具赋能，非内容预制：记事默认进编辑面；模板只作空白骨架
+    - 记事：编辑/预览两面同一 Markdown；组件库=标记全集；工具栏同源；无设计面
     - 默认路径 = 傻瓜式可用；增强能力 = 引导式探索（不挡主路径）
     - 探索增强：一件安装 + 配置不超过 2 步；每一步有可见引导文案/按钮
     - 高频小工具聚合，减少「到处找软件」
@@ -41,7 +45,7 @@ home:
   office_pins:
     - id: quick_notepad
       title: 快速记事
-      subtitle: 会议纪要草稿
+      subtitle: 编辑 / 预览 · 组件库=标记全集
     - id: screenshot_tool
       title: 截图工具
       subtitle: 区域 / 全屏
@@ -49,8 +53,8 @@ home:
       title: 剪贴板历史
       subtitle: Alt+Shift+C 速贴
     - id: quadrant_tasks
-      title: 四象限任务
-      subtitle: 本地看板
+      title: 任务管理
+      subtitle: 状态 · 日历 · 优先级
     - id: pomodoro
       title: 番茄钟
       subtitle: 沉浸专注
@@ -93,23 +97,24 @@ roadmap:
     - 截图标注继续对齐微信能力（钉选/历史面板等）
     - 腾讯文档 OAuth 联调
     - Wave F 文件四件套：directory_generator 点验 → pdf_toolkit → file_packager → batch_rename
+    - 培训交付看板 training_delivery_board（高级付费锚点；串开班→交付；配合腾讯文档）
   p2:
     - 通用生成引擎加深（完整 generic_generator · 须先评估）
     - excel_cleaner（有强痛再 Top3）
     - 网络版：账号/配置云同步（可选）；与 DMS 仅弱耦合、非运行时依赖
     - 移动端伴侣：通知、日程只读、剪贴板接力（非全功能复刻）
-    - 培训交付看板（环节+材料模板+进展）— 垂直场景，非通用 Jira
     - 插件化模块注册加深
     - 钉钉/企微通知实装
     - Windows toast
     - Ctrl+K 命令面板
 
+# 双产品（2026-09-07）：DMS=专业高门槛可售；TOA=免费钩子+高级付费；腾讯文档轻量轨；并行不强绑
 integrations_slots:
   ocr: 本地 Tesseract / 云端 OCR API
   llm: 摘要、改写、模板填充
   watermark_ai: 图像修复 / 去水印模型
   toa_license: TOA 授权与发版（toa-service）
-  dms: 可选弱耦合（交付台账；非 TOA 账本）
+  dms: 专业运营培训系统（可售高门槛；非免费钩子；非 TOA 账本）
   email: SMTP 通知
-  tencent_docs: 腾讯文档（占位）
+  tencent_docs: 腾讯文档（轻量协作面；OAuth 分期）
   dingtalk: 钉钉通知（占位）

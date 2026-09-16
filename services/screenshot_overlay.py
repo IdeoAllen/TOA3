@@ -75,6 +75,32 @@ from services.screenshot_service import virtual_screen_geometry
 
 logger = logging.getLogger(__name__)
 
+
+def _pixmap_logical_size(pm: QPixmap) -> tuple[int, int]:
+    """位图逻辑宽高（HiDPI 下 width()/dpr）。"""
+    if pm is None or pm.isNull():
+        return 1, 1
+    dpr = max(1.0, float(pm.devicePixelRatio() or 1.0))
+    return max(1, int(round(pm.width() / dpr))), max(1, int(round(pm.height() / dpr)))
+
+
+def loupe_source_rect(
+    cx: int,
+    cy: int,
+    logical_w: int,
+    logical_h: int,
+    *,
+    src_r: int = 7,
+) -> tuple[int, int, int, int]:
+    """放大镜取样区（逻辑像素）：返回 (x0, y0, crop_w, crop_h)。"""
+    lw = max(1, int(logical_w))
+    lh = max(1, int(logical_h))
+    cx = max(0, min(lw - 1, int(cx)))
+    cy = max(0, min(lh - 1, int(cy)))
+    x0, y0 = max(0, cx - src_r), max(0, cy - src_r)
+    x1, y1 = min(lw, cx + src_r + 1), min(lh, cy + src_r + 1)
+    return x0, y0, max(0, x1 - x0), max(0, y1 - y0)
+
 # 全局单会话：从热键受理到叠加层关闭全程占锁；再按只取消、绝不叠层
 _active_overlay: ScreenshotOverlay | None = None
 _session_busy = False
@@ -247,7 +273,9 @@ class ScreenshotOverlay(QWidget):
         self._interactive_select = interactive_select
         # 全屏直进标注：默认马赛克（培训/反馈路径）；区域框选完成后再切马赛克
         self._mode = "select" if interactive_select else "rect"
-        self._sel: QRect | None = None if interactive_select else QRect(0, 0, bg.width(), bg.height())
+        # 选区一律逻辑像素（与鼠标/虚拟桌面一致）；勿用 bg.width() 物理像素
+        _lw, _lh = _pixmap_logical_size(bg)
+        self._sel: QRect | None = None if interactive_select else QRect(0, 0, _lw, _lh)
         self._selecting = False
         self._resizing: str | None = None
         self._drag_origin_sel: QRect | None = None
@@ -451,6 +479,9 @@ class ScreenshotOverlay(QWidget):
 
     def _sample_surface_pixmap(self) -> QPixmap:
         """当前可见画面（底图 + 已提交标注 + 实时预览），用于取色/放大镜。"""
+        # 框选阶段通常无标注：直接用底图，避免每次 mousemove 全图 compose 卡顿
+        if not self._session.annots and not self._preview:
+            return self._bg
         annots = list(self._session.annots)
         if self._preview and self._preview.get("type") in ("mosaic",):
             annots = annots + [self._preview]
@@ -494,30 +525,43 @@ class ScreenshotOverlay(QWidget):
         p.drawText(r.left() + 6, label_y, f"{r.width()} × {r.height()}")
 
     def _paint_loupe(self, p: QPainter, cx: int, cy: int) -> None:
-        """微信式取景：放大镜 + 坐标 + 当前像素色（所见即所得取色）。"""
+        """微信式取景：放大镜 + 坐标 + 当前像素色（所见即所得取色）。
+
+        鼠标与贴边判断一律逻辑像素；从位图取样时再 × dpr，避免 HiDPI 错位。
+        """
         surface = self._sample_surface_pixmap()
-        bw, bh = surface.width(), surface.height()
-        cx = max(0, min(bw - 1, cx))
-        cy = max(0, min(bh - 1, cy))
+        dpr = max(1.0, float(surface.devicePixelRatio() or 1.0))
+        lw, lh = _pixmap_logical_size(surface)
+        # 覆盖层可能与位图逻辑尺寸略差一像素：以较小者为界
+        lw = min(lw, max(1, self.width()))
+        lh = min(lh, max(1, self.height()))
+        cx = max(0, min(lw - 1, int(cx)))
+        cy = max(0, min(lh - 1, int(cy)))
 
         src_r = 7
         zoom = 5
-        x0, y0 = max(0, cx - src_r), max(0, cy - src_r)
-        x1, y1 = min(bw, cx + src_r + 1), min(bh, cy + src_r + 1)
-        if x1 <= x0 or y1 <= y0:
+        x0, y0, crop_w, crop_h = loupe_source_rect(cx, cy, lw, lh, src_r=src_r)
+        if crop_w <= 0 or crop_h <= 0:
             return
 
-        crop_w, crop_h = x1 - x0, y1 - y0
+        # 设备像素裁切（与 crop_logical / _sample_color_at 一致）
+        dx0 = int(round(x0 * dpr))
+        dy0 = int(round(y0 * dpr))
+        dcw = max(1, int(round(crop_w * dpr)))
+        dch = max(1, int(round(crop_h * dpr)))
+        crop = surface.copy(QRect(dx0, dy0, dcw, dch))
+        crop.setDevicePixelRatio(1.0)
+
         out_w, out_h = crop_w * zoom, crop_h * zoom
         info_h = 34
         pad = 6
         box_w = max(out_w + pad * 2, 188)
 
-        # 跟鼠标走，优先右下；贴边时翻转
+        # 跟鼠标走，优先右下；贴边时翻转（逻辑坐标）
         lx, ly = cx + 18, cy + 18
-        if lx + box_w > bw - 4:
+        if lx + box_w > lw - 4:
             lx = cx - box_w - 18
-        if ly + out_h + info_h + pad * 2 > bh - 4:
+        if ly + out_h + info_h + pad * 2 > lh - 4:
             ly = cy - out_h - info_h - pad * 2 - 18
         lx, ly = max(4, lx), max(4, ly)
 
@@ -526,7 +570,6 @@ class ScreenshotOverlay(QWidget):
         p.setBrush(QColor(0, 0, 0, 200))
         p.drawRoundedRect(outer, 6, 6)
 
-        crop = surface.copy(QRect(x0, y0, crop_w, crop_h))
         scaled = crop.scaled(
             out_w,
             out_h,
@@ -569,7 +612,9 @@ class ScreenshotOverlay(QWidget):
         p.drawText(lx + pad + 20, info_y + 28, f"屏幕 {screen_x}, {screen_y} · {rgb}")
 
     def _clamp_sel(self, x1: int, y1: int, x2: int, y2: int) -> QRect:
-        w, h = self._bg.width(), self._bg.height()
+        w, h = _pixmap_logical_size(self._bg)
+        w = min(w, max(1, self.width()))
+        h = min(h, max(1, self.height()))
         x1, x2 = sorted((max(0, min(w, x1)), max(0, min(w, x2))))
         y1, y2 = sorted((max(0, min(h, y1)), max(0, min(h, y2))))
         return QRect(x1, y1, max(0, x2 - x1), max(0, y2 - y1))
@@ -1394,38 +1439,15 @@ class ScreenshotOverlay(QWidget):
         self._with_keyboard_released(_do)
 
     def _on_translate(self) -> None:
-        """先 OCR 出对照窗，再由用户点「翻译原文」（避免一上来就连打 LLM 限流）。"""
+        """后台 OCR → 对照窗 →「翻译原文」（禁 UI 线程同步长联网）。"""
 
         def _do() -> None:
             pix = self._compose_result()
             if pix is None or pix.isNull():
                 return
-            try:
-                from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
-                from modules.clipboard_history.history_store import push_text
-                from services.screenshot_translate import ocr_only
-                from services.screenshot_translate_dialog import TranslateResultDialog
+            from services.screenshot_translate_dialog import launch_translate_from_pixmap
 
-                source = ocr_only(pix)
-                if not source:
-                    from core.user_messages import show_warning
-
-                    show_warning(self, "未识别到文字。请确认 OCR 已在系统设置中配置。")
-                    return
-                get_clipboard_watcher().suppress_once()
-                QGuiApplication.clipboard().setText(source)
-                push_text(source, source="ocr")
-                dlg = TranslateResultDialog(
-                    self,
-                    source=source,
-                    translated="（原文已复制。点下方「翻译原文」生成译文。）",
-                    offer_translate=True,
-                )
-                dlg.exec()
-            except Exception as exc:
-                from core.error_handler import report_error
-
-                report_error(self, exc, title="截图翻译失败", context="screenshot_translate")
+            launch_translate_from_pixmap(self, pix)
 
         self._with_keyboard_released(_do)
 
@@ -1437,6 +1459,9 @@ class ScreenshotOverlay(QWidget):
         pix = self._compose_result()
         if pix is None or pix.isNull():
             return
+        logical_size: tuple[int, int] | None = None
+        if self._sel is not None and self._sel.width() > 0 and self._sel.height() > 0:
+            logical_size = (self._sel.width(), self._sel.height())
 
         def _do() -> None:
             try:
@@ -1452,7 +1477,7 @@ class ScreenshotOverlay(QWidget):
                 anchor = None
                 if self._sel is not None:
                     anchor = self.mapToGlobal(self._sel.topLeft())
-                win = pin_screenshot(pix, anchor=anchor)
+                win = pin_screenshot(pix, anchor=anchor, logical_size=logical_size)
                 if win is None:
                     from core.user_messages import show_warning
 

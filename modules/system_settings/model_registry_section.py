@@ -583,6 +583,14 @@ class ModelRegistrySection(QWidget):
                     set_profile_secret("video_gen", "evolink_seedance_2", "api_key", key)
                 elif pid == "evolink_seedance_2":
                     set_profile_secret("image_gen", "evolink_grok_imagine", "api_key", key)
+                elif str(pid).startswith("mxapi_"):
+                    for shared in (
+                        "mxapi_nano_banana_2",
+                        "mxapi_gpt_image_2",
+                        "mxapi_nano_banana_pro",
+                    ):
+                        if shared != pid:
+                            set_profile_secret("image_gen", shared, "api_key", key)
                 if cap == "text_llm" and pid == "moonshot_kimi":
                     set_secret("llm", "api_key", key)
                 self._key.clear()

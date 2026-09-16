@@ -100,7 +100,13 @@
     "statusbar_fg": "#F5F5F7",
     "scrollbar_track": "#0B0B0D",
     "scrollbar_thumb": "#48484A",
-    "scrollbar_thumb_hover": "#C7C7CC"
+    "scrollbar_thumb_hover": "#C7C7CC",
+    "violet": "#6D28D9",
+    "violet_bg": "#EDE9FE",
+    "cyan": "#0E7490",
+    "cyan_bg": "#CFFAFE",
+    "muted": "#475569",
+    "muted_bg": "#F1F5F9"
   },
   "controls": {
     "TButton": {

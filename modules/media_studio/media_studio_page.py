@@ -187,14 +187,19 @@ def _tune_param_combo(combo: ComboBox, *, min_chars: int = 6, min_width: int = 8
 class _RefThumb(QFrame):
     remove_requested = Signal(str)
 
-    def __init__(self, path: Path, parent=None) -> None:
+    def __init__(self, path: Path, caption: str = "", parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("MediaRefThumb")
         self.setFixedSize(72, 86)
         self.path = path
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
-        lay.setSpacing(4)
+        lay.setSpacing(2)
+        if caption:
+            cap = HintLabel(caption)
+            cap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cap.setFixedHeight(14)
+            lay.addWidget(cap)
         img = QLabel()
         img.setObjectName("MediaRefThumbImage")
         img.setFixedSize(56, 36)
@@ -208,7 +213,7 @@ class _RefThumb(QFrame):
         lay.addWidget(img)
         btn = SecondaryButton("移除")
         btn.setObjectName("MediaRefRemoveBtn")
-        btn.setFixedHeight(24)
+        btn.setFixedHeight(22)
         btn.setMinimumWidth(52)
         btn.clicked.connect(lambda: self.remove_requested.emit(str(self.path)))
         lay.addWidget(btn)
@@ -462,6 +467,9 @@ class _ImagePreviewPane(QLabel):
 class _PreviewCanvas(QWidget):
     """主预览：图片缩放 + 内嵌视频播放。"""
 
+    playback_changed = Signal(bool)
+    playback_failed = Signal(str)
+
     def __init__(self, text: str = "", parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("MediaPreviewCanvas")
@@ -479,6 +487,7 @@ class _PreviewCanvas(QWidget):
         self._player = None
         self._audio = None
         self._video_widget = None
+        self._video_path: Path | None = None
         try:
             from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
             from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -491,10 +500,15 @@ class _PreviewCanvas(QWidget):
             self._player = QMediaPlayer(self)
             self._player.setAudioOutput(self._audio)
             self._player.setVideoOutput(self._video_widget)
+            self._player.playbackStateChanged.connect(self._on_playback_state)
+            self._player.errorOccurred.connect(self._on_player_error)
             video_lay.addWidget(self._video_widget, 1)
             self._stack.addWidget(self._video_wrap)
-        except ImportError:
+        except Exception:
             self._video_wrap = None
+            self._player = None
+            self._audio = None
+            self._video_widget = None
         outer.addWidget(self._stack, 1)
         self._stack.setCurrentWidget(self._image)
 
@@ -504,32 +518,76 @@ class _PreviewCanvas(QWidget):
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         return QSize(240, 240)
 
+    def has_embedded_player(self) -> bool:
+        return self._player is not None and self._video_wrap is not None
+
+    def video_path(self) -> Path | None:
+        return self._video_path
+
+    def is_playing(self) -> bool:
+        if self._player is None:
+            return False
+        from PySide6.QtMultimedia import QMediaPlayer
+
+        return self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+
     def _stop_video(self) -> None:
         if self._player is not None:
             self._player.stop()
 
+    def _on_playback_state(self, state) -> None:
+        from PySide6.QtMultimedia import QMediaPlayer
+
+        self.playback_changed.emit(state == QMediaPlayer.PlaybackState.PlayingState)
+
+    def _on_player_error(self, *_args) -> None:
+        err = ""
+        if self._player is not None:
+            try:
+                err = str(self._player.errorString() or "").strip()
+            except Exception:
+                err = ""
+        name = self._video_path.name if self._video_path else "视频"
+        msg = err or "无法解码或缺少解码器"
+        self.set_video_hint(
+            f"{name}\n页内预览失败：{msg}\n可点「系统打开」用本机播放器观看"
+        )
+        self.playback_failed.emit(msg)
+        self.playback_changed.emit(False)
+
     def set_placeholder(self, text: str) -> None:
+        self._stop_video()
+        self._video_path = None
+        self._stack.setCurrentWidget(self._image)
+        self._image.set_placeholder(text)
+        self.playback_changed.emit(False)
+
+    def set_video_hint(self, text: str) -> None:
         self._stop_video()
         self._stack.setCurrentWidget(self._image)
         self._image.set_placeholder(text)
-
-    def set_video_hint(self, text: str) -> None:
-        self.set_placeholder(text)
+        self.playback_changed.emit(False)
 
     def set_video_path(self, path: Path) -> None:
+        resolved = path.resolve()
+        self._video_path = resolved
         if self._player is None or self._video_wrap is None:
             self.set_video_hint(
-                f"视频已就绪\n{path.name}\n当前环境不支持内嵌播放，请点「播放」用系统播放器观看"
+                f"视频已就绪\n{resolved.name}\n当前环境不支持内嵌播放，请点「系统打开」观看"
             )
             return
         self._stack.setCurrentWidget(self._video_wrap)
-        self._player.setSource(QUrl.fromLocalFile(str(path.resolve())))
+        src = QUrl.fromLocalFile(str(resolved))
+        if self._player.source() != src:
+            self._player.setSource(src)
         self._player.play()
 
     def set_image_path(self, path: Path) -> None:
         self._stop_video()
+        self._video_path = None
         self._stack.setCurrentWidget(self._image)
         self._image.set_image_path(path)
+        self.playback_changed.emit(False)
 
     def source_pixmap(self) -> QPixmap | None:
         return self._image.source_pixmap()
@@ -553,6 +611,7 @@ class _PreviewCanvas(QWidget):
 
     def stop_media(self) -> None:
         self._stop_video()
+        self.playback_changed.emit(False)
 
 
 class _TaskRow(QFrame):
@@ -978,8 +1037,8 @@ class MediaStudioPage(BasePage):
         vid_param_lay.addWidget(switch_box)
 
         self._video_hint = HintLabel(
-            "Seedance 2.0：写镜头描述即可；加 1 张图作首帧，或 2 张作首尾帧。"
-            "生成链接 24 小时有效，请及时保存。"
+            "Seedance：写镜头描述即可；可加 1 张作首帧，或 2 张作首帧+尾帧。"
+            "生成后右侧页内预览播放；失败可用「系统打开」。"
         )
         self._video_hint.setWordWrap(True)
         self._video_hint.setMinimumHeight(44)
@@ -1061,6 +1120,8 @@ class MediaStudioPage(BasePage):
         stage_lay = QVBoxLayout(self._stage)
         stage_lay.setContentsMargins(8, 8, 8, 8)
         self._preview = _PreviewCanvas("生成完成后，图片或视频将显示在这里")
+        self._preview.playback_changed.connect(self._on_preview_playback)
+        self._preview.playback_failed.connect(self._on_preview_playback_failed)
         stage_lay.addWidget(self._preview, 1)
         top_lay.addWidget(self._stage, 1)
 
@@ -1078,9 +1139,14 @@ class MediaStudioPage(BasePage):
         meta.addWidget(self._btn_open)
         self._btn_play = SecondaryButton("播放")
         self._btn_play.setEnabled(False)
-        self._btn_play.setToolTip("播放/暂停内嵌预览，或系统播放器打开")
+        self._btn_play.setToolTip("页内预览播放/暂停")
         self._btn_play.clicked.connect(self._play_result)
         meta.addWidget(self._btn_play)
+        self._btn_sys_play = SecondaryButton("系统打开")
+        self._btn_sys_play.setEnabled(False)
+        self._btn_sys_play.setToolTip("用系统默认播放器打开视频")
+        self._btn_sys_play.clicked.connect(self._open_video_system)
+        meta.addWidget(self._btn_sys_play)
         top_lay.addLayout(meta)
 
         self._works_block = QFrame()
@@ -1193,6 +1259,7 @@ class MediaStudioPage(BasePage):
             self._btn_copy,
             self._btn_open,
             self._btn_play,
+            self._btn_sys_play,
         ]
 
     def _active_model_combo(self) -> ComboBox:
@@ -1204,7 +1271,29 @@ class MediaStudioPage(BasePage):
         is_video = path.suffix.lower() in (".mp4", ".webm", ".mov")
         self._btn_open.setEnabled(True)
         self._btn_play.setEnabled(is_video)
+        self._btn_sys_play.setEnabled(is_video)
         self._btn_copy.setEnabled(not is_video)
+        if not is_video:
+            self._btn_play.setText("播放")
+        elif self._preview.is_playing():
+            self._btn_play.setText("暂停")
+        else:
+            self._btn_play.setText("播放")
+
+    def _on_preview_playback(self, playing: bool) -> None:
+        if not self._ui_ready:
+            return
+        path = self._result_path
+        if path is None or path.suffix.lower() not in _VIDEO_EXTS:
+            self._btn_play.setText("播放")
+            return
+        self._btn_play.setText("暂停" if playing else "播放")
+
+    def _on_preview_playback_failed(self, msg: str) -> None:
+        if not self._ui_ready:
+            return
+        self._btn_play.setText("播放")
+        self.report_status(f"页内预览失败：{msg}", level=StatusLevel.WARNING)
 
     def _on_works_panel_drag(self, dy: int) -> None:
         if not self._ui_ready:
@@ -1373,6 +1462,9 @@ class MediaStudioPage(BasePage):
             return
         self._kind = new_kind
         self._model_combo_stack.setCurrentIndex(0 if new_kind == _KIND_IMAGE else 1)
+        if new_kind == _KIND_VIDEO and len(self._ref_paths) > 2:
+            self._ref_paths = self._ref_paths[:2]
+        self._rebuild_thumbs()
         self._apply_kind_ui()
         self._sync_empty_models_hint()
 
@@ -1391,10 +1483,20 @@ class MediaStudioPage(BasePage):
             self._sync_image_param_panels()
             self._btn_gen.setText("运行 · 生图")
             self._btn_ref.setText("添加参考")
+            self._btn_ref.setEnabled(True)
         else:
             self._btn_gen.setText("运行 · 视频")
             self._sw_web.setEnabled(len(self._ref_paths) == 0)
-            self._btn_ref.setText("添加首帧")
+            n = len(self._ref_paths)
+            if n >= 2:
+                self._btn_ref.setText("首尾帧已满")
+                self._btn_ref.setEnabled(False)
+            elif n == 1:
+                self._btn_ref.setText("添加尾帧")
+                self._btn_ref.setEnabled(True)
+            else:
+                self._btn_ref.setText("添加首帧")
+                self._btn_ref.setEnabled(True)
             self._sync_model_note()
 
     def _on_image_ratio(self, index: int) -> None:
@@ -1713,7 +1815,9 @@ class MediaStudioPage(BasePage):
         )
         if not paths:
             return
-        if self._kind == _KIND_VIDEO or self._img_mode == _IMG_REF:
+        if self._kind == _KIND_VIDEO:
+            max_n = 2
+        elif self._img_mode == _IMG_REF:
             max_n = 1
         elif self._img_mode == _IMG_FUSE:
             max_n = 3 if is_evolink_image_profile(None, self._current_profile_id()) else 10
@@ -1738,12 +1842,14 @@ class MediaStudioPage(BasePage):
             if self._ref_paths:
                 self._sw_web.setChecked(False)
                 self._web_search = False
+            self._apply_kind_ui()
 
     def _clear_refs(self) -> None:
         self._ref_paths = []
         self._rebuild_thumbs()
         if self._kind == _KIND_VIDEO:
             self._sw_web.setEnabled(True)
+            self._apply_kind_ui()
 
     def _remove_ref(self, path_s: str) -> None:
         target = Path(path_s)
@@ -1751,6 +1857,7 @@ class MediaStudioPage(BasePage):
         self._rebuild_thumbs()
         if self._kind == _KIND_VIDEO:
             self._sw_web.setEnabled(len(self._ref_paths) == 0)
+            self._apply_kind_ui()
 
     def _rebuild_thumbs(self) -> None:
         while self._thumbs_lay.count():
@@ -1758,21 +1865,27 @@ class MediaStudioPage(BasePage):
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        for p in self._ref_paths:
-            card = _RefThumb(p)
+        video_caps = ("首帧", "尾帧")
+        for i, p in enumerate(self._ref_paths):
+            caption = ""
+            if self._kind == _KIND_VIDEO and i < len(video_caps):
+                caption = video_caps[i]
+            card = _RefThumb(p, caption=caption)
             card.remove_requested.connect(self._remove_ref)
             self._thumbs_lay.addWidget(card)
-        add_tile = QFrame()
-        add_tile.setObjectName("MediaRefAddTile")
-        add_tile.setFixedSize(72, 86)
-        add_lay = QVBoxLayout(add_tile)
-        add_lay.setContentsMargins(4, 4, 4, 4)
-        add_btn = SecondaryButton("+")
-        add_btn.setObjectName("MediaRefRemoveBtn")
-        add_btn.setFixedSize(52, 40)
-        add_btn.clicked.connect(self._add_refs)
-        add_lay.addWidget(add_btn, 0, Qt.AlignmentFlag.AlignCenter)
-        self._thumbs_lay.addWidget(add_tile)
+        video_full = self._kind == _KIND_VIDEO and len(self._ref_paths) >= 2
+        if not video_full:
+            add_tile = QFrame()
+            add_tile.setObjectName("MediaRefAddTile")
+            add_tile.setFixedSize(72, 86)
+            add_lay = QVBoxLayout(add_tile)
+            add_lay.setContentsMargins(4, 4, 4, 4)
+            add_btn = SecondaryButton("+")
+            add_btn.setObjectName("MediaRefRemoveBtn")
+            add_btn.setFixedSize(52, 40)
+            add_btn.clicked.connect(self._add_refs)
+            add_lay.addWidget(add_btn, 0, Qt.AlignmentFlag.AlignCenter)
+            self._thumbs_lay.addWidget(add_tile)
         self._thumbs_lay.addStretch(1)
 
     def _task_label(self) -> str:
@@ -2015,16 +2128,32 @@ class MediaStudioPage(BasePage):
             show_warning(self, "还没有生成结果。")
 
     def _play_result(self) -> None:
-        if self._preview.is_video_mode():
-            self._preview.toggle_playback()
-            self.report_status("视频预览已切换播放状态", level=StatusLevel.INFO)
+        path = self._result_path
+        if path is None or not path.is_file() or path.suffix.lower() not in _VIDEO_EXTS:
+            show_warning(self, "还没有视频文件。")
             return
+        if not self._preview.has_embedded_player():
+            self._open_video_system()
+            return
+        if not self._preview.is_video_mode() or self._preview.video_path() != path.resolve():
+            self._preview.set_video_path(path)
+            self.report_status("已在页内预览播放", level=StatusLevel.INFO)
+            return
+        self._preview.toggle_playback()
+        self.report_status(
+            "已暂停" if not self._preview.is_playing() else "继续播放",
+            level=StatusLevel.INFO,
+        )
+
+    def _open_video_system(self) -> None:
         from services.os_open import open_path
 
-        if self._result_path and self._result_path.is_file():
-            open_path(str(self._result_path))
-        else:
+        path = self._result_path
+        if path is None or not path.is_file() or path.suffix.lower() not in _VIDEO_EXTS:
             show_warning(self, "还没有视频文件。")
+            return
+        open_path(str(path))
+        self.report_status("已用系统播放器打开", level=StatusLevel.INFO)
 
     def _mark_work_selected(self, path: Path | None) -> None:
         self._selected_work = path

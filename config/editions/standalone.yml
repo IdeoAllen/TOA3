@@ -13,5 +13,6 @@ menu_whitelist:
   - screenshot_tool
   - clipboard_history
   - quadrant_tasks
+  - harness_agent
 
 hide_non_whitelist: true

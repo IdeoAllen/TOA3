@@ -44,12 +44,12 @@ class UpgradeStrip(QWidget):
         ops.addWidget(self._btn_start)
 
         self._btn_skip = SecondaryButton("不更新")
-        self._btn_skip.setToolTip("本次进页不再提醒；可在「更多 → 环境维护」随时更新")
+        self._btn_skip.setToolTip("继续用现有环境；本会话不再提醒。可随时在「更多 → 环境维护」更新")
         self._btn_skip.clicked.connect(self.dismissed.emit)
         ops.addWidget(self._btn_skip)
 
         self._btn_snooze = SecondaryButton("今日不提醒")
-        self._btn_snooze.setToolTip("今天内不再提示此版本；明天仍会提醒")
+        self._btn_snooze.setToolTip("今天内不打扰；明天仍可再提示。推荐网络空闲时再更新")
         self._btn_snooze.clicked.connect(self.snooze_today_requested.emit)
         ops.addWidget(self._btn_snooze)
 
@@ -69,11 +69,12 @@ class UpgradeStrip(QWidget):
         size_hint_mb: int = 0,
     ) -> None:
         self._mode = "prompt"
-        self._box.setTitle("运行环境有新版本")
+        self._box.setTitle("运行环境程序包可更新（可选）")
         size_s = f"约 {size_hint_mb} MB，" if size_hint_mb > 0 else ""
-        self._banner.setText(f"{label}：{installed} → {available}")
+        self._banner.setText(f"{label}：本机 {installed} → 配置 {available}")
         self._detail.setText(
-            f"点「更新」后{size_s}会下载并覆盖程序文件；会话与 API Key 默认保留。"
+            f"这是程序包编号更新，不是 TOA 坏了。可先「今日不提醒」继续用现有环境；"
+            f"若点「更新」则{size_s}整包下载并覆盖程序文件（会话与 API Key 默认保留）。"
             "不会自动开始下载。"
         )
         self._btn_upgrade.show()

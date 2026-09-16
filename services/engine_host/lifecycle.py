@@ -16,16 +16,16 @@ def log_path_for(engine_id: str) -> Path | None:
         return None
     if eid == "harness_agent":
         try:
-            from services.storage_paths import module_data_dir
+            from services.harness_sidecar import sidecar_log_path
 
-            # harness 日志分散；给出 sidecar 常用目录兜底
-            base = module_data_dir("harness_agent", create=True)
-            for cand in (base / "logs", base):
-                if cand.is_dir():
-                    return cand
-            return base
+            return sidecar_log_path()
         except Exception:
-            return None
+            try:
+                from services.storage_paths import module_output_dir
+
+                return module_output_dir("harness_agent")
+            except Exception:
+                return None
     try:
         from services.storage_paths import module_data_dir
 

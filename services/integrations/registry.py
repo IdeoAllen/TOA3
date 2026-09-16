@@ -47,11 +47,22 @@ def summary() -> dict[str, bool]:
 
 
 def status_lines(*, probe: bool = False) -> list[str]:
-    """能力总览文案。
+    """能力总览文案（人话标签，不直接甩内部 id）。
 
     probe=False（默认）：只看配置开关，不发起网络请求——设置页打开时必须走这条。
     probe=True：对已启用项调用 health_check（仅用户点「刷新状态」时使用）。
     """
+    labels = {
+        "dms": "授权服务",
+        "ocr": "截图识字",
+        "llm": "大模型",
+        "image_gen": "图像生成",
+        "video_gen": "视频生成",
+        "watermark_ai": "智能去水印",
+        "tencent_docs": "腾讯文档",
+        "dingtalk": "钉钉",
+        "email": "邮件",
+    }
     lines: list[str] = []
     for name in sorted(summary().keys()):
         client = get_client(name) if name in _REGISTRY else None
@@ -64,6 +75,7 @@ def status_lines(*, probe: bool = False) -> list[str]:
                 ok = False
             state += " · 连通" + ("正常" if ok else "异常/待配置")
         elif enabled:
-            state += " · 配置已登记（点刷新探测）"
-        lines.append(f"{name}: {state}")
+            state += " · 已配置（点刷新探测）"
+        title = labels.get(name, name)
+        lines.append(f"{title}：{state}")
     return lines

@@ -7,13 +7,19 @@ import logging
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QGuiApplication
 
-from modules.clipboard_history.history_store import push_clipboard_image, push_text
+from modules.clipboard_history.history_store import (
+    privacy_on as store_privacy_on,
+    push_clipboard_image,
+    push_text,
+    set_privacy as store_set_privacy,
+)
 
 logger = logging.getLogger("TOA3.clipboard")
 
 
 class ClipboardWatcher(QObject):
     captured = Signal(str)
+    privacy_changed = Signal(bool)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -21,7 +27,6 @@ class ClipboardWatcher(QObject):
         self._last_image_sig = ""
         self._suppress = False
         self._enabled = True
-        self._privacy = False
         cb = QGuiApplication.clipboard()
         if cb is not None:
             cb.dataChanged.connect(self._on_changed)
@@ -30,17 +35,20 @@ class ClipboardWatcher(QObject):
         self._enabled = bool(on)
 
     def set_privacy(self, on: bool) -> None:
-        """隐私时段：暂停入库（投屏开会用）。"""
-        self._privacy = bool(on)
+        """隐私时段：暂停入库（投屏开会用）；状态持久化。"""
+        prev = store_privacy_on()
+        store_set_privacy(on)
+        if bool(on) != prev:
+            self.privacy_changed.emit(bool(on))
 
     def privacy_on(self) -> bool:
-        return bool(self._privacy)
+        return store_privacy_on()
 
     def suppress_once(self) -> None:
         self._suppress = True
 
     def _on_changed(self) -> None:
-        if not self._enabled or self._privacy:
+        if not self._enabled or store_privacy_on():
             return
         if self._suppress:
             self._suppress = False

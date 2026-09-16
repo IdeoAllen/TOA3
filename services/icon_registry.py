@@ -35,6 +35,9 @@ _ALIAS: dict[str, str] = {
     # 办公
     "web_workspace": "web_workspace",
     "quick_notepad": "quick_notepad",
+    "dialog_edit": "dialog_edit",
+    "edit": "dialog_edit",
+    "pen": "dialog_edit",
     "quadrant_tasks": "quadrant_tasks",
     "pomodoro": "pomodoro",
     "clock": "pomodoro",
@@ -81,10 +84,13 @@ _ALIAS: dict[str, str] = {
     "generic_generator_simple": "generic_generator",
     # 业务
     "teaching_assistant_resume": "resume_generator",
+    "assistant_recruit_post": "file_text",
+    "assistant_outfit_swap": "image",
     "resume_generator": "resume_generator",
     "resume_extractor": "resume_extractor",
     "schedule_reminder": "schedule_reminder",
     "schedule_format_converter": "calendar",
+    "training_delivery_board": "package",
     "calendar": "calendar",
     "deduction_note_formatter": "deduction_note_formatter",
     "list": "list",

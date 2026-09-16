@@ -31,6 +31,20 @@ def main() -> int:
         return 1
     win.close()
     app.processEvents()
+
+    # 导出图（物理像素 + dpr=1）+ logical_size → 贴屏不翻倍
+    img2 = QImage(400, 240, QImage.Format.Format_ARGB32)
+    img2.fill(QColor("#22AA66"))
+    pix2 = QPixmap.fromImage(img2)
+    pix2.setDevicePixelRatio(1.0)
+    win2 = pin_screenshot(pix2, logical_size=(200, 120))
+    if win2 is None or win2.width() != 200 or win2.height() != 120:
+        print(f"FAIL: logical_size pin got {None if win2 is None else (win2.width(), win2.height())}")
+        if win2 is not None:
+            win2.close()
+        return 1
+    win2.close()
+    app.processEvents()
     print("VERIFY screenshot_pin OK")
     return 0
 

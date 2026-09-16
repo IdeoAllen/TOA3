@@ -22,6 +22,13 @@ _CORE_MARKERS = (
     "@deepseek-ai/dsh-web-app",
     "@deepseek-ai/cordis-plugin-timer",
 )
+# 在现行 TOA 钉扎的 dsh 核心（如 0.1.1-rc.2）上会拖死 web boot 的插件。
+# 键=包名；值=人话原因（会写进 sanitize 提示）。
+_BOOT_KILLER_PLUGINS: dict[str, str] = {
+    "@nanmicoder/dsh-agent-teams": "依赖 uiConversation，当前 dsh 核心未提供该服务",
+    # 本地 link 的 cost-manager：tool 未声明 output schema → 注册失败，易拖死 web 会话
+    "@dachengge/dsh-cost-manager": "tool 未声明 output schema，启动期注册失败",
+}
 # Windows STATUS_UNTRUSTED_MOUNT_POINT — 穿越「不受信任」联接/装入点
 _WINERR_UNTRUSTED_MOUNT = 448
 
@@ -388,11 +395,54 @@ def _bundle_resolvable(name: str, search_roots: list[Path]) -> bool:
     return False
 
 
+def strip_utf8_bom_in_profile(home: Path | None = None, *, limit: int = 400) -> tuple[bool, str]:
+    """去掉 profile 下 package.json / cordis.yml 的 UTF-8 BOM（dsh JSON.parse 遇 BOM 秒退）。"""
+    from services.harness_config import dsh_home_path
+
+    h = Path(home) if home is not None else dsh_home_path()
+    root = profile_dir_for(h)
+    if not root.is_dir():
+        return True, "无 web profile"
+    targets = {"package.json", "cordis.yml", "cordis.yaml", "meta.json"}
+    fixed = 0
+    scanned = 0
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        # 不跟着坏联接钻进断裂目录
+        base = Path(dirpath)
+        for name in filenames:
+            if name.lower() not in targets:
+                continue
+            scanned += 1
+            if scanned > limit * 20:
+                break
+            path = base / name
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            if not raw.startswith(b"\xef\xbb\xbf"):
+                continue
+            try:
+                path.write_bytes(raw[3:])
+                fixed += 1
+                if fixed >= limit:
+                    break
+            except OSError:
+                continue
+        if fixed >= limit or scanned > limit * 20:
+            break
+    if fixed:
+        return True, f"已清理 {fixed} 个带异常头的配置文件"
+    return True, "配置文件编码正常"
+
+
 def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tuple[bool, str]:
-    """去掉无法解析的可选插件，保留官方核心 bundle，避免 dsh 启动即崩。
+    """去掉无法解析 / 已知会拖死启动的可选插件，保留官方核心 bundle。
 
     WorkBuddy / 历史「dsh plugin add」常写入 dshmarket 等包；若 profile 的
     node_modules 已链到 TOA npm 安装树，这些包不在树上会导致进程秒退。
+    另：部分商店插件依赖更高版本 cordis 服务（如 uiConversation），装上后
+    页面停在 Failed to load plugins — 一律按 denylist 剔除。
     """
     path = profile_dir_for(home) / "package.json"
     if not path.is_file():
@@ -428,15 +478,20 @@ def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tupl
     dsh_block = data.setdefault("dsh", {})
     profile = dsh_block.setdefault("profile", {})
     raw_bundles = list(profile.get("bundles") or [])
-    # 始终保留核心；其余仅保留可解析项
+    # 始终保留核心；其余仅保留可解析且非启动杀手
     kept: list[str] = []
     for core in _WEB_BUNDLES:
         if core not in kept:
             kept.append(core)
     dropped: list[str] = []
+    killer_notes: list[str] = []
     for b in raw_bundles:
         name = str(b).strip()
         if not name or name in kept:
+            continue
+        if name in _BOOT_KILLER_PLUGINS:
+            dropped.append(name)
+            killer_notes.append(f"{name}（{_BOOT_KILLER_PLUGINS[name]}）")
             continue
         if _bundle_resolvable(name, roots):
             kept.append(name)
@@ -448,6 +503,11 @@ def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tupl
     new_deps: dict[str, Any] = {}
     for name, ver in deps.items():
         key = str(name).strip()
+        if key in _BOOT_KILLER_PLUGINS:
+            if key not in dropped:
+                dropped.append(key)
+                killer_notes.append(f"{key}（{_BOOT_KILLER_PLUGINS[key]}）")
+            continue
         if key in kept or _bundle_resolvable(key, roots):
             new_deps[key] = ver
         elif key not in dropped:
@@ -459,8 +519,36 @@ def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tupl
     except OSError as exc:
         return False, _friendly_os_error(exc)
     if dropped:
-        return True, "已移除无法解析的插件：" + "、".join(dropped[:8])
+        msg = "已移除拖死/无法解析的插件：" + "、".join(dropped[:8])
+        if killer_notes:
+            msg += "。" + "；".join(killer_notes[:4])
+        return True, msg
     return True, "profile 插件列表正常"
+
+
+def strip_boot_killer_plugins(home: Path | None = None) -> tuple[bool, str]:
+    """强制剔除 denylist 插件（写 package.json；尽量再跑 dsh plugin remove）。"""
+    from services.harness_config import dsh_home_path
+
+    h = Path(home) if home is not None else dsh_home_path()
+    ok, msg = sanitize_web_profile_package(h)
+    notes = [msg]
+    # 对 denylist 再尝试正式 remove，清干净 node_modules 登记
+    for pkg in list(_BOOT_KILLER_PLUGINS):
+        path = profile_dir_for(h) / "package.json"
+        still = False
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                deps = data.get("dependencies") or {}
+                bundles = ((data.get("dsh") or {}).get("profile") or {}).get("bundles") or []
+                still = pkg in deps or pkg in bundles
+            except (json.JSONDecodeError, OSError):
+                still = True
+        if still:
+            rok, rmsg = remove_plugin(pkg)
+            notes.append(f"remove {pkg}: {'OK' if rok else rmsg}")
+    return ok, "；".join(notes)
 
 
 def ensure_web_profile_bundles(

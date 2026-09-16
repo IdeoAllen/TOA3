@@ -60,8 +60,8 @@
     "danger": "#B91C1C",
     "danger_bg": "#FEE2E2",
     "danger_hover": "#991B1B",
-    "info": "#92400E",
-    "info_bg": "#FFEDD5",
+    "info": "#1D4ED8",
+    "info_bg": "#DBEAFE",
     "card_bg": "#FFFCF8",
     "card_border": "#DDD4C6",
     "card_shadow": "0 2px 8px rgba(0,0,0,0.08)",
@@ -100,7 +100,13 @@
     "statusbar_fg": "#FFF8EB",
     "scrollbar_track": "#F2EFE9",
     "scrollbar_thumb": "#C4B6A2",
-    "scrollbar_thumb_hover": "#5C4D3C"
+    "scrollbar_thumb_hover": "#5C4D3C",
+    "violet": "#6D28D9",
+    "violet_bg": "#EDE9FE",
+    "cyan": "#0E7490",
+    "cyan_bg": "#CFFAFE",
+    "muted": "#475569",
+    "muted_bg": "#F1F5F9"
   },
   "controls": {
     "TButton": {

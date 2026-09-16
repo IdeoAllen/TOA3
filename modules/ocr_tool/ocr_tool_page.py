@@ -58,7 +58,7 @@ class OcrToolPage(BasePage):
         scroll.add_widget(
             HintLabel(
                 "主流程是截图直采，不必先存文件再识别。"
-                "中文不准时点「启用中文识别」（有语言包则一键开；没有则给安装指引）。"
+                "中文不准或乱码时点「启用中文识别」：有语言包一键开；没有则两步安装指引（本页进页不联网探测）。"
             )
         )
 
@@ -74,9 +74,13 @@ class OcrToolPage(BasePage):
         btn_clip.clicked.connect(self._ocr_clipboard_image)
         row.addWidget(btn_clip)
         btn_zh = SecondaryButton("启用中文识别")
-        btn_zh.setToolTip("有 chi_sim 则一键写入语言设置；没有则显示安装指引（不必手改 yml）")
+        btn_zh.setToolTip("本机探测语言包（不联网）；有 chi_sim 一键写入；没有则两步安装指引")
         btn_zh.clicked.connect(self._enable_chinese_ocr)
         row.addWidget(btn_zh)
+        btn_folder = SecondaryButton("打开语言包文件夹")
+        btn_folder.setToolTip("打开本机 tessdata，便于放入 chi_sim.traineddata")
+        btn_folder.clicked.connect(self._open_tessdata_folder)
+        row.addWidget(btn_folder)
         row.addStretch(1)
         primary.add_layout(row)
         scroll.add_widget(primary)
@@ -148,6 +152,13 @@ class OcrToolPage(BasePage):
         )
         self._path.setText(str(p))
 
+    def _maybe_chinese_hint(self, result: dict | None) -> None:
+        from services.integrations.ocr_guide import chinese_warning_for_result
+
+        tip = chinese_warning_for_result(result)
+        if tip:
+            show_info(self, tip)
+
     def _shot_ocr(self, *, full: bool) -> None:
         from services.screenshot_service import run_screenshot_ocr
 
@@ -183,8 +194,10 @@ class OcrToolPage(BasePage):
             if text.strip():
                 cb.setText(text)
                 self.report_status("剪贴板图片已识别并复制文字", level=StatusLevel.SUCCESS)
+                self._maybe_chinese_hint(result)
             else:
                 show_info(self, "识别完成，但未提取到文字。")
+                self._maybe_chinese_hint(result)
 
         try:
             self.run_safe(_run, title="OCR 失败")
@@ -223,6 +236,7 @@ class OcrToolPage(BasePage):
             self.report_status(f"OCR 完成（{engine}）", level=StatusLevel.SUCCESS)
             if not text.strip():
                 show_info(self, "识别完成，但未提取到文字。")
+            self._maybe_chinese_hint(result)
 
         try:
             self.run_safe(_run, title="OCR 失败")
@@ -253,46 +267,45 @@ class OcrToolPage(BasePage):
         self.report_status("已送入编码智能体", level=StatusLevel.SUCCESS)
 
     def _enable_chinese_ocr(self) -> None:
-        """两步内启用中文：探测语言包 → 写入 lang；缺包则给安装指引（勿逼改 yml）。"""
+        """本机探测（不联网）→ 有包一键写 lang；缺则 ≤2 步人话引导。"""
         try:
-            from services.integrations import get_client
-            from services.integrations.config import save_integrations_config
+            from services.integrations.ocr_guide import enable_chinese_ocr, open_chinese_download_page
 
-            client = get_client("ocr")
-            # 借 prepare 探测已装语言（不识别图）
-            try:
-                import pytesseract  # noqa: F401
-            except ImportError:
-                show_warning(
-                    self,
-                    "本机未装 pytesseract。请先安装：pip install pytesseract Pillow\n"
-                    "主路径「框选截图」仍可用英文识别（若已配 Tesseract）。",
-                )
-                return
-            available: set[str] = set()
-            try:
-                _, _, _, available = client._prepare_tesseract(lang="eng")  # noqa: SLF001
-            except Exception as exc:
-                msg = getattr(exc, "user_message", None) or str(exc)
-                show_warning(self, f"{msg}\n\n装好 Tesseract 后可再点「启用中文识别」。")
-                return
-            if "chi_sim" in available:
-                save_integrations_config({"ocr": {"lang": "chi_sim+eng"}})
+            ok, status, msg = enable_chinese_ocr()
+            if ok:
                 self.report_status("已启用中文识别（chi_sim+eng）", level=StatusLevel.SUCCESS)
-                show_info(self, "已写入语言设置：chi_sim+eng。再截一张图即可。")
+                show_info(self, msg)
                 return
-            show_info(
-                self,
-                "本机 Tesseract 还没有中文包 chi_sim。\n\n"
-                "① 打开 https://github.com/tesseract-ocr/tessdata 下载 chi_sim.traineddata\n"
-                "② 放到 Tesseract 的 tessdata 目录\n"
-                "③ 回到本页再点「启用中文识别」\n\n"
-                "未装中文前，英文识别照常可用。",
-            )
+            show_info(self, msg)
+            # 缺引擎/语言包时：可选打开下载页（用户主动，非进页探测）
+            if status.code in ("missing_engine", "missing_lang"):
+                from core.user_messages import ask_confirm
+
+                if ask_confirm(
+                    self,
+                    "是否用浏览器打开下载页？\n（仅在你确认后打开，进页不会自动联网。）",
+                    title="中文 OCR 安装",
+                ):
+                    opened, tip = open_chinese_download_page()
+                    if opened:
+                        self.report_status(tip, level=StatusLevel.INFO)
+                    else:
+                        show_warning(self, tip)
         except Exception as exc:
             show_warning(self, str(exc))
 
+    def _open_tessdata_folder(self) -> None:
+        from services.integrations.ocr_guide import open_tessdata_folder
+
+        ok, tip = open_tessdata_folder()
+        if ok:
+            self.report_status(tip, level=StatusLevel.INFO)
+            show_info(self, tip + "\n\n把 chi_sim.traineddata 放进该文件夹后，再点「启用中文识别」。")
+        else:
+            show_warning(self, tip)
+
     def on_enter(self) -> None:
+        # 进页只恢复上次结果，禁止同步长联网 / 语言包探测拖死 UI
         if OcrToolPage._last_text and not self._text.toPlainText().strip():
             self._text.setPlainText(OcrToolPage._last_text)
         if OcrToolPage._last_path:

@@ -25,7 +25,12 @@ class HintLabel(QLabel):
 
 
 class SemanticLabel(QLabel):
-    """语义色条：success / warning / danger / info。compact=窄行内徽章；score=大号得分/扣分数字。"""
+    """语义色条：success / warning / danger / info / violet / cyan / muted。
+    compact=窄行内徽章；score=大号得分/扣分数字。"""
+
+    _KINDS = frozenset(
+        {"success", "warning", "danger", "info", "violet", "cyan", "muted"}
+    )
 
     def __init__(
         self,
@@ -37,7 +42,8 @@ class SemanticLabel(QLabel):
         score: bool = False,
     ) -> None:
         super().__init__(text, parent)
-        self.setProperty("class", f"semantic-{kind}")
+        k = kind if kind in self._KINDS else "info"
+        self.setProperty("class", f"semantic-{k}")
         if compact:
             self.setProperty("compact", "true")
         if score:

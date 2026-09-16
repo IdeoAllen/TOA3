@@ -21,7 +21,7 @@ harness:
   web_readability_boost: false
   theme_harmonize: false
   feed_auto_inject: false
-  # 双路线预制包（钉扎 dsh 0.1.5-rc.1；zip 在 Portal downloads）
+  # 双路线预制包：bundle 钉扎 0.1.5-rc.1.1（CDN zip）；dsh 内核 npm 仍为 0.1.5-rc.1（见 harness_setup.DSH_PINNED_VERSION）
   official_bundle_url: https://www.yczh.tech/downloads/harness-official-0.1.5-rc.1.1.zip
   official_sha256: 0d655f2ee47684fcbb54c0bac0454545ab074d48839c3a8cea1087dfb89fe3af
   official_bundle_version: "0.1.5-rc.1.1"

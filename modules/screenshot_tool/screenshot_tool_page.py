@@ -57,7 +57,7 @@ class ScreenshotToolPage(BasePage):
                 f"{'已开启' if hotkeys_enabled() else '已关闭'}\n"
                 "标注：R/C/A/P/M/T 工具 · S 重选 · F 填充 · 1/2/3 细中粗 · "
                 "Shift 正方形/矩形马赛克 · Ctrl+Z/Y 撤销重做 · Enter 完成复制 · "
-                "Ctrl+S 另存 · Esc 取消",
+                "钉针贴屏 · Ctrl+S 另存 · Esc 取消",
                 kind="info",
             )
         )

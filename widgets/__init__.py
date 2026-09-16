@@ -22,7 +22,7 @@ from widgets.containers import (
     VBox,
 )
 from widgets.dialog_actions import DialogButtonRow
-from widgets.displays import CalendarWidget, DataTable, ListWidget, ProgressBar, TabWidget, TreeWidget
+from widgets.displays import CalendarWidget, DataTable, ListWidget, ProgressBar, SoftActivityBar, TabWidget, TreeWidget
 from widgets.inputs import (
     ComboBox,
     DateEdit,
@@ -91,6 +91,7 @@ CONTROL_CLASSES = [
     "ListWidget",
     "TreeWidget",
     "ProgressBar",
+    "SoftActivityBar",
     "TabWidget",
     "DataTable",
     "DialogButtonRow",

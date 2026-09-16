@@ -132,6 +132,8 @@ shell:
 4. Wave★：壳内可发现 + 热键/托盘/Overlay 至少一种。  
 5. 最终 `navigate(module_id)`，id 必须在 `menu_items`。
 
+配置点全集与 Mac 口径：[ARCH-11-全局介入与热键](ARCH-11-全局介入与热键.md) · `services/global_shell_features.py`。
+
 ---
 
 ## 4. 路线图状态
@@ -152,6 +154,7 @@ shell:
 | 文档 | 关系 |
 |------|------|
 | [01-平台基础](ARCH-01-平台基础.md) | 分层、登记、授权摘要 |
+| [ARCH-11-全局介入与热键](ARCH-11-全局介入与热键.md) | 热键/拖入/全屏配置点 · 验证 · Mac |
 | [16-TOA授权…](ARCH-04-授权与单机联网.md) | 菜单不走 Portal 下发 |
 | `docs/PROD-01-功能清单与优先级.md` | Wave★ |
 | `docs/规范/STD-01-工程标准与流程.md` | 工程门禁 |

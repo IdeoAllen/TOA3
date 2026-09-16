@@ -13,9 +13,13 @@ from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
 from modules.clipboard_history.history_store import (
     clear_history,
     delete_item,
+    filter_history,
     find_item,
     image_abs_path,
+    list_line,
     load_history,
+    notepad_handoff,
+    privacy_on,
     push_clipboard_image,
     push_text,
     toggle_pin,
@@ -23,6 +27,7 @@ from modules.clipboard_history.history_store import (
 from modules.clipboard_history.phrase_store import add_phrase, delete_phrase, load_phrases
 from widgets import (
     CheckBox,
+    ComboBox,
     FormSection,
     HintLabel,
     LineEdit,
@@ -33,12 +38,13 @@ from widgets import (
 )
 from widgets.list_edit import ListPanel, confirm_delete
 
-_SOURCE_LABEL = {
-    "auto": "自动",
-    "manual": "手动",
-    "screenshot": "截图",
-    "ocr": "OCR",
-}
+_SOURCE_FILTERS = (
+    ("", "全部来源"),
+    ("screenshot", "截图"),
+    ("ocr", "OCR"),
+    ("auto", "自动"),
+    ("manual", "手动"),
+)
 
 
 class ClipboardHistoryPage(BasePage):
@@ -51,6 +57,7 @@ class ClipboardHistoryPage(BasePage):
         self._phrase_ids: list[str] = []
         self._copy_target = "history"  # phrase | history
         self._shortcuts: list[QShortcut] = []
+        self._source_key = ""
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -59,9 +66,15 @@ class ClipboardHistoryPage(BasePage):
         # 侧栏已有模块名；热键说明放自动捕获 ToolTip，不占常驻顶栏
         tools = QHBoxLayout()
         self._search = LineEdit()
-        self._search.setPlaceholderText("搜索历史…")
+        self._search.setPlaceholderText("搜索历史（正文 / 来源）…")
         self._search.textChanged.connect(self._reload)
         tools.addWidget(self._search, 1)
+        self._source = ComboBox()
+        for key, label in _SOURCE_FILTERS:
+            self._source.addItem(label, key)
+        self._source.setToolTip("按来源过滤（截图同源可筛）")
+        self._source.currentIndexChanged.connect(self._on_source_changed)
+        tools.addWidget(self._source)
         self._auto = CheckBox("自动捕获")
         self._auto.setChecked(True)
         self._auto.setToolTip(
@@ -69,6 +82,12 @@ class ClipboardHistoryPage(BasePage):
         )
         self._auto.toggled.connect(lambda on: get_clipboard_watcher().set_enabled(on))
         tools.addWidget(self._auto)
+        self._privacy = CheckBox("隐私时段")
+        self._privacy.setToolTip(
+            "开会/投屏：暂停一切入库（含截图/OCR），列表与预览遮罩正文。"
+        )
+        self._privacy.toggled.connect(self._on_privacy_toggled)
+        tools.addWidget(self._privacy)
         scroll.add_layout(tools)
 
         body = QHBoxLayout()
@@ -78,7 +97,7 @@ class ClipboardHistoryPage(BasePage):
             edit_label="复制",
             delete_label="删除",
             show_refresh=False,
-            hint="★置顶 · 双击 / Ctrl+C 复制 · Delete 删除",
+            hint="★置顶 · 双击 / Ctrl+C 复制 · Delete 删除 · 隐私时段遮罩",
         )
         self._list.list_widget.setMinimumHeight(360)
         self._list.bind_add(self._capture)
@@ -121,7 +140,7 @@ class ClipboardHistoryPage(BasePage):
         self._preview_img.setMinimumHeight(360)
         self._stack.addWidget(self._preview_img)
         preview.add_widget(self._stack)
-        preview.add_widget(HintLabel("Ctrl+C 或双击列表项复制到剪贴板。"))
+        preview.add_widget(HintLabel("Ctrl+C 或双击列表项复制到剪贴板。隐私时段预览亦遮罩。"))
         body.addWidget(preview, 2)
         scroll.add_layout(body)
 
@@ -148,10 +167,13 @@ class ClipboardHistoryPage(BasePage):
         phrases.add_layout(prow)
         scroll.add_widget(phrases)
 
+        self._sync_privacy_ui(block_signal=True)
         self._reload_phrases()
         self._reload()
         self._bind_shortcuts()
-        get_clipboard_watcher().captured.connect(lambda _=None: self._reload())
+        w = get_clipboard_watcher()
+        w.captured.connect(lambda _=None: self._reload())
+        w.privacy_changed.connect(lambda _on: self._on_privacy_external())
 
     def _bind_shortcuts(self) -> None:
         if self._shortcuts:
@@ -194,6 +216,32 @@ class ClipboardHistoryPage(BasePage):
 
     def _set_copy_target(self, target: str) -> None:
         self._copy_target = "phrase" if target == "phrase" else "history"
+
+    def _on_source_changed(self, _index: int = 0) -> None:
+        data = self._source.currentData()
+        self._source_key = str(data or "")
+        self._reload()
+
+    def _sync_privacy_ui(self, *, block_signal: bool = False) -> None:
+        on = privacy_on()
+        if block_signal:
+            self._privacy.blockSignals(True)
+        self._privacy.setChecked(on)
+        if block_signal:
+            self._privacy.blockSignals(False)
+        get_clipboard_watcher().set_privacy(on)
+
+    def _on_privacy_toggled(self, on: bool) -> None:
+        get_clipboard_watcher().set_privacy(bool(on))
+        self._reload()
+        if on:
+            self.report_status("隐私时段已开 · 暂停入库并遮罩", level=StatusLevel.WARNING)
+        else:
+            self.report_status("隐私时段已关 · 恢复捕获", level=StatusLevel.SUCCESS)
+
+    def _on_privacy_external(self) -> None:
+        self._sync_privacy_ui(block_signal=True)
+        self._reload()
 
     def _copy_smart(self) -> None:
         """Ctrl+C：短语列表焦点/最近点选 → 复制短语；否则复制历史。输入框交给原控件。"""
@@ -248,29 +296,22 @@ class ClipboardHistoryPage(BasePage):
         self.report_status("短语已复制", level=StatusLevel.SUCCESS)
 
     def _filtered(self) -> list[dict]:
-        q = (self._search.text() or "").strip().lower()
-        items = load_history()
-        if not q:
-            return items
-        out = []
-        for x in items:
-            blob = f"{x.get('text') or ''} {x.get('kind') or ''} {x.get('source') or ''}".lower()
-            if q in blob:
-                out.append(x)
-        return out
+        return filter_history(
+            load_history(),
+            query=self._search.text() or "",
+            source=self._source_key,
+        )
 
     def _reload(self) -> None:
         items = self._filtered()
+        priv = privacy_on()
         self._ids = [str(x.get("id") or "") for x in items]
-        lines = []
-        for x in items:
-            star = "★ " if x.get("pinned") else ""
-            kind = "🖼" if x.get("kind") == "image" else "文"
-            src = _SOURCE_LABEL.get(str(x.get("source") or ""), str(x.get("source") or ""))
-            preview = (x.get("text") or "").replace("\n", " ")[:64]
-            lines.append(f"{star}[{kind}] {x.get('time', '')} · {src} · {preview}")
+        lines = [list_line(x, privacy=priv) for x in items]
         self._list.set_items(lines)
-        self.report_status(f"历史 {len(items)} · 短语 {len(self._phrase_ids)}")
+        tag = " · 隐私" if priv else ""
+        self.report_status(f"历史 {len(items)} · 短语 {len(self._phrase_ids)}{tag}")
+        # 刷新当前预览遮罩态
+        self._on_select()
 
     def _current_id(self) -> str | None:
         row = self._list.current_row()
@@ -283,6 +324,12 @@ class ClipboardHistoryPage(BasePage):
         item = find_item(iid) if iid else None
         if not item:
             self._preview_text.clear()
+            self._stack.setCurrentIndex(0)
+            return
+        if privacy_on():
+            self._preview_text.setPlainText("••••（隐私时段 · 内容已遮罩）")
+            self._preview_img.setPixmap(QPixmap())
+            self._preview_img.setText("••••（隐私时段）")
             self._stack.setCurrentIndex(0)
             return
         if item.get("kind") == "image":
@@ -305,6 +352,7 @@ class ClipboardHistoryPage(BasePage):
                     scaled.setDevicePixelRatio(dpr)
                     self._preview_img.setMinimumSize(lw, lh)
                     self._preview_img.setPixmap(scaled)
+                    self._preview_img.setText("")
                     self._stack.setCurrentIndex(1)
                     return
             self._preview_text.setPlainText(str(item.get("text") or "[图片丢失]"))
@@ -314,6 +362,9 @@ class ClipboardHistoryPage(BasePage):
             self._stack.setCurrentIndex(0)
 
     def _capture(self) -> None:
+        if privacy_on():
+            show_warning(self, "隐私时段中，无法捕获入库。请先关闭隐私时段。")
+            return
         cb = QGuiApplication.clipboard()
         if cb is None:
             return
@@ -373,27 +424,22 @@ class ClipboardHistoryPage(BasePage):
     def _send_to_notepad(self) -> None:
         iid = self._current_id()
         item = find_item(iid) if iid else None
-        if not item:
-            show_warning(self, "请先选择一条历史。")
+        payload = notepad_handoff(item)
+        if not payload:
+            if not item:
+                show_warning(self, "请先选择一条历史。")
+            elif item.get("kind") == "image":
+                show_warning(self, "图片文件已丢失。")
+            else:
+                show_warning(self, "该条没有可写入的文本。")
             return
         from modules.quick_notepad.quick_notepad_page import QuickNotepadPage
 
-        if item.get("kind") == "image":
-            path = image_abs_path(item)
-            if path is None:
-                show_warning(self, "图片文件已丢失。")
-                return
-            QuickNotepadPage.stash_incoming(
-                "",
-                title="来自剪贴板历史",
-                image_path=str(path),
-            )
-        else:
-            text = str(item.get("text") or "").strip()
-            if not text:
-                show_warning(self, "该条没有可写入的文本。")
-                return
-            QuickNotepadPage.stash_incoming(text, title="来自剪贴板历史")
+        QuickNotepadPage.stash_incoming(
+            str(payload.get("body") or ""),
+            title=str(payload.get("title") or "来自剪贴板历史"),
+            image_path=payload.get("image_path"),
+        )
         win = self.window()
         if win is not None and hasattr(win, "navigate"):
             win.navigate("quick_notepad")
@@ -436,11 +482,13 @@ class ClipboardHistoryPage(BasePage):
 
     def on_enter(self) -> None:
         get_clipboard_watcher().set_enabled(self._auto.isChecked())
-        get_clipboard_watcher().set_privacy(False)
+        # 恢复持久化隐私态，禁止进页强关
+        self._sync_privacy_ui(block_signal=True)
         self._reload_phrases()
         self._reload()
         self._set_shortcuts_active(True)
-        self.report_status("剪贴板 · Alt+Shift+C 速贴")
+        priv = " · 隐私时段" if privacy_on() else ""
+        self.report_status(f"剪贴板 · Alt+Shift+C 速贴{priv}")
 
     def on_leave(self) -> None:
         self._set_shortcuts_active(False)

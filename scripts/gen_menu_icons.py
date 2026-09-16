@@ -56,6 +56,10 @@ ICONS: dict[str, str] = {
   <path d="M14 3v4h4"/>
   <path d="M9.5 11h7M9.5 15h5"/>
 """,
+    "dialog_edit": """
+  <path d="M12 20h9"/>
+  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+""",
     "quadrant_tasks": """
   <rect x="3.5" y="3.5" width="17" height="17" rx="2"/>
   <path d="M12 3.5v17M3.5 12h17"/>

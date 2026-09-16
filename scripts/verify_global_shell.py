@@ -80,7 +80,16 @@ def main() -> int:
         if err:
             errors.append(f"Double+Ctrl hook: {err}")
         else:
-            print("double_ctrl hook OK")
+            # 冒烟：CallNextHookEx 不得因 LPARAM 溢出抛错（否则吞键）
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                if hook._call_next and hook._hook_id:
+                    hook._call_next(hook._hook_id, 0, 0, wintypes.LPARAM(0))
+                print("double_ctrl hook OK (CallNextHookEx smoke)")
+            except Exception as exc:
+                errors.append(f"Double+Ctrl CallNextHookEx: {exc}")
         hook.stop()
     else:
         print("double_ctrl hook skipped (disabled or not owner)")

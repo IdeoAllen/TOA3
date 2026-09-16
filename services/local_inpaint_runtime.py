@@ -95,9 +95,9 @@ def install_status() -> dict[str, Any]:
         "weights_dir": str(weights_root()),
         "device": device,
         "user_hint": (
-            f"可选 AI 增强已就绪（{device}）；默认仍走本地轻量"
+            f"LaMa 已就绪（{device}）；勾选「AI 增强」走 lama，不勾仍为 light"
             if ready
-            else "未装 LaMa 不影响使用；需要时再到「安装本机模型」下载"
+            else "未装 LaMa 不影响 light；需要时在去水印页点「安装 AI…」"
         ),
     }
 

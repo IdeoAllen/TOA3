@@ -96,7 +96,7 @@ _DEFAULT_GROUPS: list[dict[str, Any]] = [
                 "key": TAB_INTEGRATIONS,
                 "title": "能力接入",
                 "icon": "harness_agent",
-                "subtitle": "Harness、OCR 与三方连通",
+                "subtitle": "截图识字与本机能力状态",
             },
             {
                 "key": TAB_DIAGNOSTICS,

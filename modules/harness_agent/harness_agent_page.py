@@ -3061,9 +3061,17 @@ class HarnessAgentPage(BasePage):
         self._run_bg(_job, busy_label="正在备份配置…", on_ok=_after)
 
     def _on_restore_last_good(self) -> None:
+        from services.harness_profile_versions import list_snapshots, restore_last_good
+
+        if not list_snapshots():
+            self.report_status(
+                "尚无「上次可用」备份。请先能正常打开服务后，在「更多 → 环境维护」点「备份当前配置」。",
+                level=StatusLevel.WARNING,
+            )
+            return
+
         def _job() -> tuple[bool, str]:
             from services.harness_plugins import strip_boot_killer_plugins
-            from services.harness_profile_versions import restore_last_good
 
             ok, msg = restore_last_good()
             # 恢复后再扫一遍 denylist，防止旧快照仍含杀手插件

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""全局双击 Ctrl 唤起主窗（RegisterHotKey 无法表达 Double+Ctrl）。"""
+"""全局双击 Ctrl 唤起主窗（RegisterHotKey 无法表达 Double+Ctrl）。
+
+铁律：WH_KEYBOARD_LL 回调里任何异常 / CallNextHookEx 失败都会吞键，
+影响整机输入。必须 64 位安全传参，且始终把消息交给下一条钩子。
+"""
 from __future__ import annotations
 
 import ctypes
@@ -21,6 +25,13 @@ VK_RCONTROL = 0xA3
 _DOUBLE_CTRL_INTERVAL_S = 0.55
 _FIRE_DEBOUNCE_S = 0.45
 
+# 指针宽度类型（勿用 32 位 c_long 当 LPARAM，否则 CallNextHookEx 溢出 → 吞键）
+_ULONG_PTR = ctypes.c_size_t
+_LRESULT = ctypes.c_ssize_t
+_LowLevelKeyboardProc = ctypes.WINFUNCTYPE(
+    _LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
+)
+
 
 def is_double_ctrl_spec(spec: str) -> bool:
     raw = str(spec or "").strip().lower().replace(" ", "")
@@ -33,7 +44,7 @@ class _KBDLLHOOKSTRUCT(ctypes.Structure):
         ("scanCode", wintypes.DWORD),
         ("flags", wintypes.DWORD),
         ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ("dwExtraInfo", _ULONG_PTR),
     ]
 
 
@@ -50,6 +61,7 @@ class DoubleCtrlSummonService(QObject):
         self._last_ctrl_down = 0.0
         self._last_fire = 0.0
         self._user32 = None
+        self._call_next = None
 
     def apply(self, callback: Callable[[], None] | None) -> str:
         self.stop()
@@ -67,16 +79,38 @@ class DoubleCtrlSummonService(QObject):
 
         self._user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
+        call_next = self._user32.CallNextHookEx
+        call_next.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+        call_next.restype = _LRESULT
+        self._call_next = call_next
 
-        @ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+        @_LowLevelKeyboardProc
         def _hook_proc(n_code, w_param, l_param):
-            if n_code >= 0:
-                kb = ctypes.cast(l_param, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
-                is_up = int(w_param) in (WM_KEYUP, WM_SYSKEYUP)
-                self._on_key(int(kb.vkCode), is_up)
-            if self._hook_id:
-                return self._user32.CallNextHookEx(self._hook_id, n_code, w_param, l_param)
-            return 0
+            # 绝对禁止让异常冒出 ctypes 回调（否则返回值异常 → 系统吞键）
+            try:
+                if int(n_code) >= 0 and l_param:
+                    kb = ctypes.cast(l_param, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
+                    is_up = int(w_param) in (WM_KEYUP, WM_SYSKEYUP)
+                    self._on_key(int(kb.vkCode), is_up)
+            except Exception:
+                logger.debug("double ctrl hook handler error", exc_info=True)
+            try:
+                hhk = self._hook_id or 0
+                return call_next(hhk, n_code, w_param, l_param)
+            except Exception:
+                # 最后兜底：仍尽量放行（hhk=NULL 对 LL 钩子合法）
+                try:
+                    return call_next(0, n_code, w_param, l_param)
+                except Exception:
+                    logger.exception("CallNextHookEx failed — unloading double-ctrl hook")
+                    # 异步卸钩，避免在钩子里 Unhook
+                    try:
+                        from PySide6.QtCore import QTimer
+
+                        QTimer.singleShot(0, self.stop)
+                    except Exception:
+                        pass
+                    return 0
 
         self._proc = _hook_proc
         # WH_KEYBOARD_LL：hMod 在本进程钩子应为 NULL。PyInstaller 冻结包里
@@ -101,6 +135,7 @@ class DoubleCtrlSummonService(QObject):
             last_err = int(kernel32.GetLastError() or 0)
         if not self._hook_id:
             self._proc = None
+            self._call_next = None
             try:
                 self.summon_requested.disconnect()
             except Exception:
@@ -154,6 +189,7 @@ class DoubleCtrlSummonService(QObject):
                 logger.debug("UnhookWindowsHookEx failed", exc_info=True)
         self._hook_id = None
         self._proc = None
+        self._call_next = None
         self._last_ctrl_up = 0.0
         self._last_ctrl_down = 0.0
         import warnings

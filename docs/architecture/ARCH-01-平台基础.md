@@ -90,7 +90,7 @@ config/* · resources/qss  配置与生成后的皮肤
 | TOA 桌面授权 | license code + 本机 `license.json`；入口 `services/license_client.py`（包装历史实现） |
 | 可售方案 | `config/feature_packs.yml`：`tiyan`（全功能方案）；`local_free` 为单机免费层 |
 | 菜单 | 本机 yaml；Portal **无**远程菜单下发 |
-| DMS | 独立免费 Web；**不是** TOA 账本 |
+| DMS | 独立专业可售 Web（高门槛）；**不是** TOA 账本；**不是**免费钩子 |
 
 ---
 

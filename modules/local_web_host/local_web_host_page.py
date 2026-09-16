@@ -40,6 +40,7 @@ from widgets import (
     ProgressBar,
     SecondaryButton,
     SectionTitle,
+    SoftActivityBar,
 )
 
 
@@ -294,7 +295,7 @@ class LocalWebHostPage(BasePage):
         # —— 紧凑工具条：状态 + 主操作 + 刷新 + 更多 ——
         bar = QHBoxLayout()
         bar.setSpacing(6)
-        self._status = HintLabel("① 检测安装…")
+        self._status = HintLabel("正在检测安装…")
         bar.addWidget(self._status, 1)
 
         self._action_stack = QStackedWidget()
@@ -344,6 +345,10 @@ class LocalWebHostPage(BasePage):
         self._toolbar.hide()  # 检测完成前不显示
         outer.addWidget(self._toolbar)
 
+        # A4.7：细活动条常占位；仅启停拉起，进页检测不弹
+        self._activity = SoftActivityBar()
+        outer.addWidget(self._activity)
+
         self._body = QStackedWidget()
         # 0 = 安装门；1 = 工作区
         gate = QWidget()
@@ -351,7 +356,7 @@ class LocalWebHostPage(BasePage):
         gate_lay.setContentsMargins(24, 16, 24, 16)
         gate_lay.setSpacing(12)
         gate_lay.addStretch(1)
-        self._gate_title = HintLabel("① 正在检测安装…")
+        self._gate_title = HintLabel("正在检测安装…")
         self._gate_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         gate_lay.addWidget(self._gate_title)
         self._gate_body = HintLabel("请稍候，确认状态后再给出下一步操作。")
@@ -364,14 +369,19 @@ class LocalWebHostPage(BasePage):
         prog_lay = QVBoxLayout(prog_wrap)
         prog_lay.setContentsMargins(0, 8, 0, 8)
         prog_lay.setSpacing(6)
+        # 仅「一键安装」用确定进度条；检测阶段不显示
         self._progress = ProgressBar()
-        self._progress.setRange(0, 0)  # 不确定进度（检测中）
+        self._progress.setObjectName("EngineInstallProgress")
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
         self._progress.setTextVisible(False)
         self._progress.setMinimumHeight(10)
         self._progress.setMaximumHeight(10)
+        self._progress.hide()
         prog_lay.addWidget(self._progress)
-        self._progress_label = HintLabel("检测安装与端口…")
+        self._progress_label = HintLabel("")
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._progress_label.hide()
         prog_lay.addWidget(self._progress_label)
         gate_lay.addWidget(prog_wrap, 0, Qt.AlignmentFlag.AlignHCenter)
 
@@ -414,20 +424,27 @@ class LocalWebHostPage(BasePage):
         """以 prefer_embed（含用户「更多」写入）为准，保证内嵌/浏览器可来回切换。"""
         return prefer_embed(self.engine_id)
 
+    def _set_activity(self, active: bool, *, immediate: bool = False) -> None:
+        """启停活动条；装载/检测禁止拉起。"""
+        try:
+            self._activity.set_active(bool(active), immediate=immediate)
+        except RuntimeError:
+            pass
+
     def _set_detecting_ui(self, detecting: bool) -> None:
         self._status_known = not detecting
         if detecting:
             self._toolbar.hide()
             self._body.setCurrentIndex(0)
-            self._gate_title.setText("① 正在检测安装…")
+            self._gate_title.setText("正在检测安装…")
             self._gate_body.setText("请稍候，确认状态后再给出下一步操作。")
-            self._progress.show()
-            self._progress.setRange(0, 0)
-            self._progress_label.setText("检测安装与端口…")
-            self._progress_label.show()
+            # 检测：无活动条、无 indeterminate ProgressBar（A4.7）
+            self._set_activity(False)
+            self._progress.hide()
+            self._progress_label.hide()
             self._btn_install.hide()
             self._btn_gate_pick.hide()
-            self._status.setText("① 检测安装…")
+            self._status.setText("正在检测安装…")
         else:
             self._toolbar.show()
 
@@ -463,6 +480,7 @@ class LocalWebHostPage(BasePage):
         self._visit_gen += 1
         self._poll.stop()
         self._auto_start_tried = False
+        self._set_activity(False)
 
     def on_enter(self) -> None:
         self.report_status(self.page_title, level=StatusLevel.INFO)
@@ -647,10 +665,11 @@ class LocalWebHostPage(BasePage):
         spec = get_spec(self.engine_id)
         title = (spec.title if spec else self.page_title) or self.page_title
         if installing:
-            self._gate_title.setText(f"② 正在安装 {title}")
-            self._status.setText("② 安装进行中…")
+            self._gate_title.setText(f"正在安装 {title}")
+            self._status.setText("安装进行中…")
             self._btn_install.hide()
             self._btn_gate_pick.hide()
+            self._set_activity(False)
             self._progress.show()
             self._progress.setRange(0, 100)
             self._progress.setValue(max(1, self._progress.value()))
@@ -660,10 +679,11 @@ class LocalWebHostPage(BasePage):
         # 未安装：检测已结束，再给出下一步按钮
         self._set_detecting_ui(False)
         self._toolbar.hide()
+        self._set_activity(False)
         self._progress.hide()
         self._progress_label.hide()
-        self._gate_title.setText(f"② 未检测到安装 · {title}")
-        self._status.setText("② 未安装 · 请选择下一步")
+        self._gate_title.setText(f"未检测到安装 · {title}")
+        self._status.setText("未安装 · 请选择下一步")
         self._set_action_running(False)
         self._btn_start.setEnabled(False)
         if can_one_click_install(self.engine_id):
@@ -695,16 +715,17 @@ class LocalWebHostPage(BasePage):
         self._btn_reload.setEnabled(True)
         has_live = self._host.has_live_view() if self._uses_embed() else False
         ready_hint = (
-            "③ 正在启动服务…\n就绪后自动嵌入"
+            "正在启动服务…\n就绪后自动装载界面"
             if self._uses_embed()
-            else "③ 正在启动服务…\n就绪后将在系统浏览器打开"
+            else "正在启动服务…\n就绪后可打开工作台"
         )
         self._host.set_placeholder(
             ready_hint
             + ("\n（大模型引擎首次启动可能需数分钟）" if self.engine_id == "comfyui_web" else ""),
             hide_view=not has_live,
         )
-        self._status.setText("③ 启动中…")
+        self._status.setText("正在启动…")
+        self._set_activity(True, immediate=True)
         self.report_status("正在启动…" if auto else "正在启动服务…", level=StatusLevel.INFO)
         self._poll.setInterval(800)
 
@@ -726,6 +747,7 @@ class LocalWebHostPage(BasePage):
         was_auto = bool(getattr(self, "_start_was_auto", False))
         if not ok:
             self._start_pending = False
+            self._set_activity(False)
             if not was_auto:
                 show_warning(self, msg)
             self.report_status(msg, level=StatusLevel.WARNING)
@@ -738,6 +760,8 @@ class LocalWebHostPage(BasePage):
         if spec is not None:
             probe_port_host(int(spec.port), engine_id=self.engine_id, force=True)
         self.report_status(msg, level=StatusLevel.INFO)
+        # 服务已起：活动条停；界面装载改走主区遮罩
+        self._set_activity(False)
         QTimer.singleShot(200, self._after_start_ok)
 
     def _after_start_ok(self) -> None:
@@ -801,14 +825,18 @@ class LocalWebHostPage(BasePage):
         self._status_known = True
         if not self._toolbar.isVisible():
             self._toolbar.show()
-        if self._progress.isVisible():
+        if self._progress.isVisible() and not self._install_busy:
             self._progress.hide()
-        if self._progress_label.isVisible():
+        if self._progress_label.isVisible() and not self._install_busy:
             self._progress_label.hide()
-        phase = "④ 运行中" if st.running else ("③ 启动中" if (starting or self._start_pending) else "② 已安装")
+        phase = "运行中" if st.running else ("启动中" if (starting or self._start_pending) else "已安装")
         status_text = f"{phase} · {st.detail} · {root_s}"
         if self._status.text() != status_text:
             self._status.setText(status_text)
+        if st.running and not (starting or self._start_pending):
+            self._set_activity(False)
+        elif starting or self._start_pending:
+            self._set_activity(True)
         run_like = bool(st.running or starting or self._start_pending)
         self._set_action_running(run_like)
         if not run_like:
@@ -861,7 +889,7 @@ class LocalWebHostPage(BasePage):
                 self._start_fail_ticks = 0
             has_live = self._host.has_live_view()
             self._host.set_placeholder(
-                "③ 正在启动…\n等待端口打开后自动加载"
+                "正在启动…\n等待端口打开后自动加载"
                 + (
                     "\n（大模型引擎首次启动可能需数分钟）"
                     if self.engine_id == "comfyui_web"
@@ -875,7 +903,7 @@ class LocalWebHostPage(BasePage):
                 self._drive_lifecycle(st)
             else:
                 self._host.set_placeholder(
-                    "② 已安装 · 启动未就绪，可点「启动」重试", hide_view=True
+                    "已安装 · 启动未就绪，可点「启动」重试", hide_view=True
                 )
         return st
 
@@ -911,7 +939,7 @@ class LocalWebHostPage(BasePage):
         self._progress_label.show()
         self._progress_label.setText(f"{pct}% · {msg}")
         self._gate_body.setText(msg)
-        self._status.setText(f"② 安装中 {pct}%")
+        self._status.setText(f"安装中 {pct}%")
 
     def _on_install_finished(self, ok: bool, msg: str) -> None:
         self._install_busy = False
@@ -940,10 +968,11 @@ class LocalWebHostPage(BasePage):
         self._auto_start_tried = True
         self._last_placeholder_key = ""
         self._last_status_sig = None
-        self._status.setText("⑤ 正在停止…")
+        self._status.setText("正在停止…")
         self._set_action_running(True)
         self._btn_stop.setEnabled(False)
-        self._host.set_placeholder("⑤ 正在停止服务…\n请稍候", hide_view=True)
+        self._set_activity(True, immediate=True)
+        self._host.set_placeholder("正在停止服务…\n请稍候", hide_view=True)
         self.report_status("正在停止服务…", level=StatusLevel.INFO)
         QTimer.singleShot(0, self._finish_stop)
 
@@ -955,11 +984,12 @@ class LocalWebHostPage(BasePage):
         if _qt_alive(self._view):
             self._schedule_destroy_web_embed()
         self._host.set_placeholder(
-            "⑥ 服务已停止\n可点「启动」再次运行"
+            "服务已停止\n可点「启动」再次运行"
             if ok
             else f"停止未完成\n{msg}",
             hide_view=True,
         )
+        self._set_activity(False)
         self.report_status(
             msg,
             level=StatusLevel.SUCCESS if ok else StatusLevel.WARNING,
@@ -1118,11 +1148,13 @@ class LocalWebHostPage(BasePage):
             painted = ""
         still_foreign = bool(target) and painted and not painted.startswith(target)
         if url_changed or still_foreign or not self._host.has_live_view():
-            # 换引擎：占位至 loadFinished，禁止新 Host 条下露出旧站
-            self._host.set_placeholder("正在切换引擎界面…", hide_view=True)
+            # 装载遮罩至 loadFinished，禁止半露旧站（A4.7）
+            self._set_activity(False)
+            self._host.set_placeholder("正在装载界面…", hide_view=True)
             self._host.attach_view(view)
             return
         # 同 URL 热回进
+        self._set_activity(False)
         self._host.embed_view(view, take_focus=False)
 
     def _on_load_finished(self, ok: bool) -> None:
@@ -1134,11 +1166,12 @@ class LocalWebHostPage(BasePage):
                 page.end_forced_navigation()
         except Exception:
             pass
+        self._set_activity(False)
         if ok:
             self._load_fail_retries = 0
             if self._view is not None:
                 self._host.embed_view(self._view, take_focus=False)
-            self._status.setText(f"就绪 · 已嵌入 · {self._embedded_url}")
+            self._status.setText(f"服务已启动 · {self._embedded_url}")
             self.report_status(f"{self.page_title} 已加载", level=StatusLevel.SUCCESS)
             return
         # SPA / 子资源失败也会打到这里：已在显示则勿重载（重载=整页闪）
@@ -1146,13 +1179,17 @@ class LocalWebHostPage(BasePage):
             return
         retries = int(getattr(self, "_load_fail_retries", 0) or 0)
         if retries >= 1 or not self._view or not self._embedded_url:
+            self._host.set_placeholder("页面未完成装载\n可点「刷新」重试", hide_view=True)
             self.report_status("页面加载未完成，可点「刷新」重试", level=StatusLevel.WARNING)
             return
         self._load_fail_retries = retries + 1
+        from services.shared_local_webengine import normalize_nav_url
+
         QTimer.singleShot(
             1200,
-            lambda: self._view.setUrl(QUrl(self._embedded_url.rstrip("/") + "/"))
+            lambda: self._view.setUrl(QUrl(normalize_nav_url(self._embedded_url)))
             if _qt_alive(self._view)
             else None,
         )
+        self._host.set_placeholder("正在装载界面…\n将自动重试", hide_view=True)
         self.report_status("页面加载未完成，将自动重试…", level=StatusLevel.WARNING)

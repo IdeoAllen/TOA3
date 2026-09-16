@@ -178,7 +178,7 @@ def main() -> int:
     except Exception as exc:
         print(f"WARN [board] sync skipped: {exc}")
 
-    print("→ 正式版：顶栏办公 → 四象限任务（离开再进一次刷新）")
+    print("→ 正式版：顶栏办公 → 任务管理（离开再进一次刷新）")
     print("→ 记事本：更多 → 打开协作任务表（可读描述）")
     print("→ 无终端备选：资源管理器复制 collab_tasks.json 覆盖上面的 tasks.json")
     return 0

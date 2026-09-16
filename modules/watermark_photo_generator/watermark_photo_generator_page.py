@@ -284,5 +284,21 @@ class WatermarkPhotoGeneratorPage(BasePage):
         out = module_output_dir(self.page_id, create=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(out)))
 
+    def apply_class_context(self, session) -> None:
+        root = str(getattr(session, "root_path", "") or "").strip()
+        if root:
+            self._folder.setText(root)
+            auto_s, auto_e = WatermarkProcessor.extract_dates_from_folder_name(root)
+            if auto_s and not self._start.text().strip():
+                self._start.setText(auto_s)
+            if auto_e and not self._end.text().strip():
+                self._end.setText(auto_e)
+            self._reload_plan()
+        name = str(getattr(session, "class_name", "") or "").strip()
+        self.report_status(
+            f"已载入班级「{name}」目录" if name else "已载入班级目录",
+            level=StatusLevel.SUCCESS,
+        )
+
     def on_enter(self) -> None:
         self.report_status("水印照片生成")

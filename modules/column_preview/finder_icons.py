@@ -7,7 +7,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QColor,
-    QImageReader,
     QLinearGradient,
     QPainter,
     QPainterPath,
@@ -310,18 +309,9 @@ def _draw_typed_doc(logical_size: int, label: str, badge: str, *, dpr: float = 1
 def _load_image_thumb(path: Path, *, parent=None, max_edge: int = 512) -> QPixmap | None:
     """解码缩略图；返回物理像素 pixmap（不设 DPR），供图标绘制按像素贴图。"""
     del parent  # 保留签名兼容调用方
-    reader = QImageReader(str(path))
-    reader.setAutoTransform(True)
-    size = reader.size()
-    if size.isValid() and (size.width() > max_edge or size.height() > max_edge):
-        if size.width() >= size.height():
-            reader.setScaledSize(size * (max_edge / size.width()))
-        else:
-            reader.setScaledSize(size * (max_edge / size.height()))
-    img = reader.read()
-    if img.isNull():
-        return None
-    return QPixmap.fromImage(img)
+    from modules.column_preview.image_decode import load_image_thumb
+
+    return load_image_thumb(path, max_edge=max_edge)
 
 
 def _draw_image_icon(source: QPixmap, logical_size: int, *, dpr: float = 1.0) -> QPixmap:

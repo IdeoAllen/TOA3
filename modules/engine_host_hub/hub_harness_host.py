@@ -17,7 +17,15 @@ from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.ui_spec import page_content_margins
 from core.user_messages import ask_confirm, show_info, show_saved, show_warning
-from widgets import HintLabel, MenuButton, PrimaryButton, ProgressBar, SecondaryButton, SectionTitle
+from widgets import (
+    HintLabel,
+    MenuButton,
+    PrimaryButton,
+    ProgressBar,
+    SecondaryButton,
+    SectionTitle,
+    SoftActivityBar,
+)
 
 
 class HubHarnessHost(BasePage):
@@ -45,7 +53,7 @@ class HubHarnessHost(BasePage):
 
         bar = QHBoxLayout()
         bar.setSpacing(6)
-        self._status = HintLabel("① 检测安装…")
+        self._status = HintLabel("正在检测安装…")
         bar.addWidget(self._status, 1)
 
         self._action_stack = QStackedWidget()
@@ -95,23 +103,29 @@ class HubHarnessHost(BasePage):
         self._toolbar.hide()
         outer.addWidget(self._toolbar)
 
+        self._activity = SoftActivityBar()
+        outer.addWidget(self._activity)
+
         self._body = QStackedWidget()
         gate = QWidget()
         gate_lay = QVBoxLayout(gate)
         gate_lay.setContentsMargins(24, 16, 24, 16)
         gate_lay.setSpacing(12)
         gate_lay.addStretch(1)
-        self._gate_title = HintLabel("① 正在检测安装…")
+        self._gate_title = HintLabel("正在检测安装…")
         self._gate_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         gate_lay.addWidget(self._gate_title)
         self._gate_body = HintLabel("请稍候…")
         self._gate_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._gate_body.setWordWrap(True)
         gate_lay.addWidget(self._gate_body)
+        # 仅安装用确定进度；检测不弹条（A4.7）
         self._progress = ProgressBar()
-        self._progress.setRange(0, 0)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
         self._progress.setTextVisible(False)
         self._progress.setMaximumHeight(10)
+        self._progress.hide()
         gate_lay.addWidget(self._progress, 0, Qt.AlignmentFlag.AlignHCenter)
         row = QHBoxLayout()
         row.addStretch(1)
@@ -152,18 +166,25 @@ class HubHarnessHost(BasePage):
     def soft_leave(self) -> None:
         self.on_leave()
 
+    def _set_activity(self, active: bool, *, immediate: bool = False) -> None:
+        try:
+            self._activity.set_active(bool(active), immediate=immediate)
+        except RuntimeError:
+            pass
+
     def _set_detecting(self, detecting: bool) -> None:
         self._status_known = not detecting
         if detecting:
             self._toolbar.hide()
             self._body.setCurrentIndex(0)
-            self._gate_title.setText("① 正在检测安装…")
+            self._gate_title.setText("正在检测安装…")
             self._btn_install.hide()
-            self._progress.show()
-            self._progress.setRange(0, 0)
+            self._set_activity(False)
+            self._progress.hide()
         else:
             self._toolbar.show()
             self._progress.hide()
+            self._set_activity(False)
 
     def _refresh(self) -> None:
         try:
@@ -219,8 +240,10 @@ class HubHarnessHost(BasePage):
     def _on_start(self) -> None:
         from services import harness_sidecar
 
+        self._set_activity(True, immediate=True)
         self.report_status("正在启动…", level=StatusLevel.INFO)
         ok, msg = harness_sidecar.start(wait_ready=True)
+        self._set_activity(False)
         if ok:
             self.report_status("已启动", level=StatusLevel.SUCCESS)
         else:
@@ -230,7 +253,9 @@ class HubHarnessHost(BasePage):
     def _on_stop(self) -> None:
         from services import harness_sidecar
 
+        self._set_activity(True, immediate=True)
         ok, msg = harness_sidecar.stop(force=False)
+        self._set_activity(False)
         self.report_status(msg or ("已停止" if ok else "停止失败"), level=StatusLevel.INFO)
         self._refresh()
 

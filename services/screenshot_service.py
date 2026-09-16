@@ -332,6 +332,7 @@ def hotkeys_enabled() -> bool:
 
 
 def run_screenshot_hotkey(parent=None, *, full: bool = False) -> None:
+    """全局热键入口：立即返回，下一拍再抓屏/开层（不堵热键回调线程）。"""
     if not hotkeys_enabled():
         show_info(parent, "截图功能已在系统设置中关闭。")
         return
@@ -351,18 +352,23 @@ def run_screenshot_hotkey(parent=None, *, full: bool = False) -> None:
     if not token:
         cancel_active_screenshot(reason="hotkey_race")
         return
-    try:
-        if full:
-            capture_fullscreen(parent, session_token=token)
-        else:
-            capture_region(parent, session_token=token)
-    except Exception as e:
-        release_screenshot_session()
-        logger.exception("截图失败")
-        show_error(parent, f"截图失败：{e}")
-    finally:
-        # 抓屏失败 / 令牌已作废时补释放；正常出层由 open_screenshot_overlay 释放
-        release_screenshot_session_if_token(token)
+
+    def _go() -> None:
+        try:
+            if full:
+                capture_fullscreen(parent, session_token=token)
+            else:
+                capture_region(parent, session_token=token)
+        except Exception as e:
+            release_screenshot_session()
+            logger.exception("截图失败")
+            show_error(parent, f"截图失败：{e}")
+        finally:
+            # 抓屏失败 / 令牌已作废时补释放；正常出层由 open_screenshot_overlay 释放
+            release_screenshot_session_if_token(token)
+
+    # 热键 native 回调里勿同步 grab + 嵌套 loop；交回事件循环再开
+    QTimer.singleShot(0, _go)
 
 
 def capture_region_pixmap(parent=None) -> QPixmap | None:
@@ -432,8 +438,21 @@ def run_screenshot_ocr(parent=None, *, full: bool = False) -> str | None:
             logger.debug("stash ocr result failed", exc_info=True)
         if not text:
             show_info(parent, "截图完成，但未识别到文字。")
+        else:
+            # 配置要中文但缺 chi_sim：人话提示（本地已探测，无额外联网）
+            try:
+                from services.integrations.ocr_guide import chinese_warning_for_result
+
+                tip = chinese_warning_for_result(result)
+                if tip:
+                    show_info(parent, tip)
+            except Exception:
+                pass
         return text
     except Exception as e:
         logger.exception("截图转文字失败")
-        show_error(parent, f"截图转文字失败：{e}")
+        from core.exceptions import TOAError
+
+        msg = e.user_message if isinstance(e, TOAError) else f"截图转文字失败：{e}"
+        show_error(parent, msg)
         return None

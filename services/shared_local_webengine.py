@@ -30,6 +30,16 @@ _f11_filter: Any = None
 _current_url: str = ""
 
 
+def normalize_nav_url(url: str) -> str:
+    """导航目标 URL：有 query/fragment 时禁止末尾再加 `/`（否则会破坏 `?token=`）。"""
+    u = str(url or "").strip()
+    if not u:
+        return u
+    if "?" in u or "#" in u:
+        return u
+    return u if u.endswith("/") else u + "/"
+
+
 def _qt_alive(obj) -> bool:
     if obj is None:
         return False
@@ -273,9 +283,13 @@ def acquire(
 
         from services.webengine_host import ToaWebEnginePage
 
-        need_nav = _current_url.rstrip("/") != url.rstrip("/")
+        nav = normalize_nav_url(url)
+        # 比较时去掉末尾 `/`，但保留 query（token URL 不能用 rstrip 后乱拼）
+        cur_key = _current_url.split("#", 1)[0].rstrip("/")
+        nav_key = nav.split("#", 1)[0].rstrip("/")
+        need_nav = cur_key != nav_key
         if need_nav:
-            _current_url = url
+            _current_url = nav
             page = view.page()
             # Draw.io 等会弹 beforeunload；不放行则壳已切引擎、画面仍卡旧站
             if isinstance(page, ToaWebEnginePage):
@@ -287,8 +301,8 @@ def acquire(
                     )
                 except Exception:
                     pass
-            view.setUrl(QUrl(url.rstrip("/") + "/"))
-            logger.debug("acquire navigate owner=%s url=%s", oid, url)
+            view.setUrl(QUrl(nav))
+            logger.debug("acquire navigate owner=%s url=%s", oid, nav)
         else:
             logger.debug("acquire keep url owner=%s", oid)
     # 同 URL 回嵌也必须叫醒：park 后可能被系统标 Frozen

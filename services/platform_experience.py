@@ -219,7 +219,8 @@ class PlatformExperience(QObject):
             chip.setText(text)
             chip.setProperty("class", f"msg-{kind}")
             chip.setToolTip(tooltip)
-            chip.setMaximumWidth(120)
+            chip.setMaximumWidth(96)
+            chip.setFixedHeight(18)
             chip.style().unpolish(chip)
             chip.style().polish(chip)
             if hasattr(shell, "_refresh_status_plan_label"):

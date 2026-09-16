@@ -290,6 +290,16 @@ class DirectoryInspectorPage(BasePage):
 
         self.run_safe(_run, title="导出失败")
 
+    def apply_class_context(self, session) -> None:
+        root = str(getattr(session, "root_path", "") or "").strip()
+        if root:
+            self._root.setText(root)
+        name = str(getattr(session, "class_name", "") or "").strip()
+        self.report_status(
+            f"已载入班级「{name}」" if name else "已载入班级目录",
+            level=StatusLevel.SUCCESS,
+        )
+
     def on_enter(self) -> None:
         self.report_status("目录透视")
         self.schedule_primary_focus()

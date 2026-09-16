@@ -241,5 +241,17 @@ class FilePackagerPage(BasePage):
 
         self.run_safe(_run, title="打包失败")
 
+    def apply_class_context(self, session) -> None:
+        root = str(getattr(session, "root_path", "") or "").strip()
+        if root:
+            self._roots = [root]
+            self._update_roots_hint()
+            self._refresh_preview()
+        name = str(getattr(session, "class_name", "") or "").strip()
+        self.report_status(
+            f"已载入班级「{name}」目录" if name else "已载入班级目录",
+            level=StatusLevel.SUCCESS,
+        )
+
     def on_enter(self) -> None:
         self.report_status("文件打包归档 · 预览后规范命名 zip")

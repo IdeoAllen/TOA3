@@ -9,18 +9,19 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 from core.base_dialog import BaseDialog
 from core.ui_spec import finalize_dialog_geometry
 from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
-from modules.clipboard_history.history_store import find_item, image_abs_path, load_history
+from modules.clipboard_history.history_store import (
+    filter_history,
+    find_item,
+    image_abs_path,
+    load_history,
+    notepad_handoff,
+    privacy_on,
+    source_label,
+)
 from modules.clipboard_history.phrase_store import load_phrases
 from services.icon_registry import device_pixel_ratio
 from services.win_paste import get_foreground_hwnd, paste_to_window
 from widgets import FormSection, HintLabel, LineEdit, ListWidget, PrimaryButton, SecondaryButton
-
-_SOURCE_LABEL = {
-    "auto": "自动",
-    "manual": "手动",
-    "screenshot": "截图",
-    "ocr": "OCR",
-}
 
 
 class ClipboardQuickPopup(BaseDialog):
@@ -47,11 +48,10 @@ class ClipboardQuickPopup(BaseDialog):
         self._slots: list[dict] = []
 
         lay = QVBoxLayout(self)
-        lay.addWidget(
-            HintLabel(
-                "历史优先 · 1–9 粘贴到原窗口 · Enter 粘贴选中 · Esc 关闭"
-            )
-        )
+        hint = "历史优先 · 1–9 粘贴到原窗口 · Enter 粘贴选中 · Esc 关闭"
+        if privacy_on():
+            hint = "隐私时段已开 · 列表遮罩 · 仍可粘贴选中项 · Esc 关闭"
+        lay.addWidget(HintLabel(hint))
 
         self._search = LineEdit()
         self._search.setPlaceholderText("过滤历史（字母搜索；数字键留给 1–9）…")
@@ -90,6 +90,10 @@ class ClipboardQuickPopup(BaseDialog):
         btn_copy = PrimaryButton("粘贴并关闭")
         btn_copy.clicked.connect(self._accept_paste)
         row.addWidget(btn_copy)
+        btn_note = SecondaryButton("送入记事")
+        btn_note.setToolTip("将选中历史项送入快速记事（文本或图片）")
+        btn_note.clicked.connect(self._send_to_notepad)
+        row.addWidget(btn_note)
         btn_agent = SecondaryButton("送到智能体")
         btn_agent.clicked.connect(self._send_to_harness)
         row.addWidget(btn_agent)
@@ -152,7 +156,8 @@ class ClipboardQuickPopup(BaseDialog):
         super().keyPressEvent(event)
 
     def _reload(self) -> None:
-        q = (self._search.text() or "").strip().lower()
+        q = (self._search.text() or "").strip()
+        priv = privacy_on()
         self._slots = []
         self._phrase_list.clear()
         self._hist_list.clear()
@@ -164,27 +169,25 @@ class ClipboardQuickPopup(BaseDialog):
             text = str(x.get("text") or "").strip()
             if not text:
                 continue
-            if q and q not in text.lower():
+            if q and q.lower() not in text.lower():
                 continue
             self._slots.append({"kind": "phrase", "text": text, "group": "phrase"})
 
         phrase_n = len(self._slots)
         for i, slot in enumerate(self._slots):
             preview = slot["text"].replace("\n", " ")
-            if len(preview) > 40:
+            if priv:
+                preview = "••••"
+            elif len(preview) > 40:
                 preview = preview[:39] + "…"
             self._phrase_list.addItem(f"{i + 1}. {preview}")
 
-        # 历史补足到 9；搜索时可多列
+        # 历史补足到 9；搜索时可多列（共用 filter_history）
         hist_start = len(self._slots)
         limit = 9 if not q else 80
-        for x in load_history():
+        for x in filter_history(load_history(), query=q):
             if len(self._slots) >= limit:
                 break
-            if q:
-                blob = f"{x.get('text') or ''} {x.get('source') or ''}".lower()
-                if q not in blob:
-                    continue
             iid = str(x.get("id") or "")
             if not iid:
                 continue
@@ -194,8 +197,8 @@ class ClipboardQuickPopup(BaseDialog):
             x = slot.get("item") or {}
             star = "★ " if x.get("pinned") else ""
             kind = "图" if x.get("kind") == "image" else "文"
-            src = _SOURCE_LABEL.get(str(x.get("source") or ""), "")
-            preview = (x.get("text") or "").replace("\n", " ")[:40]
+            src = source_label(str(x.get("source") or ""))
+            preview = "••••" if priv else (x.get("text") or "").replace("\n", " ")[:40]
             num = f"{i + 1}. " if i < 9 else "   "
             self._hist_list.addItem(f"{num}{star}[{kind}] {src} · {preview}")
 
@@ -248,6 +251,10 @@ class ClipboardQuickPopup(BaseDialog):
         if not slot:
             self._preview_label.setText("选中条目预览")
             self._preview_label.setPixmap(QPixmap())
+            return
+        if privacy_on():
+            self._preview_label.setPixmap(QPixmap())
+            self._preview_label.setText("••••（隐私时段 · 内容已遮罩）")
             return
         if slot["kind"] == "phrase":
             self._preview_label.setPixmap(QPixmap())
@@ -330,6 +337,44 @@ class ClipboardQuickPopup(BaseDialog):
         self.accept()
         if self._on_open_full:
             self._on_open_full()
+
+    def _send_to_notepad(self) -> None:
+        from core.user_messages import show_warning
+
+        slot = self._current_slot()
+        if not slot:
+            show_warning(self, "请先选中一条历史。")
+            return
+        if slot["kind"] == "phrase":
+            text = str(slot.get("text") or "").strip()
+            if not text:
+                show_warning(self, "没有可写入的文本。")
+                return
+            payload = {"title": "来自剪贴板速贴", "body": text, "image_path": None}
+        else:
+            item = find_item(str(slot.get("id") or "")) or slot.get("item")
+            payload = notepad_handoff(item)
+            if not payload:
+                show_warning(self, "该条无法送入记事（空文本或图片丢失）。")
+                return
+        from modules.quick_notepad.quick_notepad_page import QuickNotepadPage
+
+        QuickNotepadPage.stash_incoming(
+            str(payload.get("body") or ""),
+            title=str(payload.get("title") or "来自剪贴板历史"),
+            image_path=payload.get("image_path"),
+        )
+        shell = self.parent()
+        self.accept()
+        if shell is not None:
+            if hasattr(shell, "showNormal"):
+                shell.showNormal()
+                shell.raise_()
+                shell.activateWindow()
+            if hasattr(shell, "navigate"):
+                shell.navigate("quick_notepad")
+            elif hasattr(shell, "_summon_module"):
+                shell._summon_module("quick_notepad")
 
     def _send_to_harness(self) -> None:
         slot = self._current_slot()

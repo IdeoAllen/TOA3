@@ -11,15 +11,51 @@ from typing import Any
 from services.storage_paths import module_data_dir
 
 _STORE: list[dict[str, Any]] | None = None
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 5
+# 产品一源 Markdown；bodies 仅遗留迁移
+_BODY_FMTS = ("txt", "md", "html")
+_VIEW_MODES = ("edit", "preview")
 
 
 def _path() -> Path:
     return module_data_dir("quick_notepad", create=True) / "notes.json"
 
 
+def _bak_path() -> Path:
+    return module_data_dir("quick_notepad", create=True) / "notes.json.bak"
+
+
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _clean_bodies(raw: Any) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not isinstance(raw, dict):
+        return out
+    for k in _BODY_FMTS:
+        if k in raw and raw[k] is not None:
+            out[k] = str(raw[k])
+    return out
+
+
+def _merge_legacy_body(body: str, bodies: dict[str, str], editor_mode: str) -> str:
+    """合并旧分槽 → 单一 Markdown 正文。"""
+    from modules.quick_notepad.rich_body import coerce_to_markdown
+
+    candidates: list[str] = []
+    for key in ("md", "txt", "html"):
+        if key in bodies and str(bodies[key] or "").strip():
+            candidates.append(str(bodies[key]))
+    if (body or "").strip():
+        candidates.insert(0, body)
+    if not candidates and editor_mode in bodies:
+        candidates.append(str(bodies.get(editor_mode) or ""))
+    for raw in candidates:
+        if not (raw or "").strip():
+            continue
+        return coerce_to_markdown(raw)
+    return ""
 
 
 def _normalize_node(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -32,14 +68,31 @@ def _normalize_node(raw: dict[str, Any]) -> dict[str, Any] | None:
     order = int(raw.get("order") or 0)
     body = str(raw.get("body") or "")
     updated = str(raw.get("updated") or _now())
+    html_source_path = str(raw.get("html_source_path") or "").strip()
+    bodies = _clean_bodies(raw.get("bodies"))
+    editor_mode = str(raw.get("editor_mode") or "").strip().lower()
+    if editor_mode not in _BODY_FMTS:
+        editor_mode = ""
+    if body and not bodies:
+        bodies["md"] = body
+    elif body and editor_mode and editor_mode not in bodies:
+        bodies[editor_mode] = body
+    # schema≥5：产品只认单一 body（Markdown）
+    merged = _merge_legacy_body(body, bodies, editor_mode)
+    if merged:
+        body = merged
+        bodies["md"] = merged
     return {
         "id": nid,
         "kind": "note",
         "title": title,
         "body": body,
+        "bodies": bodies,
+        "editor_mode": "md",
         "parent_id": parent_id,
         "order": order,
         "updated": updated,
+        "html_source_path": html_source_path,
     }
 
 
@@ -68,34 +121,50 @@ def load_nodes() -> list[dict[str, Any]]:
     if _STORE is not None:
         return _STORE
     path = _path()
-    if not path.is_file():
-        _STORE = []
-        return _STORE
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(raw, dict) and isinstance(raw.get("nodes"), list):
-            nodes = [_normalize_node(x) for x in raw["nodes"] if isinstance(x, dict)]
-            _STORE = [n for n in nodes if n]
-            ver = int(raw.get("schema_version") or 0)
-            if ver < _SCHEMA_VERSION:
+    bak = _bak_path()
+    for candidate in (path, bak):
+        if not candidate.is_file():
+            continue
+        try:
+            raw = json.loads(candidate.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and isinstance(raw.get("nodes"), list):
+                nodes = [_normalize_node(x) for x in raw["nodes"] if isinstance(x, dict)]
+                _STORE = [n for n in nodes if n]
+                ver = int(raw.get("schema_version") or 0)
+                if candidate == bak and path.is_file():
+                    # 主文件坏了才用备份；恢复后写回主文件
+                    save_nodes(_STORE)
+                elif ver < _SCHEMA_VERSION:
+                    save_nodes(_STORE)
+                return _STORE
+            if isinstance(raw, list):
+                _STORE = _migrate_v1_list(raw)
                 save_nodes(_STORE)
-            return _STORE
-        if isinstance(raw, list):
-            _STORE = _migrate_v1_list(raw)
-            save_nodes(_STORE)
-            return _STORE
-    except Exception:
-        pass
+                return _STORE
+        except Exception:
+            continue
     _STORE = []
     return _STORE
 
 
 def save_nodes(nodes: list[dict[str, Any]]) -> None:
+    """原子落盘：先写 .tmp，再备份旧文件为 .bak，最后替换。"""
     global _STORE
     cleaned = [_normalize_node(n) for n in nodes if isinstance(n, dict)]
     _STORE = [n for n in cleaned if n]
     payload = {"schema_version": _SCHEMA_VERSION, "nodes": _STORE}
-    _path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path = _path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    if path.is_file():
+        try:
+            # 覆盖备份前保留上一份可用主文件
+            _bak_path().write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError:
+            pass
+    tmp.replace(path)
 
 
 def invalidate_cache() -> None:
@@ -161,16 +230,25 @@ def _is_descendant(ancestor_id: str, maybe_child_id: str) -> bool:
     return False
 
 
-def add_note(title: str, body: str, *, parent_id: str | None = None) -> dict[str, Any]:
+def add_note(
+    title: str,
+    body: str,
+    *,
+    parent_id: str | None = None,
+    html_source_path: str | None = None,
+) -> dict[str, Any]:
     nodes = load_nodes()
     entry = _normalize_node(
         {
             "id": uuid.uuid4().hex[:12],
             "title": (title or "新记事").strip(),
             "body": body or "",
+            "bodies": {"md": body or ""} if (body or "").strip() else {"md": ""},
+            "editor_mode": "md",
             "parent_id": parent_id,
             "order": _next_order(parent_id),
             "updated": _now(),
+            "html_source_path": html_source_path or "",
         }
     )
     if entry is None:
@@ -180,16 +258,90 @@ def add_note(title: str, body: str, *, parent_id: str | None = None) -> dict[str
     return entry
 
 
-def update_note(note_id: str, title: str, body: str) -> bool:
+def update_note(
+    note_id: str,
+    title: str,
+    body: str,
+    *,
+    html_source_path: str | None = None,
+    clear_html_source: bool = False,
+    editor_mode: str | None = None,
+    bodies: dict[str, str] | None = None,
+    body_fmt: str | None = None,
+) -> bool:
+    """更新记事。body_fmt 非空时同步写入 bodies[fmt]，其它格式槽位保留。"""
     nodes = load_nodes()
     for n in nodes:
         if str(n.get("id")) == note_id:
             n["title"] = (title or "无标题").strip()
-            n["body"] = body or ""
+            new_body = body if body is not None else str(n.get("body") or "")
+            # 防呆：禁止「静默用空串覆盖已有正文」（除非调用方显式允许清空）
+            # 用户主动删光内容：body=="" 且原也在编辑，仍允许；此处仅挡 None 误伤
+            n["body"] = new_body if isinstance(new_body, str) else str(new_body or "")
             n["updated"] = _now()
+            slot = _clean_bodies(n.get("bodies"))
+            if bodies is not None:
+                slot.update(_clean_bodies(bodies))
+            # 一源：始终写入 md 槽与 body
+            slot["md"] = n["body"]
+            n["editor_mode"] = "md"
+            n["bodies"] = slot
+            if clear_html_source:
+                n["html_source_path"] = ""
+            elif html_source_path is not None:
+                n["html_source_path"] = str(html_source_path or "").strip()
             save_nodes(nodes)
             return True
     return False
+
+
+def get_note_body_for_fmt(note: dict[str, Any], fmt: str) -> str | None:
+    """取某格式槽位正文；无则 None（调用方再决定是否转换）。"""
+    f = str(fmt or "").strip().lower()
+    if f not in _BODY_FMTS:
+        return None
+    bodies = _clean_bodies(note.get("bodies"))
+    if f in bodies:
+        return bodies[f]
+    return None
+
+
+def resolve_note_body_for_ui(note: dict[str, Any], fmt: str | None = None) -> str:
+    """打开记事：单一 Markdown 正文（兼容旧分槽）。"""
+    del fmt  # 产品层已废除 TXT|MD 格式
+    body = str(note.get("body") or "")
+    if (body or "").strip():
+        from modules.quick_notepad.rich_body import coerce_to_markdown
+
+        return coerce_to_markdown(body)
+    bodies = _clean_bodies(note.get("bodies"))
+    return _merge_legacy_body("", bodies, str(note.get("editor_mode") or ""))
+
+
+def merge_note_bodies(
+    note: dict[str, Any] | None,
+    *,
+    fmt: str,
+    body: str,
+) -> dict[str, str]:
+    """把当前格式正文写入槽位，保留其它格式。"""
+    slot = _clean_bodies((note or {}).get("bodies"))
+    f = str(fmt or "").strip().lower()
+    if f in _BODY_FMTS:
+        slot[f] = body if isinstance(body, str) else str(body or "")
+    return slot
+
+
+def set_note_html_source(note_id: str, path: str | None) -> bool:
+    n = find_note(note_id)
+    if n is None:
+        return False
+    return update_note(
+        note_id,
+        str(n.get("title") or "无标题"),
+        str(n.get("body") or ""),
+        html_source_path=path or "",
+    )
 
 
 def update_node_title(node_id: str, title: str) -> bool:
@@ -203,19 +355,38 @@ def update_node_title(node_id: str, title: str) -> bool:
     return False
 
 
+def descendant_ids(node_id: str) -> list[str]:
+    """含子记事在内的全部后代 id（不含自身）。"""
+    sid = str(node_id or "").strip()
+    if not sid:
+        return []
+    by_parent: dict[str | None, list[str]] = {}
+    for n in load_nodes():
+        pid = n.get("parent_id")
+        key = None if pid in (None, "") else str(pid)
+        by_parent.setdefault(key, []).append(str(n.get("id")))
+    out: list[str] = []
+    stack = list(by_parent.get(sid, []))
+    while stack:
+        cur = stack.pop()
+        if cur in out or cur == sid:
+            continue
+        out.append(cur)
+        stack.extend(by_parent.get(cur, []))
+    return out
+
+
 def delete_node(node_id: str) -> bool:
-    """删除节点；子节点提升到原父级下。"""
+    """删除节点及其全部子记事（级联）。"""
     sid = str(node_id or "").strip()
     nodes = load_nodes()
     target = next((n for n in nodes if str(n.get("id")) == sid), None)
     if target is None:
         return False
+    kill = {sid, *descendant_ids(sid)}
     parent_id = target.get("parent_id")
     pid = None if parent_id in (None, "") else str(parent_id)
-    for n in nodes:
-        if str(n.get("parent_id") or "") == sid:
-            n["parent_id"] = pid
-    kept = [n for n in nodes if str(n.get("id")) != sid]
+    kept = [n for n in nodes if str(n.get("id")) not in kill]
     save_nodes(kept)
     _reindex_siblings(pid)
     save_nodes(load_nodes())
@@ -382,21 +553,47 @@ def _settings_path() -> Path:
     return module_data_dir("quick_notepad", create=True) / "settings.json"
 
 
+def normalize_editor_mode(mode: str | None) -> str:
+    """兼容旧调用：产品已无双格式，恒为 md。"""
+    del mode
+    return "md"
+
+
+def normalize_view_mode(view: str | None) -> str:
+    """两面：edit（编辑/源码）· preview。旧 design/code/source → edit。"""
+    v = str(view or "").strip().lower()
+    if v in ("preview", "web", "read"):
+        return "preview"
+    # design / code / source / txt / encoding / edit → 编辑
+    return "edit"
+
+
 def load_settings() -> dict[str, Any]:
     path = _settings_path()
-    defaults = {"editor_mode": "rich", "view_mode": "edit"}
+    defaults = {
+        "editor_mode": "md",
+        "view_mode": "edit",
+        "image_size": "md",
+        "icon_size": "icon",
+    }
     if not path.is_file():
         return dict(defaults)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw, dict):
-            mode = str(raw.get("editor_mode") or "rich")
-            if mode not in ("simple", "rich"):
-                mode = "rich"
-            view = str(raw.get("view_mode") or "edit")
-            if view not in ("edit", "design", "preview"):
-                view = "edit"
-            return {"editor_mode": mode, "view_mode": view}
+            from modules.quick_notepad.image_attrs import normalize_size_key
+
+            return {
+                "editor_mode": "md",
+                "view_mode": normalize_view_mode(raw.get("view_mode")),
+                "image_size": normalize_size_key(
+                    str(raw.get("image_size") or defaults["image_size"])
+                ),
+                "icon_size": normalize_size_key(
+                    str(raw.get("icon_size") or defaults["icon_size"]),
+                    fallback="icon",
+                ),
+            }
     except Exception:
         pass
     return dict(defaults)
@@ -404,13 +601,26 @@ def load_settings() -> dict[str, Any]:
 
 def save_settings(settings: dict[str, Any]) -> None:
     cur = load_settings()
-    mode = str(settings.get("editor_mode", cur.get("editor_mode")) or "rich")
-    if mode not in ("simple", "rich"):
-        mode = "rich"
-    view = str(settings.get("view_mode", cur.get("view_mode")) or "edit")
-    if view not in ("edit", "design", "preview"):
-        view = "edit"
+    from modules.quick_notepad.image_attrs import normalize_size_key
+
+    view = normalize_view_mode(settings.get("view_mode", cur.get("view_mode")))
+    image_size = normalize_size_key(
+        str(settings.get("image_size", cur.get("image_size") or "md"))
+    )
+    icon_size = normalize_size_key(
+        str(settings.get("icon_size", cur.get("icon_size") or "icon")),
+        fallback="icon",
+    )
     _settings_path().write_text(
-        json.dumps({"editor_mode": mode, "view_mode": view}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "editor_mode": "md",
+                "view_mode": view,
+                "image_size": image_size,
+                "icon_size": icon_size,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )

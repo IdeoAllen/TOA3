@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""剪贴板历史存储（文本 + 图片；支持置顶 / 单条删除 / 搜索）。"""
+"""剪贴板历史存储（文本 + 图片；支持置顶 / 搜索 / 隐私 / 送记事）。"""
 from __future__ import annotations
 
 import json
@@ -11,16 +11,118 @@ from typing import Any
 from services.storage_paths import module_data_dir
 
 _MAX = 120
+_SOURCE_LABEL = {
+    "auto": "自动",
+    "manual": "手动",
+    "screenshot": "截图",
+    "ocr": "OCR",
+}
+_PRIVACY_MASK = "••••（隐私时段）"
 
 
 def _path() -> Path:
     return module_data_dir("clipboard_history", create=True) / "history.json"
 
 
+def _prefs_path() -> Path:
+    return module_data_dir("clipboard_history", create=True) / "prefs.json"
+
+
 def _images_dir() -> Path:
     d = module_data_dir("clipboard_history", create=True) / "images"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def load_prefs() -> dict[str, Any]:
+    path = _prefs_path()
+    if not path.is_file():
+        return {"privacy": False}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            return {"privacy": bool(raw.get("privacy"))}
+    except Exception:
+        pass
+    return {"privacy": False}
+
+
+def save_prefs(prefs: dict[str, Any]) -> None:
+    data = {"privacy": bool((prefs or {}).get("privacy"))}
+    _prefs_path().write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def privacy_on() -> bool:
+    return bool(load_prefs().get("privacy"))
+
+
+def set_privacy(on: bool) -> None:
+    """隐私时段：暂停一切入库（含截图/OCR 显式 push）；列表侧遮罩。"""
+    prefs = load_prefs()
+    prefs["privacy"] = bool(on)
+    save_prefs(prefs)
+
+
+def source_label(source: str | None) -> str:
+    key = str(source or "")
+    return _SOURCE_LABEL.get(key, key)
+
+
+def filter_history(
+    items: list[dict[str, Any]] | None = None,
+    *,
+    query: str = "",
+    source: str = "",
+) -> list[dict[str, Any]]:
+    """全文搜索 + 来源过滤（source 空=全部）。"""
+    rows = items if items is not None else load_history()
+    q = (query or "").strip().lower()
+    src = (source or "").strip().lower()
+    out: list[dict[str, Any]] = []
+    for x in rows:
+        if not isinstance(x, dict):
+            continue
+        if src and str(x.get("source") or "").lower() != src:
+            continue
+        if q:
+            label = source_label(str(x.get("source") or ""))
+            blob = (
+                f"{x.get('text') or ''} {x.get('kind') or ''} "
+                f"{x.get('source') or ''} {label}"
+            ).lower()
+            if q not in blob:
+                continue
+        out.append(x)
+    return out
+
+
+def list_line(item: dict[str, Any], *, privacy: bool | None = None) -> str:
+    """列表行文案；隐私开启时遮罩正文。"""
+    mask = privacy_on() if privacy is None else bool(privacy)
+    star = "★ " if item.get("pinned") else ""
+    kind = "🖼" if item.get("kind") == "image" else "文"
+    src = source_label(str(item.get("source") or ""))
+    if mask:
+        preview = _PRIVACY_MASK
+    else:
+        preview = (item.get("text") or "").replace("\n", " ")[:64]
+    return f"{star}[{kind}] {item.get('time', '')} · {src} · {preview}"
+
+
+def notepad_handoff(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    """送记事本载荷：{title, body, image_path}；不可送则 None。"""
+    if not item or not isinstance(item, dict):
+        return None
+    title = "来自剪贴板历史"
+    if item.get("kind") == "image":
+        path = image_abs_path(item)
+        if path is None:
+            return None
+        return {"title": title, "body": "", "image_path": str(path)}
+    text = str(item.get("text") or "").strip()
+    if not text:
+        return None
+    return {"title": title, "body": text, "image_path": None}
 
 
 def load_history() -> list[dict[str, Any]]:
@@ -61,6 +163,8 @@ def _insert_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def push_text(text: str, *, source: str = "manual") -> dict[str, Any] | None:
+    if privacy_on():
+        return None
     text = (text or "").strip()
     if not text:
         return None
@@ -93,6 +197,8 @@ def push_text(text: str, *, source: str = "manual") -> dict[str, Any] | None:
 
 def push_image(pixmap, *, source: str = "manual") -> dict[str, Any] | None:
     """保存位图为无损 PNG（兼容旧调用）。优先用 push_clipboard_image 保留原图字节。"""
+    if privacy_on():
+        return None
     if pixmap is None or getattr(pixmap, "isNull", lambda: True)():
         return None
     from PySide6.QtGui import QImage
@@ -114,6 +220,8 @@ def push_image(pixmap, *, source: str = "manual") -> dict[str, Any] | None:
 
 def push_clipboard_image(clipboard, *, source: str = "manual") -> dict[str, Any] | None:
     """从系统剪贴板抓取原图：优先 PNG/JPEG 原始字节，其次 QImage，避免 HiDPI 缩略。"""
+    if privacy_on():
+        return None
     if clipboard is None:
         return None
     mime = clipboard.mimeData()

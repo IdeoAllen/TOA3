@@ -1,7 +1,8 @@
 # ARCH-05 · 引擎与 Harness（原 18 + 29 合订）
 
-> 本文为整合稿（2026-09-07）。原分册已进 `docs/_archive/architecture/`。
-> 总入口：[`../README.md`](../README.md)
+> 本文为整合稿（2026-09-07）。原分册已进 `docs/_archive/architecture/`。  
+> 总入口：[`../README.md`](../README.md)  
+> **全生命周期 / 双版本 / 打包 / 升级整改 / G0 自用自排错**：见 [ARCH-10](ARCH-10-Harness全生命周期.md)（待专家组论证）。
 
 ---
 
@@ -23,12 +24,33 @@
 | **内嵌** | `QWebEngineView` → `http://127.0.0.1:{web_port}` | 与浏览器共用 `DSH_HOME`、同一 dsh 进程 |
 | **系统浏览器** | `webbrowser.open(web_url())` | 会话/工作区仍在 Harness 内，不另开「TOA 版」 |
 
-切换规则（与 `config/harness.yml` / `33` 一致）：
+切换规则（与 `config/harness.yml` 一致）：
 
-- **现行默认 `surface_mode: browser`**：启动后优先系统浏览器；页内可显示占位；Sidecar 仍由 TOA 托管。  
-- **内嵌为可选**：用户可「显示内嵌」收回到 `QWebEngineView`；也可再「浏览器打开」脱离。  
-- **禁止**默认强推内嵌；**禁止**第二套 Web 地址或 TOA 自研 Agent 页替代 `dsh web`。  
+- **现行默认 `surface_mode: embed`（2026-09-11b）**：启动后**套件内嵌**官方 Web；外开须用户自点「在浏览器打开」，**禁止自动弹浏览器**。  
+- **能力不及处明示**：侧栏预览等 Qt WebEngine 做不到完整 Chrome 时，提示「浏览器打开效果更佳」。  
+- **启停体验内外一致**：安装 / 启动 / 停止 不因表面分叉；浏览器只是同一 Sidecar 的可选完整 Guest 面。  
+- **禁止**默认自动外开逼用户跳窗；**禁止**第二套 Web 地址或 TOA 自研 Agent 页替代 `dsh web`。  
 - `engine_host_hub`：**Hold**（菜单隐藏）；勿再做成默认入口。
+
+### 2.1 Host 进度与装载契约（全引擎通用 · 2026-09-10）
+
+适用于：`harness_agent`、`LocalWebHostPage`（OpenPencil / Draw.io / ComfyUI / engine pack）、Hub 适配页。  
+标准条目：`STD-01` **A4.7**。
+
+| 阶段 | 用户看到什么 | 禁止 |
+|------|-------------|------|
+| 进页检测 / 查安装 / 查服务 | 状态行轻提示即可；主区结果态（未启动/已停止/装载中） | `ProgressBar.show/hide` 顶布局；进页就弹活动条；「正在进入」盖住「已停止」 |
+| 启动 / 停止 / 重启 | `SoftActivityBar` 虚线跑马灯淡入滚动；点按可 `immediate` | 系统 indeterminate 咔咔跳；装完还在往后跑 |
+| 失败 / 异常 | Host 自读日志出短因；引导「修一下」/「环境维护」；修完自动重启 | 堆栈刷屏；叫用户打开日志；修复常驻成第二主 CTA；系统设置堆路径表单 |
+| 进页已在跑 | HTTP 通则直接装载界面，禁止因修密钥整段重启 | 已运行还整页重启 |
+| 界面装载 | 主区**占位遮罩**（栈内 placeholder）；Web 藏在后面 | 半露 Web、半透明盖 Chromium、状态文案闪烁抢主区 |
+| 装载完成 | `loadFinished` 成功 → 硬停活动条 → 揭开 Web | READY 后活动条继续扫 |
+| 深链 / 卡死回主 | 「刷新」与「更多→回到主界面」强制 `setUrl(web_url())`；装载超时看门狗揭罩或回主 | 只 `reload()` 当前深链导致永久遮罩 |
+| 一键安装 | 确定进度 `ProgressBar` 0–100（仅安装门；分阶段文案：连接/下载/校验/解压/配置） | 用安装条冒充启停/进页检测；干等无进度 |
+
+**控件**：活动条必须用 `widgets.SoftActivityBar`（`objectName=SoftActivityBar`，QSS 已登记）；禁止业务 `setStyleSheet`。  
+**实现参考**：`modules/harness_agent/harness_agent_page.py` · `modules/local_web_host/local_web_host_page.py`。  
+**验收脚本**：`scripts/verify_harness_host_lifecycle.py` · `scripts/verify_local_web_host_chrome.py`。
 
 ## 3. 布局（Host + Guest · v2）
 
@@ -48,12 +70,35 @@
 
 | 能力 | TOA 独有价值 | 入口 |
 |------|-------------|------|
+| 双路线一键安装 | 官方精简 / 预制必备 zip；免 Node/npm/终端 | SetupGate 选版本 |
 | Sidecar 启停/重启 | 用户不开终端；与套件托盘/热键一体 | 主按钮 / 更多 |
+| 启动前 denylist 自愈 | 拦截不兼容插件拖死 Web（Failed to load plugins） | 自动（prepare / restart） |
+| 修复 / 配置快照回退 | 坏了点修；健康时标「上次可用」可一键回 | 更多 |
+| 启动日志 / 安装目录 | 出问题看得见，不必翻终端 | 更多 |
+| 一键卸载（默认可留会话） | 干净走人，不必手删 `~/.toa3` | 更多 |
 | 内嵌 ↔ 浏览器 | 同一 DSH_HOME，随场景切换表面 | 工具栏 |
 | 办公链投喂 | 剪贴板/OCR → Harness 输入（套件闭环） | 投喂条 / 投喂 |
 | 导出最近会话 MD | 落盘 `output/`，培训留档可追溯 | 更多 |
-| 首次环境引导 | 小白不进 Harness 也能完成 Node/Key | 首行横幅 → 设置 |
-| 路径/密钥/端口 | 与全应用设置一致，不散落多处表单 | 系统设置 |
+| 首次环境引导 | 小白四步：选版本 → 可预期等待 → 一次 Key → 检测启动 | SetupGate |
+| 路径/密钥/端口 | 页内「环境维护」；系统设置不填路径 | 系统设置堆 DSH/Node/bin |
+
+### 4.1 四步开用（C′ 无感就绪 · 装门）
+
+1. **选择安装版本**：官方精简（仅核心 Web、无扩展插件）或预制必备（核心 + `prefab_essential_plugins` 白名单）。  
+2. **可预期等待**：下载 → 校验 sha256 → 解压 → 配置；确定进度条；可取消。  
+3. **配置一次 API Key**：仅写本机 `.credentials.yaml`。  
+4. **检测状态 → 启动服务 → 即可应用**（内嵌 Guest）。
+
+预制包 URL / sha256 见 `config/harness.yml`（`official_bundle_*` / `prefab_bundle_*`）；构建脚本 `scripts/build_harness_prefab.py`。主安装器**不**内嵌 zip（体积大，发版 guard 禁止打进 Setup）。URL 未配置且本机有 Node 时可回落 npm；日常主路径不出现 npm 文案。
+
+### 4.2 小白原则（主理人 · 2026-09-11）
+
+用户一般不懂技术；**复杂配置 = 摆设**。产品口径：
+
+- **日常唯一路径**：编码智能体页内四步；只要求「选一次版本 + 贴一次 Key」。  
+- **日常入口**：顶栏「引擎 → 编码智能体」四步开用 +「更多 → 环境维护」（对话密钥、怎么看界面、修一下 / 回到上次能用的样子 / 更新环境）。  
+- **系统设置 · 能力接入**：不再设 Harness 页签；OCR / 连通总览仍在此。  
+- **禁止**把「设置页再配一遍」当成正常开箱步骤；Key 与引擎页是同一套本机数据。
 
 ## 5. TOA 原生面 **禁止做**（山寨红线）
 
@@ -82,7 +127,8 @@
 | 办公链条 | `modules/harness_agent/feed_strip.py` |
 | 状态探测 | `services/harness_probe.py` |
 | 导出 | `services/harness_export.py` |
-| 一键安装 | `services/harness_setup.install_harness_runtime` |
+| 一键安装 | `services/harness_setup.install_harness_runtime` · `services/harness_prefab` |
+| 预制构建 | `scripts/build_harness_prefab.py` |
 | 双表面 | `services/harness_surface.py` |
 | Sidecar | `services/harness_sidecar.py` |
 | 配置 | `config/harness.yml` · `data/user/harness.yml` |
@@ -99,7 +145,7 @@
 | 首屏 | 仅状态条 + Harness Web，无第三套会话列表 |
 | 投喂 | 办公链进页出现可操作条，一键送入 Harness |
 | 导出 | 更多 → 导出最近会话 → `show_saved` + output 目录 |
-| 配置 | 未完成三步时单行引导，详表在系统设置 |
+| 配置 | 未完成四步时页内引导；系统设置仅排障，不作为日常功课 |
 
 ---
 

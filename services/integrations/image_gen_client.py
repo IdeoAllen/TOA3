@@ -47,7 +47,8 @@ class ImageGenClient(IntegrationClient):
         pid = str(prof.get("id") or "")
         cap = str(prof.get("capability") or "image_gen")
         provider = str(prof.get("provider") or "")
-        if provider == "evolink_images" or "evolink.ai" in str(prof.get("api_base") or ""):
+        api_base = str(prof.get("api_base") or "")
+        if provider == "evolink_images" or "evolink.ai" in api_base:
             return str(
                 get_profile_secret(cap, pid, "api_key")
                 or get_profile_secret("video_gen", "evolink_seedance_2", "api_key")
@@ -56,6 +57,8 @@ class ImageGenClient(IntegrationClient):
                 or self._config.get("api_key")
                 or ""
             ).strip()
+        if self._is_mxapi_profile(prof):
+            return self._mxapi_api_key(prof)
         return str(
             get_profile_secret(cap, pid, "api_key")
             or self._config.get("api_key")
@@ -64,6 +67,47 @@ class ImageGenClient(IntegrationClient):
             or os.environ.get("OPENAI_API_KEY")
             or ""
         ).strip()
+
+    @staticmethod
+    def _is_mxapi_profile(prof: dict[str, Any]) -> bool:
+        pid = str(prof.get("id") or "").lower()
+        base = str(prof.get("api_base") or "").lower()
+        vendor = str(prof.get("vendor") or "").lower()
+        return (
+            pid.startswith("mxapi_")
+            or "mxapi.org" in base
+            or vendor == "mxapi"
+        )
+
+    def _mxapi_api_key(self, prof: dict[str, Any]) -> str:
+        """MXAPI Key：模型管理 profile → 环境变量 → Harness .credentials.yaml。"""
+        from services.integrations.secrets import get_profile_secret
+
+        pid = str(prof.get("id") or "")
+        shared = (
+            "mxapi_nano_banana_2",
+            "mxapi_gpt_image_2",
+            "mxapi_nano_banana_pro",
+        )
+        for candidate in (pid, *shared):
+            if not candidate:
+                continue
+            val = get_profile_secret("image_gen", candidate, "api_key")
+            if str(val or "").strip():
+                return str(val).strip()
+        env = (
+            os.environ.get("MXAPI_API_KEY")
+            or os.environ.get("TOA_IMAGE_GEN_API_KEY")
+            or ""
+        ).strip()
+        if env:
+            return env
+        try:
+            from services.harness_credentials import load_credential_map
+
+            return str(load_credential_map().get("MXAPI_API_KEY") or "").strip()
+        except Exception:
+            return ""
 
     def generate(
         self,
@@ -329,7 +373,9 @@ class ImageGenClient(IntegrationClient):
             else:
                 body["image"] = encoded
 
-        payload = self._post_json(url, body, headers=headers)
+        # MXAPI 同步出图常 40–60s，给足超时
+        timeout = max(self.timeout, 600.0 if self._is_mxapi_profile(prof) else 120.0)
+        payload = self._post_json(url, body, headers=headers, timeout=timeout)
         items = payload.get("data") or []
         if not items:
             raise self.integration_error("无 data", user_message="云端生图未返回图像。")
@@ -525,12 +571,20 @@ class ImageGenClient(IntegrationClient):
                 raise
             raise self.integration_error(str(exc), user_message=f"下载生图结果失败：{exc}") from exc
 
-    def _post_json(self, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+    def _post_json(
+        self,
+        url: str,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        wait = float(timeout if timeout is not None else max(self.timeout, 120.0))
         try:
             import httpx
 
-            with httpx.Client(timeout=max(self.timeout, 120.0)) as client:
+            with httpx.Client(timeout=wait) as client:
                 resp = client.post(url, content=data, headers=headers)
                 raw = resp.text
                 if resp.status_code >= 400:
@@ -538,6 +592,8 @@ class ImageGenClient(IntegrationClient):
                     user = f"图像生成失败（HTTP {resp.status_code}）。"
                     if resp.status_code == 429:
                         user = "生图限流，请稍后再试。"
+                    if resp.status_code == 402:
+                        user = "积分不足，请到 MXAPI / 对应平台充值后再试。"
                     if hint:
                         user += f" {hint}"
                     raise self.integration_error(f"HTTP {resp.status_code}: {raw[:300]}", user_message=user)
@@ -554,7 +610,7 @@ class ImageGenClient(IntegrationClient):
 
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=max(self.timeout, 120.0)) as resp:
+            with urllib.request.urlopen(req, timeout=wait) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as e:

@@ -44,9 +44,11 @@ def _assert_page_restart_forces() -> None:
     # _on_restart 不得再 stop(force=False)+_run_sidecar_start
     idx = text.find("def _on_restart")
     assert idx > 0
-    chunk = text[idx : idx + 600]
+    chunk = text[idx : idx + 900]
     assert "stop(force=False)" not in chunk
     assert "_takeover_restart_on_main" in chunk
+    assert "_user_stopped" in text
+    assert "open_browser: bool = False" in text
 
 
 def _assert_app_restart_kills_siblings() -> None:
@@ -68,6 +70,35 @@ def main() -> int:
     from services import harness_sidecar as hs
 
     assert hs.restart.__doc__ and "强杀" in hs.restart.__doc__
+    assert callable(hs.preflight_web_profile)
+    src = (ROOT / "services" / "harness_sidecar.py").read_text(encoding="utf-8")
+    assert "preflight_web_profile" in src
+    assert "strip_boot_killer_plugins" in src
+    page = (ROOT / "modules" / "harness_agent" / "harness_agent_page.py").read_text(encoding="utf-8")
+    assert "卸载…" in page
+    assert "打开…" in page
+    assert "修一下" in page or "环境维护" in page
+    assert "_maybe_auto_heal_plugins" in page
+    # 主栏保留启停 + 浏览器 + 刷新 + 更多
+    assert 'SecondaryButton("刷新")' in page
+    assert "_begin_click_feedback" in page
+    assert "_action_progress" in page
+    assert "再次打开浏览器" not in page
+    # launch-token：导航不得把 ?token= 末尾拼成 token…/
+    assert "normalize_nav_url" in page
+    from services.shared_local_webengine import normalize_nav_url
+
+    bare = "http://127.0.0.1:3082"
+    tok = "http://127.0.0.1:3082/?token=abcDEF"
+    assert normalize_nav_url(bare) == "http://127.0.0.1:3082/"
+    assert normalize_nav_url(tok) == tok
+    shared = (ROOT / "services" / "shared_local_webengine.py").read_text(encoding="utf-8")
+    assert "normalize_nav_url" in shared
+    assert 'url.rstrip("/") + "/"' not in shared
+    cfg = (ROOT / "services" / "harness_config.py").read_text(encoding="utf-8")
+    assert "_capture_auth_url_from_log" in cfg
+    side = (ROOT / "services" / "harness_sidecar.py").read_text(encoding="utf-8")
+    assert side.count("_capture_auth_url_from_log()") >= 2
     print("VERIFY harness_clean_restart OK")
     return 0
 

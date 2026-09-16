@@ -39,3 +39,7 @@ data/user/integrations_secrets.json.tmp
 output/*
 !output/README.md
 cache/
+
+# Harness 预制大包（走 CDN，勿进仓库）
+packaging/dist/harness/*.zip
+packaging/dist/*.exe

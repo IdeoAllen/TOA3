@@ -211,12 +211,14 @@ def remove_watermark(
                             Path(dest).write_bytes(data)
                         elif p.is_file():
                             dest = str(p)
-                        note = "AI 去水印完成（LaMa）"
+                        note = "AI 去水印完成（lama）"
                         if mild_corner_blur:
                             note += "（未再做四角模糊；AI 结果优先保留）"
-                        return RemoveResult(True, dest, "watermark_ai+lama", note)
+                        return RemoveResult(True, dest, "lama", note)
                 except Exception as exc:
-                    logger.info("AI 去水印不可用，回退本地: %s", exc)
+                    logger.info("AI 去水印不可用，回退 light: %s", exc)
+            else:
+                logger.debug("prefer_ai 但 LaMa 未就绪，走 light")
         except Exception as exc:
             logger.debug("未加载 watermark_ai: %s", exc)
 
@@ -257,14 +259,14 @@ def remove_watermark(
             if mild_corner_blur:
                 repaired = _mild_blur_all_corners(repaired)
             proc.save_image(dest, repaired)
-            engine = "toa2_processor"
+            engine = "light"
             if has_brush:
                 engine += "+brush"
             elif use_boxes:
                 engine += "+boxes"
             else:
                 engine += "+auto_detect"
-            return RemoveResult(True, dest, engine, f"本地修复完成（{engine}）")
+            return RemoveResult(True, dest, engine, f"本地轻量完成（{engine}）")
         except Exception as exc:
             logger.warning("TOA2 处理器失败，回退简易 inpaint: %s", exc)
 
@@ -311,12 +313,13 @@ def preview_remove(
     boxes: list[Region] | None = None,
     brush_mask: object | None = None,
 ) -> PreviewResult:
-    """实时效果预览：仅本地处理器（跳过 AI），返回 PNG 字节。"""
+    """实时效果预览：仅本地 light 处理器（跳过 AI），大图限边，返回 PNG 字节。"""
     src = str(image_path)
     if not _HAS_CV2:
         return PreviewResult(False, b"", "预览需要 OpenCV（opencv-python）")
 
     try:
+        from modules.watermark_remover.preview_io import EFFECT_PREVIEW_MAX_EDGE
         from modules.watermark_remover.watermark_remover_processor import WatermarkRemoverProcessor
 
         proc = WatermarkRemoverProcessor()
@@ -324,7 +327,26 @@ def preview_remove(
         if bgr is None:
             return PreviewResult(False, b"", f"无法读取图片: {src}")
 
-        use_boxes: list[Region] = list(boxes or [])
+        h0, w0 = bgr.shape[:2]
+        scale = 1.0
+        max_edge = int(EFFECT_PREVIEW_MAX_EDGE)
+        if max(h0, w0) > max_edge:
+            scale = max_edge / float(max(h0, w0))
+            nw, nh = max(1, int(round(w0 * scale))), max(1, int(round(h0 * scale)))
+            bgr = cv2.resize(bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+
+        def _scale_box(box: Region) -> Region:
+            if scale == 1.0:
+                return box
+            x, y, bw, bh = box
+            return (
+                int(round(x * scale)),
+                int(round(y * scale)),
+                max(1, int(round(bw * scale))),
+                max(1, int(round(bh * scale))),
+            )
+
+        use_boxes: list[Region] = [_scale_box(b) for b in (boxes or [])]
         has_brush = False
         mask_np = None
         if brush_mask is not None:
@@ -332,10 +354,16 @@ def preview_remove(
             if mask_np.ndim == 2 and np.any(mask_np):
                 has_brush = True
                 use_boxes = []
+                if mask_np.shape[0] != bgr.shape[0] or mask_np.shape[1] != bgr.shape[1]:
+                    mask_np = cv2.resize(
+                        mask_np,
+                        (bgr.shape[1], bgr.shape[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
 
         if not has_brush:
             if not use_boxes and region is not None:
-                use_boxes = [_clamp_region(bgr.shape[0], bgr.shape[1], region)]
+                use_boxes = [_clamp_region(bgr.shape[0], bgr.shape[1], _scale_box(region))]
             if not use_boxes:
                 return PreviewResult(False, b"", "请先在左侧标记水印区域")
 
@@ -352,7 +380,7 @@ def preview_remove(
         ok, buf = cv2.imencode(".png", repaired)
         if not ok:
             return PreviewResult(False, b"", "预览编码失败")
-        return PreviewResult(True, bytes(buf), "预览完成")
+        return PreviewResult(True, bytes(buf), "预览完成（light）")
     except Exception as exc:
         logger.warning("效果预览失败: %s", exc)
         return PreviewResult(False, b"", f"预览失败: {exc}")

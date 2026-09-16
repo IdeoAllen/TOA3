@@ -79,6 +79,8 @@ def _supplier_label(
         or "seedance" in lab
     ):
         return "火山方舟"
+    if "mxapi.org" in base or pid.startswith("mxapi_") or "mxapi" in lab:
+        return "MXAPI"
     if p == "openai_images" or "openai.com" in base or "openai" in pid:
         return "OpenAI"
     if p == "openai_compatible":
@@ -129,6 +131,10 @@ def _origin_code(prof: dict[str, Any], *, provider: str) -> str:
 def _has_key(capability: str, profile_id: str) -> bool:
     if get_profile_secret(capability, profile_id, "api_key"):
         return True
+    if capability == "image_gen" and str(profile_id).startswith("mxapi_"):
+        from services.model_ready_registry import _mxapi_key_present
+
+        return _mxapi_key_present()
     if capability == "image_gen" and profile_id == "evolink_grok_imagine":
         return bool(get_profile_secret("video_gen", "evolink_seedance_2", "api_key"))
     if capability == "video_gen" and profile_id == "evolink_seedance_2":

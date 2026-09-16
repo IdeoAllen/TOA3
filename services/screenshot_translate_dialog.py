@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""截图翻译对照弹窗：应用时选模型 + 简单配置（大模型范式）。"""
+"""截图翻译对照弹窗：原文/译文并列 + 一键拷贝；OCR/翻译均走后台线程。"""
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
+from PySide6.QtGui import QGuiApplication, QPixmap
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from core.base_dialog import BaseDialog
 from core.status_service import StatusLevel, report_status
@@ -12,6 +12,7 @@ from core.user_messages import ask_confirm, show_warning
 from services.compute_source import pick_effective_profile_id
 from services.model_catalog import set_active_profile_id
 from services.model_ready_registry import list_ready
+from services.screenshot_translate import PLACEHOLDER_TRANSLATED, OcrWorker
 from widgets import (
     ComboBox,
     HintLabel,
@@ -35,19 +36,9 @@ class _TranslateWorker(QObject):
 
     def run(self) -> None:
         try:
-            from services.integrations import get_client
+            from services.screenshot_translate import translate_text
 
-            llm = get_client("llm")
-            translated = llm.complete(
-                self._source,
-                system=(
-                    "你是翻译助手。将用户给出的屏幕文字译为简体中文；"
-                    "若原文已是中文则译为英文。只输出译文，不要解释。"
-                ),
-                temperature=0.2,
-                profile_id=self._profile_id or None,
-            )
-            text = str(translated or "").strip()
+            text = translate_text(self._source, profile_id=self._profile_id or None)
             if not text:
                 self.failed.emit("译文为空，请稍后重试。")
                 return
@@ -69,12 +60,14 @@ class TranslateResultDialog(BaseDialog):
         source: str = "",
         translated: str = "",
         offer_translate: bool = False,
+        ocr_pending: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("截图翻译")
         self._source = source or ""
         self._translated = translated or ""
         self._offer_translate = offer_translate
+        self._ocr_pending = ocr_pending
         self._thread: QThread | None = None
         self._worker: _TranslateWorker | None = None
         self._profile_ids: list[str] = []
@@ -101,7 +94,10 @@ class TranslateResultDialog(BaseDialog):
         left = QVBoxLayout()
         left.addWidget(HintLabel("原文"))
         self._src = ReadOnlyPlainTextEdit()
-        self._src.setPlainText(self._source)
+        if self._ocr_pending and not self._source.strip():
+            self._src.setPlainText("正在识别文字…")
+        else:
+            self._src.setPlainText(self._source)
         self._src.setMinimumHeight(240)
         left.addWidget(self._src)
         cols.addLayout(left, 1)
@@ -109,7 +105,10 @@ class TranslateResultDialog(BaseDialog):
         right = QVBoxLayout()
         right.addWidget(HintLabel("译文"))
         self._dst = ReadOnlyPlainTextEdit()
-        self._dst.setPlainText(self._translated)
+        if self._ocr_pending and not self._translated.strip():
+            self._dst.setPlainText("识别完成后可点「翻译原文」。")
+        else:
+            self._dst.setPlainText(self._translated)
         self._dst.setMinimumHeight(240)
         right.addWidget(self._dst)
         cols.addLayout(right, 1)
@@ -117,11 +116,11 @@ class TranslateResultDialog(BaseDialog):
 
         row = QHBoxLayout()
         btn_src = SecondaryButton("复制原文")
-        btn_src.clicked.connect(lambda: self._copy(self._source))
+        btn_src.clicked.connect(self._copy_source)
         row.addWidget(btn_src)
-        btn_dst = SecondaryButton("复制译文")
-        btn_dst.clicked.connect(lambda: self._copy(self._dst.toPlainText()))
-        row.addWidget(btn_dst)
+        self._btn_copy_dst = SecondaryButton("复制译文")
+        self._btn_copy_dst.clicked.connect(self._copy_translated)
+        row.addWidget(self._btn_copy_dst)
         btn_agent = SecondaryButton("送到智能体")
         btn_agent.setToolTip("将原文与译文送入 Harness 编码智能体")
         btn_agent.clicked.connect(self._send_to_harness)
@@ -137,8 +136,61 @@ class TranslateResultDialog(BaseDialog):
         lay.addLayout(row)
 
         self._reload_profiles()
-        if not self._source.strip():
-            self._btn_tr.setEnabled(False)
+        self._refresh_actions()
+        if self._offer_translate and self._source.strip() and not self._has_real_translation():
+            self._btn_tr.setDefault(True)
+
+    def _has_real_translation(self) -> bool:
+        t = (self._dst.toPlainText() or "").strip()
+        if not t:
+            return False
+        if t == PLACEHOLDER_TRANSLATED:
+            return False
+        if t.startswith("识别完成后") or t.startswith("（原文已复制"):
+            return False
+        return True
+
+    def _refresh_actions(self) -> None:
+        busy = self._thread is not None and self._thread.isRunning()
+        has_src = (
+            not self._ocr_pending
+            and bool((self._src.toPlainText() or "").strip())
+            and not (self._src.toPlainText() or "").startswith("正在识别")
+        )
+        self._btn_tr.setEnabled(has_src and not busy)
+        self._btn_copy_dst.setEnabled(self._has_real_translation())
+
+    def apply_ocr_result(self, source: str) -> None:
+        """OCR 线程完成后灌入原文（供 launch_translate_from_pixmap）。"""
+        self._ocr_pending = False
+        self._source = (source or "").strip()
+        self._src.setPlainText(self._source)
+        if self._source:
+            self._dst.setPlainText(PLACEHOLDER_TRANSLATED)
+            self._push_clipboard(self._source)
+            report_status(self, "识别完成 · 可翻译", level=StatusLevel.SUCCESS)
+        else:
+            self._dst.setPlainText("")
+            show_warning(self, "未识别到文字。请确认 OCR 已在系统设置中配置。")
+            report_status(self, "未识别到文字", level=StatusLevel.WARNING)
+        self._refresh_actions()
+        if self._offer_translate and self._source:
+            self._btn_tr.setDefault(True)
+
+    def apply_ocr_failure(self, message: str) -> None:
+        self._ocr_pending = False
+        self._src.setPlainText("")
+        self._dst.setPlainText("")
+        self._refresh_actions()
+        msg = (message or "").strip() or "OCR 失败"
+        low = msg.lower()
+        if any(k in low for k in ("ocr", "tesseract", "未配置", "未启用", "未就绪")):
+            show_warning(self, f"{msg}\n\n请在系统设置 → 集成中配置 OCR。")
+        else:
+            from core.user_messages import show_error
+
+            show_error(self, msg, title="截图翻译 · 识字失败")
+        report_status(self, "识字失败", level=StatusLevel.ERROR)
 
     def _reload_profiles(self) -> None:
         profiles = list_ready("text_llm", ready_only=True)
@@ -192,16 +244,48 @@ class TranslateResultDialog(BaseDialog):
         dlg.exec()
         self._reload_profiles()
 
-    def _copy(self, text: str) -> None:
+    def _push_clipboard(self, text: str) -> None:
+        try:
+            from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
+            from modules.clipboard_history.history_store import push_text
+
+            get_clipboard_watcher().suppress_once()
+            push_text(text, source="ocr")
+        except Exception:
+            pass
         cb = QGuiApplication.clipboard()
         if cb is not None:
             cb.setText(text or "")
 
+    def _copy(self, text: str, *, label: str) -> None:
+        body = text or ""
+        if not body.strip() or body.strip() == PLACEHOLDER_TRANSLATED:
+            show_warning(self, f"没有可复制的{label}。")
+            return
+        if body.startswith("正在识别") or body.startswith("识别完成后"):
+            show_warning(self, f"没有可复制的{label}。")
+            return
+        cb = QGuiApplication.clipboard()
+        if cb is not None:
+            cb.setText(body)
+        report_status(self, f"已复制{label}", level=StatusLevel.SUCCESS)
+
+    def _copy_source(self) -> None:
+        self._copy(self._src.toPlainText(), label="原文")
+
+    def _copy_translated(self) -> None:
+        self._copy(self._dst.toPlainText(), label="译文")
+
     def _send_to_harness(self) -> None:
         src = self._src.toPlainText().strip()
         dst = self._dst.toPlainText().strip()
+        if dst == PLACEHOLDER_TRANSLATED or dst.startswith("识别完成后"):
+            dst = ""
         if not src and not dst:
             show_warning(self, "没有可发送的内容。")
+            return
+        if src.startswith("正在识别"):
+            show_warning(self, "正在识别，请稍候。")
             return
         parts = []
         if src:
@@ -217,12 +301,14 @@ class TranslateResultDialog(BaseDialog):
         self.accept()
 
     def _set_busy(self, busy: bool) -> None:
-        self._btn_tr.setEnabled(not busy and bool(self._src.toPlainText().strip()))
         self._btn_tr.setText("翻译中…" if busy else "翻译原文")
+        self._refresh_actions()
+        if busy:
+            self._btn_tr.setEnabled(False)
 
     def _run_translate(self) -> None:
         source = (self._src.toPlainText() or "").strip()
-        if not source:
+        if not source or source.startswith("正在识别"):
             show_warning(self, "没有可翻译的原文。")
             return
         if self._thread is not None and self._thread.isRunning():
@@ -261,7 +347,8 @@ class TranslateResultDialog(BaseDialog):
         self._translated = text
         self._dst.setPlainText(text)
         self._set_busy(False)
-        report_status(self, "翻译完成", level=StatusLevel.SUCCESS)
+        self._refresh_actions()
+        report_status(self, "翻译完成 · 可复制译文", level=StatusLevel.SUCCESS)
 
     def _on_translate_fail(self, message: str) -> None:
         self._set_busy(False)
@@ -288,10 +375,14 @@ class TranslateResultDialog(BaseDialog):
         if self._thread is not None:
             self._thread.deleteLater()
             self._thread = None
+        self._refresh_actions()
 
     def reject(self) -> None:  # noqa: N802
         if self._thread is not None and self._thread.isRunning():
             show_warning(self, "正在翻译，请稍候再关闭。")
+            return
+        if self._ocr_pending:
+            show_warning(self, "正在识别，请稍候再关闭。")
             return
         super().reject()
 
@@ -299,4 +390,67 @@ class TranslateResultDialog(BaseDialog):
         if self._thread is not None and self._thread.isRunning():
             show_warning(self, "正在翻译，请稍候再关闭。")
             return
+        if self._ocr_pending:
+            show_warning(self, "正在识别，请稍候再关闭。")
+            return
         super().accept()
+
+
+class _LaunchHost(QObject):
+    """持有 OCR 线程生命周期，直至对照窗关闭。"""
+
+    def __init__(self, parent: QWidget | None, pixmap: QPixmap) -> None:
+        super().__init__(parent)
+        self._dlg = TranslateResultDialog(
+            parent,
+            source="",
+            translated="",
+            offer_translate=True,
+            ocr_pending=True,
+        )
+        self._thread = QThread(self)
+        self._worker = OcrWorker(pixmap)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_ocr_ok)
+        self._worker.failed.connect(self._on_ocr_fail)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.failed.connect(self._thread.quit)
+        self._thread.finished.connect(self._cleanup)
+
+    def start(self) -> None:
+        self._thread.start()
+        self._dlg.exec()
+
+    def _on_ocr_ok(self, text: str) -> None:
+        self._dlg.apply_ocr_result(text)
+
+    def _on_ocr_fail(self, message: str) -> None:
+        self._dlg.apply_ocr_failure(message)
+
+    def _cleanup(self) -> None:
+        if self._worker is not None:
+            self._worker.deleteLater()
+            self._worker = None
+        if self._thread is not None:
+            self._thread.deleteLater()
+            self._thread = None
+
+
+def launch_translate_from_pixmap(parent: QWidget | None, pixmap: QPixmap) -> None:
+    """推荐入口：后台 OCR → 对照窗 → 用户点「翻译原文」→ 复制。
+
+    满足 STD：不在 UI 线程同步长联网。截图工具栏应调用本函数替代同步 ocr_only。
+    """
+    if pixmap is None or pixmap.isNull():
+        show_warning(parent, "无有效截图，无法翻译。")
+        return
+    pix = QPixmap(pixmap)
+    host = _LaunchHost(parent, pix)
+    host.start()
+
+
+__all__ = [
+    "TranslateResultDialog",
+    "launch_translate_from_pixmap",
+]

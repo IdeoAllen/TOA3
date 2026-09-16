@@ -2,11 +2,12 @@
 """列表、表格、页签、进度、日历等展示控件。"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QSize, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QPalette, QTextCharFormat
 from PySide6.QtWidgets import (
     QCalendarWidget,
     QFrame,
+    QGraphicsOpacityEffect,
     QHeaderView,
     QListWidget,
     QProgressBar,
@@ -42,9 +43,259 @@ class TreeWidget(QTreeWidget):
 
 
 class ProgressBar(QProgressBar):
+    """确定进度；填充段带缓动斑马微纹（主题色派生，非硬编码）。"""
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(12)
+        self.setMinimumHeight(14)
+        self.setTextVisible(True)
+        self._zebra_offset = 0.0
+        self._zebra_timer = QTimer(self)
+        self._zebra_timer.setInterval(33)
+        self._zebra_timer.timeout.connect(self._tick_zebra)
+        self.valueChanged.connect(self._sync_zebra_timer)
+        self._sync_zebra_timer()
+
+    def _sync_zebra_timer(self, *_args) -> None:
+        lo, hi, cur = self.minimum(), self.maximum(), self.value()
+        busy = hi > lo and lo < cur < hi
+        if busy and not self._zebra_timer.isActive():
+            self._zebra_timer.start()
+        elif not busy and self._zebra_timer.isActive():
+            self._zebra_timer.stop()
+            self.update()
+
+    def _tick_zebra(self) -> None:
+        self._zebra_offset = (self._zebra_offset + 1.1) % 16.0
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        from PySide6.QtGui import QPainter, QPainterPath, QColor
+        from PySide6.QtWidgets import QStyle, QStyleOptionProgressBar, QStylePainter
+
+        opt = QStyleOptionProgressBar()
+        self.initStyleOption(opt)
+        sp = QStylePainter(self)
+        sp.drawControl(QStyle.ControlElement.CE_ProgressBarGroove, opt)
+
+        lo, hi, cur = self.minimum(), self.maximum(), self.value()
+        if hi > lo and cur > lo:
+            groove = self.style().subElementRect(
+                QStyle.SubElement.SE_ProgressBarGroove, opt, self
+            )
+            if not groove.isValid():
+                groove = self.style().subElementRect(
+                    QStyle.SubElement.SE_ProgressBarContents, opt, self
+                )
+            frac = max(0.0, min(1.0, (cur - lo) / float(hi - lo)))
+            fill_w = max(0, int(groove.width() * frac))
+            if fill_w > 0:
+                fill = groove.adjusted(1, 1, fill_w - groove.width() - 1, -1)
+                accent = self.palette().color(QPalette.ColorRole.Highlight)
+                if not accent.isValid():
+                    accent = self.palette().color(QPalette.ColorRole.WindowText)
+
+                path = QPainterPath()
+                path.addRoundedRect(fill, 3.0, 3.0)
+                sp.setClipPath(path)
+                sp.fillRect(fill, accent)
+
+                # 斑马微纹叠在填充上（低透明），文字稍后由 Label 绘出
+                stripe = QColor(accent)
+                if accent.lightness() > 140:
+                    stripe = accent.lighter(135)
+                else:
+                    stripe = accent.lighter(165)
+                stripe.setAlpha(55)
+
+                period = 16.0
+                half = period * 0.5
+                skew = float(max(1, fill.height()))
+                x = float(fill.x()) - period - (self._zebra_offset % period)
+                right = float(fill.right()) + period
+                band = 0
+                while x < right:
+                    if band % 2 == 0:
+                        poly = QPainterPath()
+                        poly.moveTo(x, fill.top())
+                        poly.lineTo(x + half, fill.top())
+                        poly.lineTo(x + half + skew, fill.bottom())
+                        poly.lineTo(x + skew, fill.bottom())
+                        poly.closeSubpath()
+                        sp.fillPath(poly, stripe)
+                    x += half
+                    band += 1
+                sp.setClipping(False)
+
+        sp.drawControl(QStyle.ControlElement.CE_ProgressBarLabel, opt)
+
+
+class SoftActivityBar(QWidget):
+    """斑马纹滑动活动条：布局高度常驻，忙碌淡入匀速滑动，空闲淡出后停。
+
+    不用系统 indeterminate / 实心 chunk（Windows 上易咔咔、装完还往前跑）。
+    斜向斑马带连续平移，避免旧版虚线「走走停停」感。
+    """
+
+    _HEIGHT = 4
+    _PERIOD = 18.0  # 一对斑马带周期（px）
+    _SPEED = 1.35  # 每帧位移（16ms ≈ 84px/s）
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("SoftActivityBar")
+        self.setFixedHeight(self._HEIGHT)
+        self.setMaximumHeight(self._HEIGHT)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        self._fx = QGraphicsOpacityEffect(self)
+        self._fx.setOpacity(0.0)
+        self.setGraphicsEffect(self._fx)
+
+        self._fade = QPropertyAnimation(self._fx, b"opacity", self)
+        self._fade.setDuration(220)
+        self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade.finished.connect(self._on_fade_finished)
+
+        self._want = False
+        self._visible_soft = False
+        self._offset = 0.0
+
+        self._marquee = QTimer(self)
+        self._marquee.setInterval(16)
+        self._marquee.timeout.connect(self._tick_marquee)
+
+        self._defer_show = QTimer(self)
+        self._defer_show.setSingleShot(True)
+        self._defer_show.setInterval(80)
+        self._defer_show.timeout.connect(self._really_show)
+
+    def set_active(self, active: bool, *, immediate: bool = False) -> None:
+        active = bool(active)
+        self._want = active
+        if active:
+            if immediate:
+                self._defer_show.stop()
+                self._really_show()
+            elif not self._visible_soft and not self._defer_show.isActive():
+                self._defer_show.start()
+        else:
+            self._defer_show.stop()
+            self._begin_hide()
+
+    def _really_show(self) -> None:
+        if not self._want:
+            return
+        was = self._visible_soft
+        self._visible_soft = True
+        self._fade.stop()
+        self._fade.setStartValue(max(0.0, float(self._fx.opacity())))
+        self._fade.setEndValue(1.0)
+        self._fade.start()
+        if not self._marquee.isActive():
+            self._marquee.start()
+        # 已在滚动时不要重置相位，避免反复启停「跳一下」
+        if not was:
+            self.update()
+
+    def _begin_hide(self) -> None:
+        """先淡出，动画仍跑；淡出结束后再硬停计时器。"""
+        self._want = False
+        self._visible_soft = False
+        self._defer_show.stop()
+        self._fade.stop()
+        cur = float(self._fx.opacity())
+        if cur <= 0.02:
+            self._fx.setOpacity(0.0)
+            self._marquee.stop()
+            self.update()
+            return
+        # 淡出期间保持斑马滑动，避免「突然定格再消失」
+        if not self._marquee.isActive():
+            self._marquee.start()
+        self._fade.setStartValue(cur)
+        self._fade.setEndValue(0.0)
+        self._fade.start()
+
+    def _on_fade_finished(self) -> None:
+        if self._want:
+            return
+        if float(self._fx.opacity()) <= 0.02:
+            self._marquee.stop()
+            self._fx.setOpacity(0.0)
+            self.update()
+
+    def _hard_stop(self) -> None:
+        """兼容旧调用：立即停。"""
+        self._begin_hide()
+
+    def _tick_marquee(self) -> None:
+        # 淡出过程中仍滑动；仅完全隐藏且不要显示时停
+        if not self._want and float(self._fx.opacity()) <= 0.02:
+            self._marquee.stop()
+            return
+        self._offset = (self._offset + self._SPEED) % self._PERIOD
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        op = float(self._fx.opacity())
+        if op < 0.02:
+            return
+        from PySide6.QtGui import QPainter, QPainterPath, QColor
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        accent = self.palette().color(QPalette.ColorRole.Highlight)
+        if not accent.isValid() or accent.lightness() > 240:
+            accent = self.palette().color(QPalette.ColorRole.WindowText)
+        track = self.palette().color(QPalette.ColorRole.Mid)
+        if not track.isValid() or track.lightness() > 250:
+            track = self.palette().color(QPalette.ColorRole.Window)
+
+        r = self.rect()
+        # 圆角轨道
+        path = QPainterPath()
+        path.addRoundedRect(r.adjusted(0, 0, 0, 0), 2.0, 2.0)
+        p.setClipPath(path)
+
+        base = QColor(track)
+        base.setAlpha(int(90 * op))
+        p.fillRect(r, base)
+
+        # 斜向斑马：亮带 / 暗带交替平移
+        hi = QColor(accent)
+        hi.setAlpha(int(210 * op))
+        lo = QColor(accent)
+        # 略提亮或压暗形成斑马对比（走 palette 派生，不写死 hex）
+        if accent.lightness() > 140:
+            lo = accent.darker(125)
+        else:
+            lo = accent.lighter(140)
+        lo.setAlpha(int(95 * op))
+
+        period = self._PERIOD
+        half = period * 0.5
+        # 斜带宽度沿 x；倾斜约 28°
+        skew = self.height() * 1.8
+        w = float(r.width())
+        h = float(r.height())
+        x0 = -period - (self._offset % period)
+        band = 0
+        x = x0
+        while x < w + period + skew:
+            color = hi if (band % 2 == 0) else lo
+            poly = QPainterPath()
+            # 平行四边形：左上 → 右上 → 右下 → 左下（带倾斜）
+            poly.moveTo(x, 0)
+            poly.lineTo(x + half, 0)
+            poly.lineTo(x + half + skew, h)
+            poly.lineTo(x + skew, h)
+            poly.closeSubpath()
+            p.fillPath(poly, color)
+            x += half
+            band += 1
+        p.end()
 
 
 class TabWidget(QTabWidget):

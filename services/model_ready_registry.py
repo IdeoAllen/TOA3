@@ -175,9 +175,36 @@ def _is_local_endpoint(api_base: str) -> bool:
     return host in _LOCAL_HOSTS or host.endswith(".local")
 
 
+def _mxapi_key_present() -> bool:
+    """任一 MXAPI 图像 profile / 环境 / Harness 凭据有 Key 即视为已配。"""
+    shared = (
+        "mxapi_nano_banana_2",
+        "mxapi_gpt_image_2",
+        "mxapi_nano_banana_pro",
+    )
+    for pid in shared:
+        if get_profile_secret("image_gen", pid, "api_key"):
+            return True
+    import os
+
+    if (os.environ.get("MXAPI_API_KEY") or "").strip():
+        return True
+    try:
+        from services.harness_credentials import load_credential_map
+
+        if str(load_credential_map().get("MXAPI_API_KEY") or "").strip():
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _needs_cloud_key(capability: str, profile_id: str, prof: dict[str, Any]) -> bool:
     if get_profile_secret(capability, profile_id, "api_key"):
         return False
+    if capability == "image_gen" and str(profile_id).startswith("mxapi_"):
+        if _mxapi_key_present():
+            return False
     if capability == "image_gen" and profile_id == "evolink_grok_imagine":
         if get_profile_secret("video_gen", "evolink_seedance_2", "api_key"):
             return False

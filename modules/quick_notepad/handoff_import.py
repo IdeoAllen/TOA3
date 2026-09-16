@@ -183,6 +183,18 @@ def import_path_as_note(path: Path) -> tuple[str | None, str]:
             )
         elif kind == _KIND_TEXT:
             body = _read_text(path)
+            entry = add_note(title, body)
+            suf = path.suffix.lower()
+            if suf in {".html", ".htm"}:
+                try:
+                    from modules.quick_notepad.note_store import set_note_html_source
+                    from modules.quick_notepad.rich_body import is_full_html_document
+
+                    if is_full_html_document(body):
+                        set_note_html_source(str(entry["id"]), str(path.resolve()))
+                except Exception:
+                    pass
+            return str(entry["id"]), ""
         elif kind == _KIND_OFFICE:
             stored = store_attachment(path)
             body = _html_media_note(

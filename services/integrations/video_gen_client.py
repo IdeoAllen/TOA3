@@ -277,7 +277,7 @@ class VideoGenClient(IntegrationClient):
             )
 
         content: list[dict[str, Any]] = [{"type": "text", "text": text}]
-        refs = [Path(p) for p in (image_paths or []) if p]
+        refs = [Path(p) for p in (image_paths or []) if p and Path(p).is_file()]
         if refs:
             content.append(
                 {
@@ -286,6 +286,14 @@ class VideoGenClient(IntegrationClient):
                     "role": "first_frame",
                 }
             )
+            if len(refs) >= 2:
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": self._encode_image(refs[1])},
+                        "role": "last_frame",
+                    }
+                )
 
         body: dict[str, Any] = {
             "model": model,

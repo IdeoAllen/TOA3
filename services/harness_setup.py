@@ -15,6 +15,7 @@ NEED_NODE_PREFIX = "NEED_NODE:"
 
 # npm 回落钉扎（与已知可用预制核一致；禁止长期漂 latest）
 DSH_NPM_PACKAGE = "@deepseek-ai/dsh@0.1.5-rc.1"
+# 内核 npm 版本；CDN zip 的 bundle_version 可带重建后缀（如 0.1.5-rc.1.1），二者勿混为同一字段
 DSH_PINNED_VERSION = "0.1.5-rc.1"
 
 
@@ -385,6 +386,12 @@ def repair_harness_runtime() -> tuple[bool, str]:
         return False, cred_msg
     if cred_msg and "正常" not in cred_msg and "跳过" not in cred_msg:
         notes.append(cred_msg)
+
+    from services.harness_credentials import ensure_mxapi_image_refs
+
+    ok_mx, mx_msg = ensure_mxapi_image_refs()
+    if ok_mx and "已写入" in mx_msg:
+        notes.append(mx_msg)
 
     changed_model, model_msg = ensure_official_default_model()
     if changed_model:

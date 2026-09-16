@@ -28,7 +28,7 @@ def _default_office_pins() -> list[dict[str, str]]:
         {"id": "quick_notepad", "title": "快速记事", "subtitle": "会议纪要草稿"},
         {"id": "screenshot_tool", "title": "截图工具", "subtitle": "区域 / 全屏"},
         {"id": "clipboard_history", "title": "剪贴板历史", "subtitle": "Alt+Shift+C 速贴"},
-        {"id": "quadrant_tasks", "title": "四象限任务", "subtitle": "本地看板"},
+        {"id": "quadrant_tasks", "title": "任务管理", "subtitle": "状态 · 日历 · 优先级"},
         {"id": "pomodoro", "title": "番茄钟", "subtitle": "沉浸专注"},
     ]
 

@@ -89,6 +89,49 @@ def main() -> int:
     build_script = ROOT / "scripts" / "build_harness_prefab.py"
     assert build_script.is_file()
 
+    # 预制升级禁洗空：已装插件必须保留（2026-09-14 事故回归）
+    import json
+    import tempfile
+    from services.harness_prefab import _ensure_profile_flavor, _profile_extra_plugins
+
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td)
+        pkg = home / "profiles" / "web" / "package.json"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_text(
+            json.dumps(
+                {
+                    "name": "dsh-profile-web",
+                    "private": True,
+                    "dependencies": {"dshmarket": "1.0.0"},
+                    "dsh": {
+                        "profile": {
+                            "bundles": [
+                                "@deepseek-ai/dsh-base",
+                                "@deepseek-ai/dsh-web-app",
+                                "dshmarket",
+                                "dsh-preview",
+                            ]
+                        }
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        _ensure_profile_flavor(home, FLAVOR_PREFAB)
+        data = json.loads(pkg.read_text(encoding="utf-8"))
+        bundles = data["dsh"]["profile"]["bundles"]
+        assert "dshmarket" in bundles and "dsh-preview" in bundles, bundles
+        extras = _profile_extra_plugins(home)
+        assert extras == ["dshmarket", "dsh-preview"], extras
+        _ensure_profile_flavor(home, FLAVOR_OFFICIAL)
+        data2 = json.loads(pkg.read_text(encoding="utf-8"))
+        assert data2["dsh"]["profile"]["bundles"] == [
+            "@deepseek-ai/dsh-base",
+            "@deepseek-ai/dsh-web-app",
+        ]
+
     print("VERIFY harness_simple_setup OK")
     return 0
 

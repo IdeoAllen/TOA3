@@ -6,15 +6,20 @@ import webbrowser
 
 from PySide6.QtGui import QGuiApplication
 
-from services.harness_config import load_harness_config, save_harness_config, web_url
+from services.harness_config import (
+    PRODUCT_SURFACE_MODE,
+    load_harness_config,
+    save_harness_config,
+    web_url,
+)
 
 SURFACE_EMBED = "embed"
 SURFACE_BROWSER = "browser"
 
 
 def surface_mode() -> str:
-    mode = str(load_harness_config().get("surface_mode") or SURFACE_BROWSER).strip().lower()
-    return mode if mode in (SURFACE_EMBED, SURFACE_BROWSER) else SURFACE_BROWSER
+    mode = str(load_harness_config().get("surface_mode") or PRODUCT_SURFACE_MODE).strip().lower()
+    return mode if mode in (SURFACE_EMBED, SURFACE_BROWSER) else SURFACE_EMBED
 
 
 def prefer_embed() -> bool:
@@ -26,9 +31,9 @@ def prefer_browser() -> bool:
 
 
 def set_surface_mode(mode: str) -> None:
-    m = str(mode or SURFACE_BROWSER).strip().lower()
+    m = str(mode or PRODUCT_SURFACE_MODE).strip().lower()
     if m not in (SURFACE_EMBED, SURFACE_BROWSER):
-        m = SURFACE_BROWSER
+        m = SURFACE_EMBED
     save_harness_config({"surface_mode": m})
 
 
@@ -52,5 +57,9 @@ def surface_status_label(running: bool, owned: bool) -> str:
     if not running:
         return "未运行"
     host = "TOA3 托管" if owned else "外部实例"
-    mode = "内嵌" if prefer_embed() else "浏览器优先"
+    mode = "内嵌" if prefer_embed() else "外开备选"
     return f"{host} · {mode} · {url}"
+
+
+# 内嵌能力不及完整浏览器时的统一提示（禁止自动外开）
+BROWSER_BETTER_HINT = "浏览器打开效果更佳"

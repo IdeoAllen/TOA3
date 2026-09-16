@@ -31,6 +31,10 @@ modules:
       - business/resume.pptx
     samples:
       - modules/teaching_assistant_resume/demo_resume.txt
+  assistant_recruit_post:
+    samples:
+      - modules/assistant_recruit_post/demo_input.txt
+  assistant_outfit_swap: {}
   generic_generator_simple:
     templates:
       - generators/demo3.txt
@@ -66,6 +70,7 @@ modules:
   pomodoro: {}
   screenshot_tool: {}
   clipboard_history: {}
+  email_client: {}
   batch_rename: {}
   directory_generator: {}
   directory_inspector: {}
@@ -80,6 +85,7 @@ modules:
   excel_cleaner: {}
   resume_extractor: {}
   schedule_reminder: {}
+  training_delivery_board: {}
   job_scheduler: {}
   notifications: {}
   user_extensions: {}

@@ -54,6 +54,9 @@ def _smoke_create_subprocess(mid: str) -> str | None:
 def main() -> int:
     errors: list[str] = []
     reload_manifest()
+    # 故意无侧栏：挂截图工具栏等，不要求 menu_items / storage 登记
+    no_menu_ok = {"screenshot_translate"}
+
     menu_items = get_all_menu_items()
     menu_ids = {str(i.get("id") or "") for i in menu_items}
     visible = get_menu_items()
@@ -77,7 +80,7 @@ def main() -> int:
 
     manifest_ids = set(load_manifest().keys())
     for mid in manifest_ids:
-        if mid in ("__about__", "home"):
+        if mid in ("__about__", "home") or mid in no_menu_ok:
             continue
         if get_module_status(mid) == "missing":
             continue
@@ -110,7 +113,7 @@ def main() -> int:
     if storage_path.is_file():
         text = storage_path.read_text(encoding="utf-8")
         for mid in set(MIGRATED_MODULES.keys()) | manifest_ids:
-            if mid in ("__about__", "home", "theme_preview", "system_settings"):
+            if mid in ("__about__", "home", "theme_preview", "system_settings") or mid in no_menu_ok:
                 continue
             if get_module_status(mid) == "missing":
                 continue

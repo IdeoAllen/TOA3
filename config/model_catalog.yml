@@ -127,6 +127,39 @@ capabilities:
         quality: medium
         supports_edit: true
         note: 约 $0.03/张起；文生图与 1～3 张参考图编辑同模型 ID；可与 Seedance 共用 Evolink Key
+      mxapi_nano_banana_2:
+        label: Nano Banana 2 · MXAPI
+        region: cn
+        vendor: MXAPI
+        origin: cloud
+        tier: cloud
+        provider: openai_images
+        api_base: https://open.mxapi.org/v1
+        model: nano-banana-2
+        size: 1024x1024
+        note: 约 ¥0.20/张；OpenAI 兼容生图；Key 可复用 Harness MXAPI_API_KEY；余额查 /api/v2/points
+      mxapi_gpt_image_2:
+        label: GPT Image 2 · MXAPI
+        region: cn
+        vendor: MXAPI
+        origin: cloud
+        tier: cloud
+        provider: openai_images
+        api_base: https://open.mxapi.org/v1
+        model: gpt-image-2
+        size: 1024x1024
+        note: 约 ¥0.10/张；同模型比 Evolink 更便宜；Key 与 Nano Banana 共用
+      mxapi_nano_banana_pro:
+        label: Nano Banana Pro · MXAPI
+        region: cn
+        vendor: MXAPI
+        origin: cloud
+        tier: cloud
+        provider: openai_images
+        api_base: https://open.mxapi.org/v1
+        model: nano-banana-pro
+        size: 1024x1024
+        note: 约 ¥0.20/张；高要求成品；Key 与其它 MXAPI 共用
   video_gen:
     label: 视频生成
     default_profile: evolink_seedance_2

@@ -1,11 +1,11 @@
 ---
-description: 个人最高频八件套优先；培训线后置
+description: Wave★ 优先；需求直接并行；发版仍过 A10.4
 alwaysApply: true
 ---
 
 # TOA3 · 个人高频与推进顺序
 
-## 主线（Wave★）
+## 主线（Wave★ · 优先保障）
 
 1. screenshot_tool  2. clipboard_history  3. quick_notepad  
 4. quadrant_tasks（mvp · 点验清 gaps）  5. watermark_remover  
@@ -13,6 +13,12 @@ alwaysApply: true
 7. directory_generator（done）  8. screenshot_translate（挂截图）
 
 真相源：`docs/PROD-01-功能清单与优先级.md` §0.5 + `config/migration_manifest.yml`
+
+## 并行（2026-09-14 · 去开工门禁）
+
+- **有需求直接开轨写码**；无 WIP/approved 上限。  
+- 统筹：OPS / 合入 / **A10.4 发版**。Hold 模块不擅自开。  
+- 细则：STD-01 A0.8 · B9。
 
 ## 菜单
 

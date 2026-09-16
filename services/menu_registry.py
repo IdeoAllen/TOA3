@@ -135,6 +135,7 @@ MIGRATED_MODULES: dict[str, str] = {
     "pomodoro": "modules.pomodoro.pomodoro_page.PomodoroPage",
     "screenshot_tool": "modules.screenshot_tool.screenshot_tool_page.ScreenshotToolPage",
     "clipboard_history": "modules.clipboard_history.clipboard_history_page.ClipboardHistoryPage",
+    "email_client": "modules.email_client.email_client_page.EmailClientPage",
     "batch_rename": "modules.batch_rename.batch_rename_page.BatchRenamePage",
     "image_creator": "modules.image_creator.image_creator_page.ImageCreatorPage",
     "image_adjust": "modules.image_adjust.image_adjust_page.ImageAdjustPage",
@@ -165,8 +166,11 @@ MIGRATED_MODULES: dict[str, str] = {
     "generic_generator_simple": "modules.generic_generator_simple.generic_generator_simple_page.GenericGeneratorSimplePage",
     "table_card_generator": "modules.table_card_generator.table_card_generator_page.TableCardGeneratorPage",
     "teaching_assistant_resume": "modules.teaching_assistant_resume.teaching_assistant_resume_generator_page.TeachingAssistantResumeGeneratorPage",
+    "assistant_recruit_post": "modules.assistant_recruit_post.assistant_recruit_post_page.AssistantRecruitPostPage",
+    "assistant_outfit_swap": "modules.assistant_outfit_swap.assistant_outfit_swap_page.AssistantOutfitSwapPage",
     "resume_extractor": "modules.resume_extractor.resume_extractor_page.ResumeExtractorPage",
     "schedule_reminder": "modules.schedule_reminder.schedule_reminder_page.ScheduleReminderPage",
+    "training_delivery_board": "modules.training_delivery_board.training_delivery_board_page.TrainingDeliveryBoardPage",
     "__about__": "modules.about.about_page.AboutPage",
 }
 

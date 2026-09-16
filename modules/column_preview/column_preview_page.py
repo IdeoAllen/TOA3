@@ -11,15 +11,17 @@ from PySide6.QtCore import (
     QByteArray,
     QEvent,
     QMimeData,
+    QObject,
     QPoint,
     QSize,
     QStandardPaths,
     Qt,
+    QThread,
     QTimer,
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QBrush, QCursor, QImageReader, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QBrush, QCursor, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -51,7 +53,14 @@ _WIN_DROP_EFFECT_MIME = 'application/x-qt-windows-mime;value="Preferred DropEffe
 from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.user_messages import ask_confirm, show_saved, show_warning
-from modules.column_preview.desktop_state import load_saved_root, save_root
+from modules.column_preview.desktop_state import (
+    load_browse_mode,
+    load_html_view_mode,
+    load_md_view_mode,
+    load_saved_root,
+    save_root,
+    save_ui_prefs,
+)
 from modules.column_preview.finder_icons import finder_file_pixmap, finder_folder_pixmap
 from modules.column_preview.folder_tags import (
     TAG_COLORS,
@@ -60,22 +69,27 @@ from modules.column_preview.folder_tags import (
     save_tags,
     tag_dot_pixmap,
 )
+from modules.column_preview.image_decode import load_image_as_displayed as _load_image_as_displayed
 from services.icon_registry import device_pixel_ratio, get_icon
 from services.office_preview import (
     OFFICE_EXTENSIONS,
+    OfficePreview,
+    OfficeSheet,
     is_office_preview_path,
     office_kind_label,
-    read_office_preview,
+    read_office_structured,
 )
 from services.os_open import open_in_file_manager
 from services.xmind_preview import is_xmind_path, read_xmind_outline
 from widgets import (
+    ComboBox,
     DataTable,
     HintLabel,
     LineEdit,
     ListWidget,
     PrimaryButton,
     ReadOnlyPlainTextEdit,
+    ReadOnlyTextEdit,
     SecondaryButton,
     SectionTitle,
     TextEdit,
@@ -166,6 +180,28 @@ _PAGE_FOLDER = 1
 _PAGE_IMAGE = 2
 _PAGE_TEXT = 3
 _PAGE_OTHER = 4
+_PAGE_OFFICE = 5
+
+_OFFICE_LOAD = 0
+_OFFICE_WORD = 1
+_OFFICE_EXCEL = 2
+_OFFICE_PPT = 3
+_OFFICE_ERROR = 4
+
+
+class _OfficePreviewWorker(QObject):
+    finished = Signal(object)
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._path = path
+
+    def run(self) -> None:
+        try:
+            self.finished.emit(read_office_structured(self._path))
+        except Exception as exc:  # noqa: BLE001 — 预览线程统一回传
+            self.finished.emit(exc)
+
 
 _MODE_COLUMNS = "columns"
 _MODE_ICONS = "icons"
@@ -330,15 +366,31 @@ class _BreadcrumbBar(QWidget):
         super().__init__(parent)
         self.setObjectName("FinderBreadcrumbBar")
         self._lay = QHBoxLayout(self)
-        self._lay.setContentsMargins(0, 0, 0, 2)
+        self._lay.setContentsMargins(0, 0, 0, 0)
         self._lay.setSpacing(0)
 
-    def set_path(self, folder: Path, root: Path | None) -> None:
+    def _clear(self) -> None:
         while self._lay.count():
             item = self._lay.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
+
+    def set_empty(self) -> None:
+        """无根目录时：一行提示，点击换根。"""
+        self._clear()
+        btn = QToolButton()
+        btn.setObjectName("FinderBreadcrumbRootBtn")
+        btn.setText("尚未选择根目录 · 点击选择")
+        btn.setAutoRaise(True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setToolTip("选择根目录")
+        btn.clicked.connect(lambda _=False: self.root_change_requested.emit())
+        self._lay.addWidget(btn)
+        self._lay.addStretch(1)
+
+    def set_path(self, folder: Path, root: Path | None) -> None:
+        self._clear()
         segments = _breadcrumb_segments(folder, root)
         for i, (label, path) in enumerate(segments):
             if i > 0:
@@ -484,31 +536,8 @@ def _read_json_preview(path: Path) -> tuple[str, str]:
 
 
 def _read_markdown_preview(path: Path) -> tuple[str, str]:
-    """Markdown 以等宽原文预览（不引入渲染依赖）。"""
+    """Markdown 源码文本；渲染由 `_apply_md_view_mode` 的 setMarkdown 负责。"""
     return _read_text_preview(path), "Markdown"
-
-
-def _load_image_as_displayed(path: Path, *, parent=None) -> QPixmap:
-    """解码图片为 1× 像素缓冲（不设 DPR）。
-
-    预览缩放交给 `_fit_pixmap`：按视口逻辑尺寸 × 屏 DPR 生成清晰图。
-    若在此处对原图 setDevicePixelRatio，HiDPI 下会出现「大空白 + 角落小图」。
-    """
-    del parent  # 签名兼容；解码不依赖屏 DPR
-    reader = QImageReader(str(path))
-    reader.setAutoTransform(True)
-    # 超大图先降采样，避免预览吃爆内存
-    max_edge = 4096
-    size = reader.size()
-    if size.isValid() and (size.width() > max_edge or size.height() > max_edge):
-        if size.width() >= size.height():
-            reader.setScaledSize(size * (max_edge / max(1, size.width())))
-        else:
-            reader.setScaledSize(size * (max_edge / max(1, size.height())))
-    img = reader.read()
-    if img.isNull():
-        return QPixmap()
-    return QPixmap.fromImage(img)
 
 
 def _load_pdf_first_page(
@@ -606,23 +635,30 @@ class ColumnPreviewPage(BasePage):
         self._root_path: Path | None = None
         self._cwd: Path | None = None
         self._current_path: Path | None = None
-        self._mode = _MODE_COLUMNS
+        saved_mode = load_browse_mode()
+        self._mode = saved_mode if saved_mode else _MODE_COLUMNS
         self._tags: dict[str, str] = load_tags()
         self._tag_filter: str | None = None
         self._tag_filter_btns: dict[str, QToolButton] = {}
         self._kind_filter = _KIND_ALL
         self._format_filter = _FORMAT_ALL
+        self._name_filter = ""
         self._kind_filter_btns: dict[str, QToolButton] = {}
         self._format_filter_btns: dict[str, QToolButton] = {}
         self._updating = False
         self._raw_preview_pm = QPixmap()
         self._mode_btns: dict[str, QToolButton] = {}
-        self._html_view_mode = "web"  # code | web（HTML 会话内记住）
-        self._md_view_mode = "preview"  # code | preview（Markdown）
+        self._html_view_mode = load_html_view_mode() or "web"  # code | web
+        self._md_view_mode = load_md_view_mode() or "preview"  # code | preview
         self._doc_kind: str | None = None  # html | md | None
         self._html_web = None
         self._html_web_ready = False
         self._html_web_error = ""
+        self._thumb_gen = 0
+        self._office_gen = 0
+        self._office_thread: QThread | None = None
+        self._office_sheets: list[OfficeSheet] = []
+        self._office_path: Path | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 6, 8, 6)
@@ -638,11 +674,11 @@ class ColumnPreviewPage(BasePage):
         self._btn_up = self._tool_btn("上级", tip="返回上一级", slot=self._go_up)
         bar.addWidget(self._btn_up)
 
-        self._root = LineEdit()
-        self._root.setPlaceholderText("根目录路径，回车或点 … 更换")
-        self._root.setMinimumHeight(28)
-        self._root.returnPressed.connect(self._on_open_root)
-        bar.addWidget(self._root, 1)
+        self._breadcrumb = _BreadcrumbBar()
+        self._breadcrumb.navigated.connect(self._navigate_breadcrumb)
+        self._breadcrumb.root_change_requested.connect(self._browse)
+        self._breadcrumb.set_empty()
+        bar.addWidget(self._breadcrumb, 1)
 
         bar.addWidget(self._tool_btn("换根", tip="选择新的根目录", slot=self._browse))
 
@@ -670,7 +706,10 @@ class ColumnPreviewPage(BasePage):
         self._mode_btns[_MODE_COLUMNS].setChecked(True)
         bar.addWidget(mode_wrap)
 
-        bar.addStretch(1)
+        # 恢复上次浏览模式的按钮勾选（根目录在 on_enter 再装）
+        if self._mode in self._mode_btns:
+            for k, b in self._mode_btns.items():
+                b.setChecked(k == self._mode)
 
         action_wrap = QWidget()
         action_wrap.setObjectName("FinderToolbarActionGroup")
@@ -682,13 +721,7 @@ class ColumnPreviewPage(BasePage):
         bar.addWidget(action_wrap)
         outer.addWidget(toolbar)
 
-        self._breadcrumb = _BreadcrumbBar()
-        self._breadcrumb.navigated.connect(self._navigate_breadcrumb)
-        self._breadcrumb.root_change_requested.connect(self._browse)
-        self._breadcrumb.setVisible(False)
-        outer.addWidget(self._breadcrumb)
-
-        # —— 快筛条：类型 / 格式 / 色标（紧凑芯片）——
+        # —— 快筛条：类型 / 格式 / 色标 + 文件名检索——
         filter_wrap = QWidget()
         filter_wrap.setObjectName("FinderFilterBar")
         filter_bar = QHBoxLayout(filter_wrap)
@@ -743,6 +776,22 @@ class ColumnPreviewPage(BasePage):
             filter_bar.addWidget(b)
 
         filter_bar.addStretch(1)
+
+        self._name_search = LineEdit()
+        self._name_search.setObjectName("FinderNameSearchEdit")
+        self._name_search.setPlaceholderText("文件名检索…")
+        self._name_search.setClearButtonEnabled(True)
+        self._name_search.setMinimumWidth(120)
+        self._name_search.setMaximumWidth(220)
+        self._name_search.setMinimumHeight(22)
+        self._name_search.setMaximumHeight(24)
+        self._name_search.setToolTip("按文件名过滤当前目录")
+        self._name_filter_timer = QTimer(self)
+        self._name_filter_timer.setSingleShot(True)
+        self._name_filter_timer.setInterval(180)
+        self._name_filter_timer.timeout.connect(self._apply_name_filter)
+        self._name_search.textChanged.connect(lambda _t: self._name_filter_timer.start())
+        filter_bar.addWidget(self._name_search)
         outer.addWidget(filter_wrap)
 
         split = QSplitter(Qt.Orientation.Horizontal)
@@ -822,8 +871,35 @@ class ColumnPreviewPage(BasePage):
         pl = QVBoxLayout(preview)
         pl.setContentsMargins(8, 8, 8, 8)
         pl.setSpacing(6)
+
+        self._preview_header = QWidget()
+        self._preview_header.setObjectName("FinderPreviewHeader")
+        header_lay = QHBoxLayout(self._preview_header)
+        header_lay.setContentsMargins(0, 0, 0, 0)
+        header_lay.setSpacing(8)
         self._preview_name = SectionTitle("未选择")
-        pl.addWidget(self._preview_name)
+        self._preview_name.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        header_lay.addWidget(self._preview_name, 1)
+
+        self._html_mode_host = QFrame()
+        self._html_mode_host.setObjectName("EditorViewTabs")
+        html_mode_lay = QHBoxLayout(self._html_mode_host)
+        html_mode_lay.setContentsMargins(0, 0, 0, 0)
+        html_mode_lay.setSpacing(0)
+        self._html_mode_tabs = QTabBar()
+        self._html_mode_tabs.setObjectName("EditorViewTabBar")
+        self._html_mode_tabs.setDrawBase(False)
+        self._html_mode_tabs.setExpanding(False)
+        self._html_mode_tabs.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._html_mode_tabs.addTab("源码")
+        self._html_mode_tabs.addTab("预览")
+        self._html_mode_tabs.currentChanged.connect(self._on_doc_mode_changed)
+        html_mode_lay.addWidget(self._html_mode_tabs)
+        self._html_mode_host.setVisible(False)
+        header_lay.addWidget(self._html_mode_host, 0, Qt.AlignmentFlag.AlignRight)
+        pl.addWidget(self._preview_header)
 
         self._stack = QStackedWidget()
         self._stack.setMinimumHeight(200)
@@ -866,24 +942,6 @@ class ColumnPreviewPage(BasePage):
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(4)
 
-        self._html_mode_host = QFrame()
-        self._html_mode_host.setObjectName("EditorViewTabs")
-        html_mode_lay = QHBoxLayout(self._html_mode_host)
-        html_mode_lay.setContentsMargins(0, 0, 0, 0)
-        html_mode_lay.setSpacing(0)
-        self._html_mode_tabs = QTabBar()
-        self._html_mode_tabs.setObjectName("EditorViewTabBar")
-        self._html_mode_tabs.setDrawBase(False)
-        self._html_mode_tabs.setExpanding(False)
-        self._html_mode_tabs.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._html_mode_tabs.addTab("源码")
-        self._html_mode_tabs.addTab("预览")
-        self._html_mode_tabs.currentChanged.connect(self._on_doc_mode_changed)
-        html_mode_lay.addWidget(self._html_mode_tabs)
-        html_mode_lay.addStretch(1)
-        self._html_mode_host.setVisible(False)
-        tl.addWidget(self._html_mode_host)
-
         self._text_stack = QStackedWidget()
         self._preview_text = ReadOnlyPlainTextEdit()
         self._text_stack.addWidget(self._preview_text)
@@ -908,6 +966,75 @@ class ColumnPreviewPage(BasePage):
         tl.addWidget(self._text_stack, 1)
         self._stack.addWidget(text_page)
         self._stack.addWidget(_EmptyState("无法内嵌预览", "点「打开」用系统程序查看。"))
+
+        office_page = QWidget()
+        office_page.setObjectName("FinderOfficePreview")
+        ol = QVBoxLayout(office_page)
+        ol.setContentsMargins(0, 0, 0, 0)
+        ol.setSpacing(4)
+        self._office_note = HintLabel("")
+        ol.addWidget(self._office_note)
+        self._office_stack = QStackedWidget()
+        load_page = QWidget()
+        ll = QVBoxLayout(load_page)
+        ll.setContentsMargins(12, 24, 12, 12)
+        self._office_loading = HintLabel("正在解析文档…")
+        self._office_loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ll.addStretch(1)
+        ll.addWidget(self._office_loading)
+        ll.addStretch(2)
+        self._office_stack.addWidget(load_page)
+
+        self._office_word = ReadOnlyTextEdit()
+        self._office_word.setObjectName("DesktopOfficeWordPreview")
+        self._office_stack.addWidget(self._office_word)
+
+        excel_page = QWidget()
+        el = QVBoxLayout(excel_page)
+        el.setContentsMargins(0, 0, 0, 0)
+        el.setSpacing(4)
+        sheet_row = QHBoxLayout()
+        sheet_row.addWidget(HintLabel("工作表"))
+        self._office_sheet = ComboBox()
+        self._office_sheet.setMinimumWidth(120)
+        self._office_sheet.currentIndexChanged.connect(self._on_office_sheet_changed)
+        sheet_row.addWidget(self._office_sheet, 1)
+        el.addLayout(sheet_row)
+        self._office_table = DataTable(0, 0)
+        self._office_table.setObjectName("FinderOfficeExcelTable")
+        self._office_table.set_auto_column_layout(False)
+        self._office_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._office_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self._office_table.verticalHeader().setVisible(True)
+        self._office_table.verticalHeader().setDefaultSectionSize(26)
+        el.addWidget(self._office_table, 1)
+        self._office_stack.addWidget(excel_page)
+
+        ppt_scroll = QScrollArea()
+        ppt_scroll.setObjectName("FinderOfficePptScroll")
+        ppt_scroll.setWidgetResizable(True)
+        ppt_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._office_ppt_host = QWidget()
+        self._office_ppt_lay = QVBoxLayout(self._office_ppt_host)
+        self._office_ppt_lay.setContentsMargins(4, 4, 4, 4)
+        self._office_ppt_lay.setSpacing(8)
+        self._office_ppt_lay.addStretch(1)
+        ppt_scroll.setWidget(self._office_ppt_host)
+        self._office_stack.addWidget(ppt_scroll)
+
+        err_page = QWidget()
+        erl = QVBoxLayout(err_page)
+        erl.setContentsMargins(12, 24, 12, 12)
+        self._office_error = HintLabel("")
+        self._office_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._office_error.setWordWrap(True)
+        erl.addStretch(1)
+        erl.addWidget(self._office_error)
+        erl.addStretch(2)
+        self._office_stack.addWidget(err_page)
+
+        ol.addWidget(self._office_stack, 1)
+        self._stack.addWidget(office_page)
         pl.addWidget(self._stack, 1)
 
         footer = QWidget()
@@ -929,16 +1056,8 @@ class ColumnPreviewPage(BasePage):
         self._btn_reveal.setEnabled(False)
         self._btn_reveal.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         btn_row.addWidget(self._btn_reveal)
-        self._btn_import_note = SecondaryButton("导入记事本")
-        self._btn_import_note.setToolTip(
-            "导入当前文件到快速记事本（Office / XMind / 图片 / 文本 / 视频 / 音频；需再点一下）"
-        )
-        self._btn_import_note.clicked.connect(self._import_current_to_notepad)
-        self._btn_import_note.setEnabled(False)
-        self._btn_import_note.setSizePolicy(
-            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
-        )
-        btn_row.addWidget(self._btn_import_note)
+        # 桌面→记事传送门入口已隐藏（PROD 记事主路径去噪）
+        self._btn_import_note = None
         btn_row.addStretch(1)
         fl.addLayout(btn_row)
         pl.addWidget(footer)
@@ -960,6 +1079,7 @@ class ColumnPreviewPage(BasePage):
         self._md_render.viewport().installEventFilter(self)
         # ②标题/Tab、③底栏：直接收滚轮以调预览宽度
         for w in (
+            self._preview_header,
             self._preview_name,
             self._html_mode_host,
             self._html_mode_tabs,
@@ -967,15 +1087,16 @@ class ColumnPreviewPage(BasePage):
             self._preview_meta,
             self._btn_open,
             self._btn_reveal,
-            self._btn_import_note,
         ):
-            w.installEventFilter(self)
+            if w is not None:
+                w.installEventFilter(self)
         self._preview_pane.setToolTip(
             "①正文区滚轮只滚动；②标题/Tab 与 ③底栏滚轮调节预览宽度"
         )
         self._image_scroll.setToolTip("滚轮只滚动预览内容")
         self._preview_text.setToolTip("滚轮只滚动正文")
         self._md_render.setToolTip("滚轮只滚动 Markdown 预览")
+        self._preview_header.setToolTip("滚轮左右调节预览窗宽度")
         self._preview_name.setToolTip("滚轮左右调节预览窗宽度")
         self._html_mode_host.setToolTip("滚轮左右调节预览窗宽度")
         self._preview_footer.setToolTip("滚轮左右调节预览窗宽度")
@@ -1073,6 +1194,11 @@ class ColumnPreviewPage(BasePage):
 
     def eventFilter(self, obj, event):  # noqa: N802
         if event.type() == QEvent.Type.Wheel and self._is_under_preview(obj):
+            # 先按光标落点：标题/底栏条带一律调宽（不依赖事件对象是否被吃掉）
+            band = self._preview_wheel_band_at_cursor()
+            if band == "chrome":
+                self._resize_preview_by_wheel(event)
+                return True
             zone = self._preview_wheel_zone(obj)
             mods = event.modifiers()
             # ① 正文区：只滚上下；到顶/底也吞掉事件，禁止冒泡调宽
@@ -1124,6 +1250,7 @@ class ColumnPreviewPage(BasePage):
     def _is_preview_chrome(self, obj) -> bool:
         """② 文件名/源码预览 Tab；③ 元信息与底栏按钮。"""
         for host in (
+            getattr(self, "_preview_header", None),
             getattr(self, "_preview_name", None),
             getattr(self, "_html_mode_host", None),
             getattr(self, "_preview_footer", None),
@@ -1173,9 +1300,44 @@ class ColumnPreviewPage(BasePage):
                 return True
         return obj in candidates
 
+    def _preview_wheel_band_at_cursor(self) -> str | None:
+        """按预览窗几何：顶栏（文件名+Tab 同行）与底栏（元信息/按钮）为 chrome。"""
+        pane = getattr(self, "_preview_pane", None)
+        if pane is None or not pane.isVisible():
+            return None
+        local = pane.mapFromGlobal(QCursor.pos())
+        if not pane.rect().contains(local):
+            return None
+        top_h = 0
+        header = getattr(self, "_preview_header", None)
+        if header is not None and header.isVisible():
+            top_h = max(28, header.height())
+        else:
+            name = getattr(self, "_preview_name", None)
+            if name is not None and name.isVisible():
+                top_h += max(28, name.height())
+            tabs = getattr(self, "_html_mode_host", None)
+            if tabs is not None and tabs.isVisible():
+                top_h += max(28, tabs.height())
+        top_h = max(40, top_h + 12)
+        bot_h = 0
+        foot = getattr(self, "_preview_footer", None)
+        if foot is not None and foot.isVisible():
+            bot_h = max(56, foot.height() + 8)
+        else:
+            bot_h = 64
+        if local.y() <= top_h:
+            return "chrome"
+        if local.y() >= pane.height() - bot_h:
+            return "chrome"
+        return None
+
     def _preview_wheel_zone(self, obj) -> str:
         """按事件对象 + 光标落点判定 ①content / ②③chrome。"""
         if self._is_preview_chrome(obj):
+            return "chrome"
+        band = self._preview_wheel_band_at_cursor()
+        if band == "chrome":
             return "chrome"
         if self._is_preview_content(obj):
             return "content"
@@ -1232,9 +1394,8 @@ class ColumnPreviewPage(BasePage):
 
     def _update_breadcrumb(self, folder: Path) -> None:
         if self._root_path is None:
-            self._breadcrumb.setVisible(False)
+            self._breadcrumb.set_empty()
             return
-        self._breadcrumb.setVisible(True)
         self._breadcrumb.set_path(folder, self._root_path)
 
     def _navigate_breadcrumb(self, path: Path) -> None:
@@ -1255,17 +1416,20 @@ class ColumnPreviewPage(BasePage):
         self._update_breadcrumb(path)
         self.report_status(str(path), level=StatusLevel.INFO)
 
-    def _entry_icon(self, path: Path, is_dir: bool, size: int):
+    def _entry_icon(
+        self, path: Path, is_dir: bool, size: int, *, allow_thumb: bool | None = None
+    ):
         from PySide6.QtGui import QIcon
 
         dpr = device_pixel_ratio(self)
-        allow_thumb = self._mode == _MODE_ICONS and size >= 48
+        if allow_thumb is None:
+            allow_thumb = self._mode == _MODE_ICONS and size >= 48
         if is_dir:
             tag = self._tags.get(path_key(path))
             pm = finder_folder_pixmap(size, tag, dpr=dpr)
             return QIcon(pm)
         pm = finder_file_pixmap(
-            path, size, dpr=dpr, allow_thumb=allow_thumb, parent=self
+            path, size, dpr=dpr, allow_thumb=bool(allow_thumb), parent=self
         )
         return QIcon(pm)
 
@@ -1286,7 +1450,7 @@ class ColumnPreviewPage(BasePage):
         if self._cwd is not None:
             self._update_breadcrumb(self._cwd)
         else:
-            self._breadcrumb.setVisible(False)
+            self._breadcrumb.set_empty()
         if self._mode == _MODE_COLUMNS:
             self._browse_stack.setCurrentIndex(0)
         elif self._mode == _MODE_DETAILS:
@@ -1315,7 +1479,12 @@ class ColumnPreviewPage(BasePage):
                 self._flat.setWordWrap(False)
 
     def _set_mode(self, mode: str) -> None:
+        self._thumb_gen += 1
         self._mode = mode
+        try:
+            save_ui_prefs(mode=mode)
+        except OSError:
+            pass
         self._update_mode_chrome()
         if self._root_path is None:
             return
@@ -1379,22 +1548,15 @@ class ColumnPreviewPage(BasePage):
         if path:
             self._load_root(Path(path))
 
-    def _on_open_root(self) -> None:
-        raw = self._root.text().strip()
-        if not raw:
-            show_warning(self, "请先选择根目录。")
-            return
-        self._load_root(Path(raw))
-
     def _load_root(self, root: Path) -> None:
         root = root.resolve()
         if not root.is_dir():
             show_warning(self, f"不是有效目录：\n{root}")
             return
+        self._thumb_gen += 1
         self._reload_tags()
         self._root_path = root
         self._cwd = root
-        self._root.setText(str(root))
         try:
             save_root(root)
         except OSError:
@@ -1449,10 +1611,19 @@ class ColumnPreviewPage(BasePage):
             out.append((name, path, is_dir))
         return out
 
+    def _filter_entries_by_name(
+        self, entries: list[tuple[str, Path, bool]]
+    ) -> list[tuple[str, Path, bool]]:
+        q = (self._name_filter or "").strip().lower()
+        if not q:
+            return entries
+        return [(name, path, is_dir) for name, path, is_dir in entries if q in name.lower()]
+
     def _entries_for_folder(self, folder: Path) -> list[tuple[str, Path, bool]]:
         entries = _list_entries(folder)
         entries = self._filter_entries_by_tag(entries, folder=folder)
-        return self._filter_entries_by_kind_format(entries)
+        entries = self._filter_entries_by_kind_format(entries)
+        return self._filter_entries_by_name(entries)
 
     def _empty_folder_message(self) -> str:
         hints: list[str] = []
@@ -1464,6 +1635,8 @@ class ColumnPreviewPage(BasePage):
             hints.append("文件")
         if self._format_filter != _FORMAT_ALL:
             hints.append(_FORMAT_LABELS[self._format_filter])
+        if (self._name_filter or "").strip():
+            hints.append(f"名含「{self._name_filter.strip()}」")
         if hints:
             return f"无符合条件的 · {' · '.join(hints)}"
         return "此文件夹为空"
@@ -1486,10 +1659,21 @@ class ColumnPreviewPage(BasePage):
             parts.append(f"格式·{_FORMAT_LABELS[self._format_filter]}")
         if self._tag_filter:
             parts.append(f"色标·{TAG_COLORS[self._tag_filter][0]}")
+        name_q = (self._name_filter or "").strip()
+        if name_q:
+            parts.append(f"名·{name_q}")
         if parts:
             self.report_status("快筛 · " + " · ".join(parts), level=StatusLevel.INFO)
         elif self._cwd is not None:
             self.report_status(f"桌面 · {self._cwd.name}", level=StatusLevel.INFO)
+
+    def _apply_name_filter(self) -> None:
+        nxt = self._name_search.text()
+        if nxt == self._name_filter:
+            return
+        self._name_filter = nxt
+        self._refresh_current_views()
+        self._report_filter_status()
 
     def _set_kind_filter(self, kind: str) -> None:
         if self._kind_filter == kind:
@@ -1672,6 +1856,8 @@ class ColumnPreviewPage(BasePage):
 
         self._flat.clear()
         icon_sz = _ICON_VIEW_SIZE if self._mode == _MODE_ICONS else 22
+        # 图标模式：先占位类型图标，缩略图分批异步填充，避免进夹卡死主线程
+        defer_thumbs = self._mode == _MODE_ICONS
         entries = self._entries_for_folder(folder)
         if not entries:
             empty = QListWidgetItem(self._empty_folder_message())
@@ -1683,7 +1869,11 @@ class ColumnPreviewPage(BasePage):
             item.setToolTip(name)
             item.setData(_ROLE_PATH, str(path.resolve()))
             item.setData(_ROLE_IS_DIR, is_dir)
-            item.setIcon(self._entry_icon(path, is_dir, icon_sz))
+            item.setIcon(
+                self._entry_icon(
+                    path, is_dir, icon_sz, allow_thumb=False if defer_thumbs else None
+                )
+            )
             if self._mode == _MODE_ICONS:
                 item.setSizeHint(QSize(_ICON_GRID_W, _ICON_GRID_H))
                 item.setTextAlignment(
@@ -1697,6 +1887,50 @@ class ColumnPreviewPage(BasePage):
             self._flat.addItem(item)
         self._update_mode_chrome()
         self._flat.viewport().update()
+        if defer_thumbs and entries:
+            self._thumb_gen += 1
+            gen = self._thumb_gen
+            QTimer.singleShot(
+                0, lambda f=folder, g=gen: self._fill_icon_thumbs(f, g, 0)
+            )
+
+    def _fill_icon_thumbs(self, folder: Path, gen: int, start: int) -> None:
+        """分批填充图标模式图片缩略图（可被换夹/换模式取消）。"""
+        if gen != self._thumb_gen or self._mode != _MODE_ICONS:
+            return
+        try:
+            if self._cwd is None or self._cwd.resolve() != folder.resolve():
+                return
+        except OSError:
+            return
+        from PySide6.QtGui import QIcon
+
+        dpr = device_pixel_ratio(self)
+        filled = 0
+        i = start
+        n = self._flat.count()
+        while i < n and filled < 8:
+            if gen != self._thumb_gen:
+                return
+            it = self._flat.item(i)
+            i += 1
+            if it is None or bool(it.data(_ROLE_IS_DIR)):
+                continue
+            path_s = it.data(_ROLE_PATH)
+            if not path_s:
+                continue
+            path = Path(str(path_s))
+            if path.suffix.lower() not in _IMAGE_EXT or not path.is_file():
+                continue
+            pm = finder_file_pixmap(
+                path, _ICON_VIEW_SIZE, dpr=dpr, allow_thumb=True, parent=self
+            )
+            it.setIcon(QIcon(pm))
+            filled += 1
+        if i < n and gen == self._thumb_gen:
+            QTimer.singleShot(
+                0, lambda f=folder, g=gen, s=i: self._fill_icon_thumbs(f, g, s)
+            )
 
     def _on_flat_clicked(self, item: QListWidgetItem) -> None:
         if item is None or not (item.flags() & Qt.ItemFlag.ItemIsEnabled):
@@ -2283,6 +2517,8 @@ class ColumnPreviewPage(BasePage):
         self._preview_meta.setText("")
         self._set_doc_mode(None)
         self._clear_html_web()
+        self._office_gen += 1
+        self._office_path = None
         self._stack.setCurrentIndex(_PAGE_IDLE)
         self._btn_open.setEnabled(False)
         self._btn_reveal.setEnabled(False)
@@ -2335,9 +2571,17 @@ class ColumnPreviewPage(BasePage):
             return
         if kind == "html":
             self._html_view_mode = "web" if int(index) == 1 else "code"
+            try:
+                save_ui_prefs(html_view_mode=self._html_view_mode)
+            except OSError:
+                pass
             self._apply_html_view_mode(path)
         else:
             self._md_view_mode = "preview" if int(index) == 1 else "code"
+            try:
+                save_ui_prefs(md_view_mode=self._md_view_mode)
+            except OSError:
+                pass
             self._apply_md_view_mode(path)
 
     def _on_html_mode_changed(self, index: int) -> None:
@@ -2392,8 +2636,11 @@ class ColumnPreviewPage(BasePage):
         if mode == "code":
             stack.setCurrentIndex(0)
             return
-        # 渲染预览
+        # 渲染预览：去掉截断脚注，避免 setMarkdown 把提示当正文排版
         text = self._preview_text.toPlainText()
+        cut = "\n\n…（已截断预览）"
+        if cut in text:
+            text = text.split(cut, 1)[0]
         self._md_render.blockSignals(True)
         try:
             if not (text or "").strip():
@@ -2458,6 +2705,144 @@ class ColumnPreviewPage(BasePage):
         except Exception:
             pass
 
+    @staticmethod
+    def _excel_col_letter(index: int) -> str:
+        n = index + 1
+        letters: list[str] = []
+        while n:
+            n, rem = divmod(n - 1, 26)
+            letters.append(chr(65 + rem))
+        return "".join(reversed(letters))
+
+    def _clear_office_ppt_cards(self) -> None:
+        lay = getattr(self, "_office_ppt_lay", None)
+        if lay is None:
+            return
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _start_office_preview(self, path: Path) -> None:
+        self._office_gen += 1
+        gen = self._office_gen
+        self._office_path = path
+        self._office_sheets = []
+        self._office_note.setText("")
+        self._office_loading.setText("正在解析文档…")
+        self._office_stack.setCurrentIndex(_OFFICE_LOAD)
+        self._stack.setCurrentIndex(_PAGE_OFFICE)
+
+        thread = QThread(self)
+        worker = _OfficePreviewWorker(path)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+
+        def _done(result: object, g: int = gen, t: QThread = thread, w: _OfficePreviewWorker = worker) -> None:
+            try:
+                w.finished.disconnect()
+            except Exception:
+                pass
+            t.quit()
+            if g != self._office_gen:
+                return
+            if self._office_path is None or path_key(self._office_path) != path_key(path):
+                return
+            if isinstance(result, Exception):
+                self._office_error.setText(f"预览失败：{result}\n\n请点「打开」用系统程序查看。")
+                self._office_note.setText("")
+                self._office_stack.setCurrentIndex(_OFFICE_ERROR)
+                return
+            if isinstance(result, OfficePreview):
+                self._apply_office_preview(result)
+            else:
+                self._office_error.setText("预览失败：未知结果")
+                self._office_stack.setCurrentIndex(_OFFICE_ERROR)
+
+        worker.finished.connect(_done)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._office_thread = thread
+        thread.start()
+
+    def _apply_office_preview(self, preview: OfficePreview) -> None:
+        note = preview.note or ""
+        tip = f"{preview.kind_label}"
+        if note:
+            tip = f"{tip} · {note}"
+        tip += " · 非原样排版，完整效果请「打开」"
+        self._office_note.setText(tip)
+        family = preview.family
+        if family == "word" and preview.html_body:
+            self._office_word.setHtml(preview.html_body)
+            self._office_stack.setCurrentIndex(_OFFICE_WORD)
+            return
+        if family == "excel" and preview.sheets:
+            self._office_sheets = list(preview.sheets)
+            self._office_sheet.blockSignals(True)
+            self._office_sheet.clear()
+            for sheet in self._office_sheets:
+                label = sheet.name
+                if sheet.truncated:
+                    label = f"{label}（已截断）"
+                self._office_sheet.addItem(label)
+            self._office_sheet.setCurrentIndex(0)
+            self._office_sheet.blockSignals(False)
+            self._fill_office_sheet(0)
+            self._office_stack.setCurrentIndex(_OFFICE_EXCEL)
+            return
+        if family == "ppt" and preview.slides:
+            self._clear_office_ppt_cards()
+            for slide in preview.slides:
+                card = QFrame()
+                card.setObjectName("FinderOfficeSlideCard")
+                cl = QVBoxLayout(card)
+                cl.setContentsMargins(10, 8, 10, 8)
+                cl.setSpacing(4)
+                title = slide.title or f"第 {slide.index} 页"
+                head = SectionTitle(f"{slide.index}. {title}")
+                cl.addWidget(head)
+                body = "\n".join(slide.lines) if slide.lines else "（本页无文本）"
+                body_lbl = HintLabel(body)
+                body_lbl.setWordWrap(True)
+                cl.addWidget(body_lbl)
+                self._office_ppt_lay.addWidget(card)
+            self._office_ppt_lay.addStretch(1)
+            self._office_stack.setCurrentIndex(_OFFICE_PPT)
+            return
+        # 回退纯文本
+        self._preview_text.setPlainText(preview.plain or "（文档无可见文本）")
+        self._stack.setCurrentIndex(_PAGE_TEXT)
+
+    def _fill_office_sheet(self, index: int) -> None:
+        if index < 0 or index >= len(self._office_sheets):
+            self._office_table.setRowCount(0)
+            self._office_table.setColumnCount(0)
+            return
+        sheet = self._office_sheets[index]
+        max_c = max((len(r) for r in sheet.rows), default=1)
+        max_c = max(1, min(max_c, 24))
+        headers = [self._excel_col_letter(i) for i in range(max_c)]
+        self._office_table.set_headers(headers)
+        padded: list[tuple[str, ...]] = []
+        for r in sheet.rows:
+            cells = list(r[:max_c]) + [""] * (max_c - len(r))
+            padded.append(tuple(cells[:max_c]))
+        self._office_table.set_rows(padded)
+        self._office_table.verticalHeader().setVisible(True)
+        hdr = self._office_table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        if max_c <= 6:
+            hdr.setStretchLastSection(True)
+        else:
+            hdr.setStretchLastSection(False)
+            for c in range(max_c):
+                self._office_table.setColumnWidth(c, 96)
+
+    def _on_office_sheet_changed(self, index: int) -> None:
+        self._fill_office_sheet(int(index))
+
     def _show_folder(self, path: Path) -> None:
         self._raw_preview_pm = QPixmap()
         self._set_doc_mode(None)
@@ -2513,7 +2898,7 @@ class ColumnPreviewPage(BasePage):
             self._clear_html_web()
 
         if ext in _IMAGE_EXT and path.is_file():
-            pm = _load_image_as_displayed(path, parent=self)
+            pm = _load_image_as_displayed(path)
             if pm.isNull():
                 self._raw_preview_pm = QPixmap()
                 self._preview_image.clear()
@@ -2542,18 +2927,8 @@ class ColumnPreviewPage(BasePage):
         if is_office_preview_path(path) and path.is_file():
             self._raw_preview_pm = QPixmap()
             self._preview_image.clear()
-            kind = office_kind_label(path)
-            try:
-                kind, text = read_office_preview(path)
-                self._preview_text.setPlainText(text)
-                self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
-            except OSError as e:
-                self._preview_text.setPlainText(f"读取失败：{e}")
-                self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
-            except Exception as e:
-                self._preview_text.setPlainText(f"预览失败：{e}\n\n请点「打开」用系统程序查看。")
-                self._preview_meta.setText(f"{kind} · {size_txt}\n{path}")
-            self._stack.setCurrentIndex(_PAGE_TEXT)
+            self._preview_meta.setText(f"{office_kind_label(path)} · {size_txt}\n{path}")
+            self._start_office_preview(path)
             return
         if is_xmind_path(path) and path.is_file():
             self._raw_preview_pm = QPixmap()
@@ -2616,8 +2991,7 @@ class ColumnPreviewPage(BasePage):
                 f"名称：{path.name}\n"
                 f"大小：{size_txt}\n"
                 f"路径：{path}\n\n"
-                f"点「打开」用系统播放器查看；\n"
-                f"点「导入记事本」可保存附件副本与链接。"
+                f"点「打开」用系统播放器查看。"
             )
             self._preview_meta.setText(f"视频 · {ext} · {size_txt}\n{path}")
             self._stack.setCurrentIndex(_PAGE_TEXT)
@@ -2630,8 +3004,7 @@ class ColumnPreviewPage(BasePage):
                 f"名称：{path.name}\n"
                 f"大小：{size_txt}\n"
                 f"路径：{path}\n\n"
-                f"点「打开」用系统播放器收听；\n"
-                f"点「导入记事本」可保存附件副本与链接。"
+                f"点「打开」用系统播放器收听。"
             )
             self._preview_meta.setText(f"音频 · {ext} · {size_txt}\n{path}")
             self._stack.setCurrentIndex(_PAGE_TEXT)
@@ -2683,6 +3056,8 @@ class ColumnPreviewPage(BasePage):
         self.report_status("MACOS风格桌面 · ←/→ 子模块 · ↑/↓ 功能模块 · F11 框架全屏")
 
     def on_leave(self) -> None:
+        self._thumb_gen += 1
+        self._clear_html_web()
         w = self.window()
         if w is not None and hasattr(w, "is_immersive") and w.is_immersive():
             w.set_immersive(False)

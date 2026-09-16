@@ -2,12 +2,12 @@
 """去除图片水印：多图列表 + 框选/涂抹 + 自动角标识别 + 结果对照。"""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QRectF, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QDesktopServices,
-    QFont,
     QMouseEvent,
     QPainter,
     QPen,
@@ -27,6 +27,12 @@ from core.base_page import BasePage
 from core.status_service import StatusLevel
 from core.ui_spec import page_content_margins
 from core.user_messages import show_saved, show_warning
+from modules.watermark_remover.preview_io import (
+    DISPLAY_MAX_EDGE,
+    load_display_pixmap,
+    scale_boxes_from_orig,
+    scale_boxes_to_orig,
+)
 from modules.watermark_remover.watermark_remover_service import preview_remove, remove_watermark
 from services.storage_paths import module_output_dir
 from widgets import (
@@ -163,12 +169,15 @@ class RegionPreviewLabel(QLabel):
         self._painting = False
         self._origin = QPoint()
         self._sel_display: QRect | None = None
-        self._boxes: list[tuple[int, int, int, int]] = []
-        self._brush_mask: object | None = None
+        self._boxes: list[tuple[int, int, int, int]] = []  # 显示图坐标
+        self._brush_mask: object | None = None  # 显示图分辨率
         self._last_paint_img: tuple[int, int] | None = None
         self._emit_marks = True
         self._empty_title = "标记水印区域"
         self._empty_subtitle = "添加图片后，在此框选或涂抹水印"
+        self._orig_w = 0
+        self._orig_h = 0
+        self._scale_to_orig = 1.0  # 原图像素 / 显示图像素
 
     def _notify_marks(self) -> None:
         if self._emit_marks:
@@ -189,21 +198,28 @@ class RegionPreviewLabel(QLabel):
         self._brush_radius = max(4, int(radius))
 
     def set_image_path(self, path: str) -> bool:
-        pm = QPixmap(path)
-        if pm.isNull():
+        pm, ow, oh = load_display_pixmap(path, max_edge=DISPLAY_MAX_EDGE)
+        if pm.isNull() or ow <= 0 or oh <= 0:
             self._source = None
             self._scaled = None
             self._sel_display = None
             self._boxes.clear()
             self._brush_mask = None
+            self._orig_w = self._orig_h = 0
+            self._scale_to_orig = 1.0
             self.setText("")
             self._empty_title = "无法加载预览"
             self._empty_subtitle = "请换一张图片后重试"
             self.update()
             return False
         self._source = pm
+        self._orig_w, self._orig_h = ow, oh
+        self._scale_to_orig = float(ow) / float(max(1, pm.width()))
         self._empty_title = "标记水印区域"
-        self._empty_subtitle = "添加图片后，在此框选或涂抹水印"
+        if self._scale_to_orig > 1.02:
+            self._empty_subtitle = f"大图已限边预览（原图 {ow}×{oh}）；导出仍用原分辨率"
+        else:
+            self._empty_subtitle = "添加图片后，在此框选或涂抹水印"
         self._sel_display = None
         self._boxes.clear()
         if _HAS_CV2:
@@ -219,6 +235,8 @@ class RegionPreviewLabel(QLabel):
         self._sel_display = None
         self._boxes.clear()
         self._brush_mask = None
+        self._orig_w = self._orig_h = 0
+        self._scale_to_orig = 1.0
         self.clear()
         self.setText("")
         self._empty_title = "标记水印区域"
@@ -239,14 +257,23 @@ class RegionPreviewLabel(QLabel):
             self._brush_mask = None
 
     def apply_detected_boxes(self, boxes: list[tuple[int, int, int, int]]) -> None:
+        """boxes 为原图像素坐标，内部转为显示坐标。"""
         self._tool = "box"
-        self._boxes = list(boxes)
+        self._boxes = scale_boxes_from_orig(list(boxes), scale_to_orig=self._scale_to_orig)
         self._sel_display = None
         self._clear_brush()
         self.update()
         self._notify_marks()
 
     def selected_image_region(self) -> tuple[int, int, int, int] | None:
+        """返回原图像素选区（供处理/预览）。"""
+        disp = self._selected_display_region()
+        if disp is None:
+            return None
+        mapped = scale_boxes_to_orig([disp], scale=self._scale_to_orig)
+        return mapped[0] if mapped else None
+
+    def _selected_display_region(self) -> tuple[int, int, int, int] | None:
         if self._boxes:
             return self._boxes[0]
         if self._source is None or self._sel_display is None or self._scale <= 0:
@@ -266,28 +293,58 @@ class RegionPreviewLabel(QLabel):
         return x, y, w, h
 
     def image_boxes(self) -> list[tuple[int, int, int, int]]:
+        """原图像素框列表。"""
         if self._boxes:
-            return list(self._boxes)
+            return scale_boxes_to_orig(list(self._boxes), scale=self._scale_to_orig)
         one = self.selected_image_region()
         return [one] if one else []
 
     def brush_mask(self) -> object | None:
+        """原图分辨率蒙版（涂抹时从显示分辨率上采样）。"""
         if not _HAS_CV2 or self._brush_mask is None:
             return None
-        if np.any(self._brush_mask):
+        if not np.any(self._brush_mask):
+            return None
+        if self._orig_w <= 0 or self._orig_h <= 0:
             return self._brush_mask
-        return None
+        if (
+            self._brush_mask.shape[0] == self._orig_h
+            and self._brush_mask.shape[1] == self._orig_w
+        ):
+            return self._brush_mask
+        return cv2.resize(
+            self._brush_mask,
+            (self._orig_w, self._orig_h),
+            interpolation=cv2.INTER_NEAREST,
+        )
 
     def has_marks(self) -> bool:
-        if self.brush_mask() is not None:
+        if not _HAS_CV2 or self._brush_mask is None:
+            return bool(self._boxes) or self._selected_display_region() is not None
+        if np.any(self._brush_mask):
             return True
-        return bool(self.image_boxes())
+        return bool(self._boxes) or self._selected_display_region() is not None
+
+    def marks_snapshot(self) -> dict:
+        """线程安全快照：原图坐标 boxes / brush / region。"""
+        brush = self.brush_mask()
+        if brush is not None and _HAS_CV2:
+            brush = np.asarray(brush).copy()
+        boxes = self.image_boxes()
+        region = None if boxes or brush is not None else self.selected_image_region()
+        return {
+            "boxes": boxes,
+            "brush_mask": brush,
+            "region": region,
+            "orig_w": self._orig_w,
+            "orig_h": self._orig_h,
+        }
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         if self._source is not None:
             old_boxes = list(self._boxes)
-            old_one = self.selected_image_region()
+            old_one = None if old_boxes else self._selected_display_region()
             self._rebuild_scaled()
             if old_boxes:
                 self._boxes = old_boxes
@@ -386,7 +443,7 @@ class RegionPreviewLabel(QLabel):
         if event.button() == Qt.MouseButton.LeftButton and self._dragging:
             self._dragging = False
             self._sel_display = QRect(self._origin, event.position().toPoint()).normalized()
-            one = self.selected_image_region()
+            one = self._selected_display_region()
             if one:
                 self._boxes = [one]
             self.update()
@@ -467,17 +524,30 @@ class WatermarkRemoverPage(BasePage):
     page_id = "watermark_remover"
     page_title = "去除图片水印"
     _preview_done = Signal(int, object)  # token, png_bytes | None
+    _process_done = Signal(int, object)  # token, RemoveResult-like dict | None
+    _batch_item_done = Signal(int, int, int, object)  # token, i, total, result dict
+    _batch_finished = Signal(int, int, int)  # token, ok, total
+    _detect_done = Signal(int, object)  # token, boxes list | str error
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._files: list[str] = []
         self._preview_token = 0
         self._preview_busy = False
+        self._job_token = 0
+        self._job_busy = False
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(280)
         self._preview_timer.timeout.connect(self._refresh_effect_preview)
         self._preview_done.connect(self._on_effect_preview_done)
+        self._process_done.connect(self._on_process_done)
+        self._batch_item_done.connect(self._on_batch_item_done)
+        self._batch_finished.connect(self._on_batch_finished)
+        self._detect_done.connect(self._on_detect_done)
+
+        # 操作按钮稍后挂到 layout；先占位便于 _set_job_busy
+        self._action_btns: list = []
 
         outer = QVBoxLayout(self)
         m = page_content_margins()
@@ -487,7 +557,7 @@ class WatermarkRemoverPage(BasePage):
         outer.addWidget(
             PageHeader(
                 "去除图片水印",
-                "擦除豆包/角标等：默认本地轻量修复（低配可用）；可选 AI 增强。Ctrl 多选可批量。",
+                "擦除豆包/角标：默认 light 本地轻量；可选 AI（LaMa）。Ctrl 多选可批量。大图限边预览。",
             )
         )
 
@@ -504,13 +574,15 @@ class WatermarkRemoverPage(BasePage):
         top.addWidget(btn_del)
         self._prefer_ai = CheckBox("AI 增强")
         self._prefer_ai.setToolTip(
-            "可选探索：装好模型后勾选，效果更好。默认关——本地轻量即可用。"
+            "默认关＝本地轻量 light（低配可用）。装好模型并勾选后才走 LaMa。"
         )
         self._prefer_ai.setChecked(False)
         self._prefer_ai.toggled.connect(self._on_prefer_ai_toggled)
         top.addWidget(self._prefer_ai)
         self._btn_ai_setup = SecondaryButton("安装 AI…")
-        self._btn_ai_setup.setToolTip("两步：① 下载模型 ② 勾选「AI 增强」。每步有提示。")
+        self._btn_ai_setup.setToolTip(
+            "两步引导：① 下载 LaMa 模型 ② 勾选「AI 增强」。不装也能用本地轻量。"
+        )
         self._btn_ai_setup.clicked.connect(self._open_ai_setup)
         top.addWidget(self._btn_ai_setup)
         self._ai_hint = HintLabel("")
@@ -526,7 +598,7 @@ class WatermarkRemoverPage(BasePage):
         self._list.setMinimumWidth(160)
         self._list.currentRowChanged.connect(self._on_select)
         list_box.add_widget(self._list, 1)
-        list_box.add_widget(HintLabel("Ctrl/Shift 多选"))
+        list_box.add_widget(HintLabel("Ctrl/Shift 多选 · 可「处理选中」"))
         mid.addWidget(list_box)
 
         edit_box = FormSection("标记水印")
@@ -583,7 +655,7 @@ class WatermarkRemoverPage(BasePage):
         btn_one.clicked.connect(self._on_run_one)
         actions.addWidget(btn_one)
         btn_sel = SecondaryButton("处理选中")
-        btn_sel.setToolTip("处理列表中多选的图片")
+        btn_sel.setToolTip("处理列表中多选的图片（后台执行，不卡界面）")
         btn_sel.clicked.connect(self._on_run_selected)
         actions.addWidget(btn_sel)
         btn_all = SecondaryButton("全部处理")
@@ -594,9 +666,10 @@ class WatermarkRemoverPage(BasePage):
         actions.addWidget(btn_open)
         actions.addStretch(1)
         outer.addLayout(actions)
+        self._action_btns = [btn_one, btn_sel, btn_all, btn_add, btn_folder, btn_del]
 
         self._result = HintLabel(
-            "框选/涂抹后右侧自动预览；默认本地轻量修复（低配可用）。可选勾「AI 增强」。"
+            "框选/涂抹后右侧自动预览；默认本地轻量 light。可选勾「AI 增强」走 LaMa。"
         )
         outer.addWidget(self._result)
         self._refresh_ai_hint()
@@ -615,15 +688,22 @@ class WatermarkRemoverPage(BasePage):
         self._btn_ai_setup.setVisible(not ready)
         if ready:
             self._ai_hint.setText(
-                f"本地已可用 · 想更好可勾「AI 增强」（{text or '已装好'}）"
+                f"LaMa 已装好 · 勾「AI 增强」走 lama，不勾仍为 light（{text or '就绪'}）"
             )
         else:
             self._ai_hint.setText(
-                "本地已可用（小白直接用）。有条件再点「安装 AI…」两步探索"
+                "当前引擎：light（默认）。有条件再点「安装 AI…」→ 装完可勾选走 lama"
             )
+        # 未就绪时强制保持不勾，避免误以为已开 AI
+        if not ready and self._prefer_ai.isChecked():
+            self._prefer_ai.blockSignals(True)
+            self._prefer_ai.setChecked(False)
+            self._prefer_ai.blockSignals(False)
 
     def _on_prefer_ai_toggled(self, checked: bool) -> None:
         if not checked:
+            self.report_status("已切回本地轻量 light", StatusLevel.INFO)
+            self._schedule_effect_preview()
             return
         try:
             from services.integrations import get_client
@@ -633,7 +713,7 @@ class WatermarkRemoverPage(BasePage):
         except Exception:
             ready = False
         if ready:
-            self.report_status("已开 AI 增强；失败会自动回退本地", StatusLevel.INFO)
+            self.report_status("已开 AI 增强（lama）；失败自动回退 light", StatusLevel.INFO)
             return
         self._prefer_ai.blockSignals(True)
         self._prefer_ai.setChecked(False)
@@ -642,10 +722,12 @@ class WatermarkRemoverPage(BasePage):
 
         if ask_confirm(
             self,
-            "还没装 AI 模型。要不要现在按两步安装？\n"
-            "① 下载模型  →  ② 再勾选「AI 增强」\n"
-            "不装也不影响：继续用本地轻量修复即可。",
-            title="探索 AI 增强",
+            "还没装 AI（LaMa）模型，无法勾选增强。\n\n"
+            "两步即可：\n"
+            "① 点「安装 AI…」→「下载去水印模型」\n"
+            "② 装完后本页会自动勾选「AI 增强」\n\n"
+            "不装也没关系：继续用默认本地轻量 light。",
+            title="安装 AI 增强？",
         ):
             self._open_ai_setup()
 
@@ -659,7 +741,7 @@ class WatermarkRemoverPage(BasePage):
             self._prefer_ai.blockSignals(True)
             self._prefer_ai.setChecked(True)
             self._prefer_ai.blockSignals(False)
-            self.report_status("AI 增强已就绪并已勾选", StatusLevel.SUCCESS)
+            self.report_status("AI 已就绪：已勾选，导出走 lama（可随时取消勾选回 light）", StatusLevel.SUCCESS)
 
     def _add_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "选择图片", "", IMAGE_FILTER)
@@ -721,16 +803,42 @@ class WatermarkRemoverPage(BasePage):
         if not _HAS_CV2:
             show_warning(self, "自动识别需要 OpenCV（opencv-python）。")
             return
-        from modules.watermark_remover.watermark_remover_processor import WatermarkRemoverProcessor
-
-        proc = WatermarkRemoverProcessor()
-        bgr = proc.imread(src)
-        if bgr is None:
-            show_warning(self, "无法读取图片。")
+        if self._job_busy:
+            show_warning(self, "正在处理中，请稍候。")
             return
-        boxes = proc.detect_boxes(bgr)
+        self._job_token += 1
+        token = self._job_token
+        self._result.setText("正在识别角标…")
+
+        def worker() -> None:
+            try:
+                from modules.watermark_remover.watermark_remover_processor import (
+                    WatermarkRemoverProcessor,
+                )
+
+                proc = WatermarkRemoverProcessor()
+                bgr = proc.imread(src)
+                if bgr is None:
+                    self._detect_done.emit(token, "无法读取图片。")
+                    return
+                boxes = proc.detect_boxes(bgr)
+                self._detect_done.emit(token, boxes if boxes else [])
+            except Exception as exc:
+                self._detect_done.emit(token, f"识别失败：{exc}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_detect_done(self, token: int, payload: object) -> None:
+        if token != self._job_token:
+            return
+        if isinstance(payload, str):
+            show_warning(self, payload)
+            self._result.setText(payload)
+            return
+        boxes = list(payload) if isinstance(payload, list) else []
         if not boxes:
             show_warning(self, "未识别到明显角标，请手动框选或涂抹。")
+            self._result.setText("未识别到角标")
             return
         self._preview.apply_detected_boxes(boxes)
         self._tool_box.setChecked(True)
@@ -740,8 +848,6 @@ class WatermarkRemoverPage(BasePage):
         self._preview_timer.start()
 
     def _refresh_effect_preview(self) -> None:
-        import threading
-
         src = self._current_path()
         if not src:
             return
@@ -752,9 +858,7 @@ class WatermarkRemoverPage(BasePage):
             self._preview_timer.start()
             return
 
-        boxes = self._preview.image_boxes()
-        brush = self._preview.brush_mask()
-        region = self._preview.selected_image_region() if not boxes and not brush else None
+        snap = self._preview.marks_snapshot()
         mild = self._mild_corners.isChecked()
         self._preview_busy = True
         self._preview_token += 1
@@ -766,9 +870,9 @@ class WatermarkRemoverPage(BasePage):
                 result = preview_remove(
                     src,
                     mild_corner_blur=mild,
-                    region=region,
-                    boxes=boxes if boxes else None,
-                    brush_mask=brush,
+                    region=snap.get("region"),
+                    boxes=snap.get("boxes") or None,
+                    brush_mask=snap.get("brush_mask"),
                 )
                 payload = result.png_bytes if result.ok else None
                 self._preview_done.emit(token, payload)
@@ -793,40 +897,87 @@ class WatermarkRemoverPage(BasePage):
         self._result.setText("右侧已更新效果预览；满意后点「处理当前」导出")
         self.report_status("效果预览已更新")
 
-    def _process_one(self, src: str, *, show_dialog: bool = True) -> bool:
-        is_current = src == self._current_path()
-        boxes = self._preview.image_boxes() if is_current else []
-        brush = self._preview.brush_mask() if is_current else None
-        region = (
-            self._preview.selected_image_region()
-            if is_current and not boxes and not brush
-            else None
-        )
+    def _set_job_busy(self, busy: bool) -> None:
+        self._job_busy = busy
+        for btn in self._action_btns:
+            btn.setEnabled(not busy)
+
+    def _dest_for(self, src: str):
         out_dir = module_output_dir(self.page_id, create=True)
         stem = Path(src).stem
         ext = Path(src).suffix or ".jpg"
-        dest = out_dir / f"{stem}_去水印{ext}"
-        result = remove_watermark(
-            src,
-            dest,
-            prefer_ai=self._prefer_ai.isChecked(),
-            mild_corner_blur=self._mild_corners.isChecked(),
-            region=region,
-            boxes=boxes if boxes else None,
-            brush_mask=brush,
-        )
-        if result.ok and result.output_path:
-            pm = QPixmap(result.output_path)
+        return out_dir / f"{stem}_去水印{ext}"
+
+    def _on_run_one(self) -> None:
+        src = self._current_path()
+        if not src:
+            show_warning(self, "请先添加并选择图片。")
+            return
+        if self._job_busy:
+            show_warning(self, "正在处理中，请稍候。")
+            return
+        snap = self._preview.marks_snapshot()
+        prefer_ai = self._prefer_ai.isChecked()
+        mild = self._mild_corners.isChecked()
+        dest = self._dest_for(src)
+        self._job_token += 1
+        token = self._job_token
+        self._set_job_busy(True)
+        engine_hint = "lama" if prefer_ai else "light"
+        self._result.setText(f"正在处理（引擎优先 {engine_hint}）…")
+        self._progress.setRange(0, 0)
+
+        def worker() -> None:
+            try:
+                result = remove_watermark(
+                    src,
+                    dest,
+                    prefer_ai=prefer_ai,
+                    mild_corner_blur=mild,
+                    region=snap.get("region"),
+                    boxes=snap.get("boxes") or None,
+                    brush_mask=snap.get("brush_mask"),
+                )
+                self._process_done.emit(
+                    token,
+                    {
+                        "ok": result.ok,
+                        "output_path": result.output_path,
+                        "engine": result.engine,
+                        "message": result.message,
+                    },
+                )
+            except Exception as exc:
+                self._process_done.emit(
+                    token,
+                    {"ok": False, "output_path": "", "engine": "", "message": str(exc)},
+                )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_process_done(self, token: int, payload: object) -> None:
+        if token != self._job_token:
+            return
+        self._set_job_busy(False)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(100)
+        if not isinstance(payload, dict):
+            show_warning(self, "处理失败")
+            return
+        if payload.get("ok") and payload.get("output_path"):
+            path = str(payload["output_path"])
+            pm, _, _ = load_display_pixmap(path, max_edge=DISPLAY_MAX_EDGE)
             if not pm.isNull():
                 self._after.set_source_pixmap(pm)
-            self._result.setText(f"{result.message}\n{result.output_path}")
-            if show_dialog:
-                show_saved(self, f"{result.message}\n{result.output_path}", result.output_path)
-            return True
-        self._result.setText(result.message or "失败")
-        if show_dialog:
-            show_warning(self, result.message or "去水印失败")
-        return False
+            msg = str(payload.get("message") or "完成")
+            eng = str(payload.get("engine") or "")
+            self._result.setText(f"{msg}\n{path}")
+            show_saved(self, f"{msg}\n引擎：{eng}\n{path}", path)
+            self.report_status(f"去水印完成（{eng}）", level=StatusLevel.SUCCESS)
+            return
+        err = str(payload.get("message") or "去水印失败")
+        self._result.setText(err)
+        show_warning(self, err)
 
     def _current_path(self) -> str | None:
         row = self._list.currentRow()
@@ -837,14 +988,6 @@ class WatermarkRemoverPage(BasePage):
     def _selected_paths(self) -> list[str]:
         rows = sorted({i.row() for i in self._list.selectedIndexes()})
         return [self._files[r] for r in rows if 0 <= r < len(self._files)]
-
-    def _on_run_one(self) -> None:
-        src = self._current_path()
-        if not src:
-            show_warning(self, "请先添加并选择图片。")
-            return
-        self.run_safe(lambda: self._process_one(src), title="去水印失败")
-        self.report_status("去水印完成", level=StatusLevel.SUCCESS)
 
     def _on_run_selected(self) -> None:
         paths = self._selected_paths()
@@ -860,25 +1003,108 @@ class WatermarkRemoverPage(BasePage):
         self._run_batch(list(self._files))
 
     def _run_batch(self, paths: list[str]) -> None:
-        def _run() -> None:
-            ok = 0
-            total = len(paths)
-            for i, src in enumerate(paths, start=1):
-                try:
-                    idx = self._files.index(src)
-                    self._list.setCurrentRow(idx)
-                except ValueError:
-                    pass
-                self._preview.set_image_path(src)
-                if self._process_one(src, show_dialog=False):
-                    ok += 1
-                self._progress.setValue(int(100 * i / max(1, total)))
-            self._progress.setValue(100)
-            self._result.setText(f"批量完成：成功 {ok} / {total}")
-            show_saved(self, f"成功 {ok} / {total}", module_output_dir(self.page_id, create=True))
-            self.report_status(f"批量去水印 {ok}/{total}", level=StatusLevel.SUCCESS)
+        if self._job_busy:
+            show_warning(self, "正在处理中，请稍候。")
+            return
+        prefer_ai = self._prefer_ai.isChecked()
+        mild = self._mild_corners.isChecked()
+        current = self._current_path()
+        # 仅当前图带上手动标记；其余走自动角标 / 默认右下
+        snap = self._preview.marks_snapshot() if current else {}
+        jobs: list[dict] = []
+        for src in paths:
+            dest = self._dest_for(src)
+            if src == current and (snap.get("boxes") or snap.get("brush_mask") or snap.get("region")):
+                jobs.append(
+                    {
+                        "src": src,
+                        "dest": dest,
+                        "region": snap.get("region"),
+                        "boxes": snap.get("boxes") or None,
+                        "brush_mask": snap.get("brush_mask"),
+                    }
+                )
+            else:
+                jobs.append(
+                    {
+                        "src": src,
+                        "dest": dest,
+                        "region": None,
+                        "boxes": None,
+                        "brush_mask": None,
+                    }
+                )
 
-        self.run_safe(_run, title="批量去水印失败")
+        self._job_token += 1
+        token = self._job_token
+        self._set_job_busy(True)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        engine_hint = "lama" if prefer_ai else "light"
+        self._result.setText(f"批量处理中（{len(jobs)} 张 · 优先 {engine_hint}）…")
+
+        def worker() -> None:
+            ok = 0
+            total = len(jobs)
+            for i, job in enumerate(jobs, start=1):
+                try:
+                    result = remove_watermark(
+                        job["src"],
+                        job["dest"],
+                        prefer_ai=prefer_ai,
+                        mild_corner_blur=mild,
+                        region=job.get("region"),
+                        boxes=job.get("boxes"),
+                        brush_mask=job.get("brush_mask"),
+                    )
+                    payload = {
+                        "ok": result.ok,
+                        "output_path": result.output_path,
+                        "engine": result.engine,
+                        "message": result.message,
+                        "src": job["src"],
+                    }
+                    if result.ok:
+                        ok += 1
+                except Exception as exc:
+                    payload = {
+                        "ok": False,
+                        "output_path": "",
+                        "engine": "",
+                        "message": str(exc),
+                        "src": job["src"],
+                    }
+                self._batch_item_done.emit(token, i, total, payload)
+            self._batch_finished.emit(token, ok, total)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_batch_item_done(self, token: int, i: int, total: int, payload: object) -> None:
+        if token != self._job_token:
+            return
+        self._progress.setValue(int(100 * i / max(1, total)))
+        if isinstance(payload, dict) and payload.get("src"):
+            src = str(payload["src"])
+            try:
+                idx = self._files.index(src)
+                self._list.setCurrentRow(idx)
+            except ValueError:
+                pass
+            if payload.get("ok") and payload.get("output_path"):
+                pm, _, _ = load_display_pixmap(
+                    str(payload["output_path"]), max_edge=DISPLAY_MAX_EDGE
+                )
+                if not pm.isNull():
+                    self._after.set_source_pixmap(pm)
+
+    def _on_batch_finished(self, token: int, ok: int, total: int) -> None:
+        if token != self._job_token:
+            return
+        self._set_job_busy(False)
+        self._progress.setValue(100)
+        self._result.setText(f"批量完成：成功 {ok} / {total}")
+        show_saved(self, f"成功 {ok} / {total}", module_output_dir(self.page_id, create=True))
+        self.report_status(f"批量去水印 {ok}/{total}", level=StatusLevel.SUCCESS)
 
     def _open_out(self) -> None:
         out = module_output_dir(self.page_id, create=True)
@@ -886,4 +1112,7 @@ class WatermarkRemoverPage(BasePage):
 
     def on_enter(self) -> None:
         self._refresh_ai_hint()
-        self.report_status("去除图片水印")
+        # 进页保证默认 light：未装 AI 时不勾选
+        if not self._prefer_ai.isChecked():
+            pass
+        self.report_status("去除图片水印 · 默认 light")

@@ -207,6 +207,12 @@ def build_qss(pal: dict) -> str:
     danger_bg = _p(pal, "danger_bg", "#FEE2E2")
     info_bg = _p(pal, "info_bg", "#DBEAFE")
     info = _ensure_contrast(_p(pal, "info", primary), info_bg, 4.5)
+    violet_bg = _p(pal, "violet_bg", "#EDE9FE")
+    violet = _ensure_contrast(_p(pal, "violet", "#6D28D9"), violet_bg, 4.5)
+    cyan_bg = _p(pal, "cyan_bg", "#CFFAFE")
+    cyan = _ensure_contrast(_p(pal, "cyan", "#0E7490"), cyan_bg, 4.5)
+    muted_bg = _p(pal, "muted_bg", "#F1F5F9")
+    muted = _ensure_contrast(_p(pal, "muted", "#475569"), muted_bg, 4.5)
     sidebar = _p(pal, "nav_bg", _p(pal, "surface_sidebar", header_bg))
     nav_fg = _ensure_contrast(_p(pal, "nav_fg", "#EAF0F8"), sidebar, 4.5)
     nav_active_bg = _p(pal, "nav_active_bg", primary)
@@ -306,10 +312,34 @@ QLabel[class="semantic-info"] {{
     border-radius: 4px;
 }}
 
+QLabel[class="semantic-violet"] {{
+    background: {violet_bg};
+    color: {violet};
+    padding: 8px 12px;
+    border-radius: 4px;
+}}
+
+QLabel[class="semantic-cyan"] {{
+    background: {cyan_bg};
+    color: {cyan};
+    padding: 8px 12px;
+    border-radius: 4px;
+}}
+
+QLabel[class="semantic-muted"] {{
+    background: {muted_bg};
+    color: {muted};
+    padding: 8px 12px;
+    border-radius: 4px;
+}}
+
 QLabel[class="semantic-success"][compact="true"],
 QLabel[class="semantic-warning"][compact="true"],
 QLabel[class="semantic-danger"][compact="true"],
-QLabel[class="semantic-info"][compact="true"] {{
+QLabel[class="semantic-info"][compact="true"],
+QLabel[class="semantic-violet"][compact="true"],
+QLabel[class="semantic-cyan"][compact="true"],
+QLabel[class="semantic-muted"][compact="true"] {{
     padding: 2px 8px;
     font-size: 9pt;
     min-height: 18px;
@@ -452,6 +482,7 @@ QLineEdit {{
     border: 1px solid {input_border};
     border-radius: 4px;
     selection-background-color: {row_sel};
+    selection-color: {text};
 }}
 
 QComboBox, QSpinBox, QDateEdit {{
@@ -462,6 +493,7 @@ QComboBox, QSpinBox, QDateEdit {{
     border: 1px solid {input_border};
     border-radius: 4px;
     selection-background-color: {row_sel};
+    selection-color: {text};
 }}
 
 QComboBox {{
@@ -752,6 +784,7 @@ QTextEdit, QPlainTextEdit {{
     border: 1px solid {input_border};
     border-radius: 4px;
     selection-background-color: {row_sel};
+    selection-color: {text};
 }}
 
 QTextEdit:focus, QPlainTextEdit:focus {{
@@ -819,6 +852,11 @@ QWidget#OutlineTreePanel {{
     padding: 2px;
 }}
 
+LineEdit#NotepadOutlineSearch {{
+    min-height: 28px;
+    padding: 4px 8px;
+}}
+
 QWidget#OutlineTreeHeader {{
     padding: 0 2px 2px 2px;
 }}
@@ -881,6 +919,45 @@ QWidget#NotepadFmtToolbar {{
     background: {bg};
     border: 1px solid {border};
     border-radius: 8px;
+}}
+
+QWidget#NotepadComponentPalette {{
+    background: {surface_alt};
+    border: 1px solid {border};
+    border-radius: 10px;
+    padding: 6px;
+}}
+
+QFrame#NotepadComponentCard {{
+    background: {surface};
+    border: 1px solid {border};
+    border-radius: 8px;
+}}
+
+QFrame#NotepadComponentCard:hover {{
+    border: 1px solid {primary};
+}}
+
+HintLabel#NotepadComponentCardCaption {{
+    color: {text2};
+    font-size: 11px;
+}}
+
+TextEdit#NotepadComponentLivePreview {{
+    background: transparent;
+    border: none;
+    padding: 0;
+}}
+
+QWidget#NotepadComponentChartSchematic,
+QWidget#NotepadComponentImageSchematic {{
+    background: transparent;
+    border: none;
+}}
+
+QScrollArea#NotepadComponentScroll {{
+    background: transparent;
+    border: none;
 }}
 
 QWidget#NotepadEditorFooter {{
@@ -1065,6 +1142,14 @@ QProgressBar {{
 QProgressBar::chunk {{
     background: {progress_fill};
     border-radius: 3px;
+}}
+
+/* 细活动条：斑马纹滑动（SoftActivityBar = QWidget 自绘） */
+QWidget#SoftActivityBar {{
+    min-height: 4px;
+    max-height: 4px;
+    background: transparent;
+    border: none;
 }}
 
 /* 日历 / 日期弹层：与主题同色，禁止系统白底浅字 */
@@ -1267,12 +1352,41 @@ QLabel#ShellBrand {{
     color: {header_fg};
 }}
 
+/* 顶栏授权标签：小号 tag，贴品牌名；勿用胖按钮实心块 */
 QPushButton#ShellLicenseChip {{
-    min-height: 24px;
-    max-height: 26px;
-    padding: 2px 10px;
-    font-size: 12px;
-    border-radius: 4px;
+    min-height: 16px;
+    max-height: 18px;
+    min-width: 0;
+    padding: 0px 6px;
+    margin: 0;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 3px;
+    outline: none;
+}}
+QPushButton#ShellLicenseChip:hover {{
+    opacity: 0.92;
+}}
+QPushButton#ShellLicenseChip[class="msg-success"] {{
+    background: {success_bg};
+    color: {success};
+    border: 1px solid {success};
+}}
+QPushButton#ShellLicenseChip[class="msg-info"],
+QPushButton#ShellLicenseChip[class="msg-confirm"] {{
+    background: {info_bg};
+    color: {info};
+    border: 1px solid {info};
+}}
+QPushButton#ShellLicenseChip[class="msg-warning"] {{
+    background: {warning_bg};
+    color: {warning};
+    border: 1px solid {warning};
+}}
+QPushButton#ShellLicenseChip[class="msg-error"] {{
+    background: {danger_bg};
+    color: {danger};
+    border: 1px solid {danger};
 }}
 
 QLabel#ShellLogo {{
@@ -1479,9 +1593,23 @@ QWidget#FinderFilterBar {{
     padding: 0 0 2px 0;
 }}
 
+LineEdit#FinderNameSearchEdit {{
+    min-height: 22px;
+    max-height: 24px;
+    border-radius: 11px;
+    padding: 0 10px;
+    font-size: 12px;
+}}
+
+QFrame#FinderOfficeSlideCard {{
+    background: {_p(pal, "surface", bg)};
+    border: 1px solid {border};
+    border-radius: 8px;
+}}
+
 QWidget#FinderBreadcrumbBar {{
     background: transparent;
-    padding: 0 0 2px 0;
+    padding: 0;
 }}
 
 QScrollArea#FinderColumnScroll {{
@@ -2026,6 +2154,17 @@ QLabel#HarnessWebPlaceholder {{
     background: {_p(pal, "surface", "#FFFCF8")};
     color: {_p(pal, "text_secondary", "#5C4D3C")};
     padding: 16px;
+}}
+
+QLabel#LocalWebHostPlaceholder {{
+    background: {_p(pal, "surface", "#FFFCF8")};
+    color: {_p(pal, "text_secondary", "#5C4D3C")};
+    padding: 16px;
+}}
+
+QWidget#LocalWebHostCanvas {{
+    background: {_p(pal, "surface", "#FFFCF8")};
+    border: none;
 }}
 
 QLabel#HarnessWebOverlay {{

@@ -148,7 +148,7 @@ menu:
     order: 60
     feature_id: web_workspace
     requires_license: false
-    show: true
+    show: false
   - class_name: QuickNotepadPage
     desc: 会中速记、草稿，本地自动保存
     group: office
@@ -161,18 +161,18 @@ menu:
     requires_license: false
     show: true
   - class_name: QuadrantTasksPage
-    desc: 重要×紧急日计划看板
+    desc: 状态看板 · 日历 · 四象限优先级；可送入记事本
     group: office
     icon: quadrant_tasks
     id: quadrant_tasks
     module_path: modules.quadrant_tasks.quadrant_tasks_page
-    name: 四象限任务
+    name: 任务管理
     order: 40
     feature_id: quadrant_tasks
     requires_license: false
     show: true
   - class_name: PomodoroPage
-    desc: 专注工作 · 短休息循环，状态栏同步剩余时间
+    desc: Hold·专家组剔除排期（2026-09-14）；专注计时保留代码不开放侧栏
     group: office
     icon: pomodoro
     id: pomodoro
@@ -181,7 +181,7 @@ menu:
     order: 70
     feature_id: pomodoro
     requires_license: false
-    show: true
+    show: false
   - class_name: ScreenshotToolPage
     desc: 开会截图、标注、OCR/翻译入口
     group: office
@@ -214,6 +214,17 @@ menu:
     name: 剪贴板历史
     order: 10
     feature_id: clipboard_history
+    requires_license: false
+    show: true
+  - class_name: EmailClientPage
+    desc: 本机绑定邮箱收发带附件（IMAP/SMTP · 默认隐藏）
+    group: office
+    icon: notifications
+    id: email_client
+    module_path: modules.email_client.email_client_page
+    name: 邮箱代理
+    order: 85
+    feature_id: email_client
     requires_license: false
     show: true
   - class_name: EngineHostHubPage
@@ -393,7 +404,7 @@ menu:
     order: 20
     feature_id: image_to_scan
     requires_license: true
-    show: true
+    show: false
   - class_name: ImageFormatConvertPage
     desc: 图片格式互转 PNG/JPG/WEBP/PDF
     group: image
@@ -404,7 +415,7 @@ menu:
     order: 40
     feature_id: image_format_convert
     requires_license: true
-    show: true
+    show: false
   - class_name: WatermarkRemoverPage
     desc: 擦除豆包/角标等；优先 AI 强引擎，不可用则本地修复
     group: image
@@ -481,7 +492,7 @@ menu:
     order: 70
     feature_id: generic_generator_simple
     requires_license: true
-    show: true
+    show: false
   - class_name: MigrationPlaceholderPage
     desc: Excel 映射驱动批量生成（TOA2 完整版，待迁移）
     group: files
@@ -646,7 +657,7 @@ menu:
     order: 20
     feature_id: user_extensions
     requires_license: true
-    show: true
+    show: false
   - class_name: JobSchedulerPage
     desc: 定时任务：间隔执行、立即试跑、jobs.json 落盘
     group: system
@@ -657,7 +668,7 @@ menu:
     order: 30
     feature_id: job_scheduler
     requires_license: false
-    show: true
+    show: false
   - class_name: NotificationsPage
     desc: 通知通道说明、试发与本会话最近通知
     group: system
@@ -668,7 +679,7 @@ menu:
     order: 40
     feature_id: notifications
     requires_license: false
-    show: true
+    show: false
   - class_name: ControlLibraryPage
     desc: 全应用可视控件库：对照主题下各控件前景/背景/字号/状态；业务页只从本库选用
     group: system

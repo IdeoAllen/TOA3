@@ -10,22 +10,24 @@ from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from modules.quadrant_tasks.task_store import (
-    QUADRANT_KINDS,
+    QUADRANT_SHORT,
     load_tasks,
+    matches_filter,
+    normalize_status,
+    resolve_status_color,
     task_covers_day,
     task_span,
 )
 from widgets import HintLabel, InlineButton, SecondaryButton
 
-_KIND_COLORS = {
-    "danger": QColor("#E57373"),
-    "warning": QColor("#FFB74D"),
-    "success": QColor("#7CB342"),
-    "info": QColor("#64B5F6"),
-}
-
 _WEEKDAYS = ("一", "二", "三", "四", "五", "六", "日")
 _DRAG_THRESHOLD_PX = 6
+
+
+def _bar_color(task: dict) -> QColor:
+    """日历条 = 进度色（蓝/橙/绿）；优先级只写在标题前缀。"""
+    st = normalize_status(str(task.get("status") or ""), done=bool(task.get("done")))
+    return QColor(resolve_status_color(st))
 
 
 class ScheduleMonthView(QWidget):
@@ -49,6 +51,8 @@ class ScheduleMonthView(QWidget):
         self._year = today.year
         self._month = today.month
         self._selected = today
+        self._filter_mode = "all"  # 与看板/优先级共用：today | all
+        self._focus_task_id: str | None = None
         self._hover_task: str | None = None
         self._bar_hit: list[tuple[QRect, str]] = []
         self._cell_hit: list[tuple[QRect, date]] = []
@@ -103,6 +107,20 @@ class ScheduleMonthView(QWidget):
     def refresh_tasks(self) -> None:
         self._canvas.update()
 
+    def set_filter_mode(self, mode: str) -> None:
+        key = "today" if (mode or "").strip().lower() == "today" else "all"
+        if key == self._filter_mode:
+            return
+        self._filter_mode = key
+        self._canvas.update()
+
+    def set_focus_task(self, task_id: str | None) -> None:
+        tid = (task_id or "").strip() or None
+        if tid == self._focus_task_id:
+            return
+        self._focus_task_id = tid
+        self._canvas.update()
+
     def clear_drag_range(self) -> None:
         self._range_a = None
         self._range_b = None
@@ -145,7 +163,7 @@ class ScheduleMonthView(QWidget):
         return [
             t
             for t in load_tasks()
-            if not t.get("done") and task_covers_day(t, day)
+            if matches_filter(t, self._filter_mode) and task_covers_day(t, day)
         ]
 
     def paint_month(self, painter: QPainter, rect: QRect) -> None:
@@ -218,10 +236,11 @@ class ScheduleMonthView(QWidget):
                     str(day.day),
                 )
 
-        tasks = [t for t in load_tasks() if not t.get("done")]
+        tasks = [t for t in load_tasks() if matches_filter(t, self._filter_mode)]
         bar_h = 16
         gap = 2
         top_pad = 20
+        focus = self._focus_task_id
         for wi, week in enumerate(weeks[:6]):
             week_start, week_end = week[0], week[6]
             spans: list[tuple[date, date, dict]] = []
@@ -250,20 +269,27 @@ class ScheduleMonthView(QWidget):
                 w = (c1 - c0 + 1) * cw - 6
                 if y + bar_h > grid.top() + (wi + 1) * ch - 2:
                     continue
-                kind = QUADRANT_KINDS.get(str(t.get("quadrant") or ""), "info")
-                color = _KIND_COLORS.get(kind, _KIND_COLORS["info"])
+                color = _bar_color(t)
+                qid = str(t.get("quadrant") or "")
                 bar = QRect(x, y, max(24, w), bar_h)
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(color)
                 painter.drawRoundedRect(bar, 3, 3)
+                tid = str(t.get("id") or "")
+                if focus and tid == focus:
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.setPen(QPen(QColor("#FFFFFF"), 2))
+                    painter.drawRoundedRect(bar.adjusted(1, 1, -1, -1), 3, 3)
+                # 单色条：只表达进度；优先级用标题前缀 ⅠⅡⅢⅣ，不再画第二色点
                 painter.setPen(QColor("#1A120E"))
+                qmark = QUADRANT_SHORT.get(qid, "")
                 title = str(t.get("title") or "")
+                label = f"{qmark} {title}".strip() if qmark else title
                 painter.drawText(
                     bar.adjusted(4, 0, -4, 0),
                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                    title,
+                    label,
                 )
-                tid = str(t.get("id") or "")
                 if tid:
                     self._bar_hit.append((bar, tid))
 

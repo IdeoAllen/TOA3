@@ -41,9 +41,9 @@ class WatermarkAiClient(IntegrationClient):
 
             st = install_status()
             if st.get("ready"):
-                return f"LaMa 可选 · {st.get('device') or 'cpu'}"
+                return f"LaMa 可选 · {st.get('device') or 'cpu'}（勾选才走 lama）"
             miss = "、".join(st.get("missing") or []) or "未安装"
-            return st.get("user_hint") or f"未装 LaMa（{miss}），本地轻量照常用"
+            return st.get("user_hint") or f"未装 LaMa（{miss}），默认 light"
         except Exception as exc:
             return f"LaMa 状态不可用：{exc}"
 
@@ -62,7 +62,10 @@ class WatermarkAiClient(IntegrationClient):
             miss = "、".join(st.get("missing") or []) or "未知依赖"
             raise self.integration_error(
                 f"LaMa 未就绪: {miss}",
-                user_message=str(st.get("user_hint") or "请到系统设置 → 安装本机模型下载 LaMa"),
+                user_message=str(
+                    st.get("user_hint")
+                    or "请在本页点「安装 AI…」下载 LaMa；不装可继续用默认 light"
+                ),
             )
 
         src = Path(str(image_path))

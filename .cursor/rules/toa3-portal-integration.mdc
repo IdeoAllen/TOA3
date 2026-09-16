@@ -1,5 +1,5 @@
 ---
-description: TOA3 Portal 集成边界——license 用 DMS，菜单本地 yaml
+description: TOA3 Portal 集成边界——license 用 toa-service，菜单本地 yaml
 alwaysApply: true
 ---
 
@@ -7,8 +7,8 @@ alwaysApply: true
 
 ## 双产品边界
 
-- **DMS** 与 **TOA** 为两套独立产品，**无强绑定**；DMS **免费**，不按模块收费。
-- TOA 商业授权（试用/付费/SKU）走 **TOA License 服务** 或本机 HMAC 码，**不**以 DMS 为运行时依赖。
+- **DMS** 与 **TOA** 为两套并行可售产品，**无强绑定**。DMS = 专业运营培训系统（高门槛、可售，**非**免费钩子）；TOA = 免费钩子 + 高级付费（可配合腾讯文档轻量轨）。
+- TOA 商业授权（试用/付费/SKU）走 **TOA License 服务** 或本机 HMAC 码，**不**以 DMS 为运行时依赖；DMS **不**提供 TOA SKU。
 - 详见：`docs/architecture/ARCH-04-授权与单机联网.md`
 
 ## 裁定（v1 生产 → v2 收敛中）
@@ -27,7 +27,8 @@ alwaysApply: true
 - Portal 统一维护 TOA 侧栏菜单并在线下发
 - TOA 桌面改用 DMS 用户名密码登录
 - TOA 激活/校验 **硬依赖** DMS 可达
-- 把 DMS 做成 TOA 商业账本或按模块售卖
+- 把 DMS 做成 TOA 商业账本，或在 DMS 内按 TOA 模块售卖
+- 对外称「DMS 是免费钩子」或「必须两套都买才能用基础能力」
 
 ## P2 可选
 

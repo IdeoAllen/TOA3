@@ -67,7 +67,10 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: common/wechat_screenshot.py
-    note: 个人最高频·截图；§3.5 主理人已签收；钉图已落地（2026-09-03）；放大镜=框选取景 loupe
+    note: >-
+      个人最高频·截图；§3.5 主理人已签收；钉图已落地（2026-09-03）；放大镜=框选取景 loupe；
+      2026-09-14 Agent：钉图 HiDPI 逻辑尺寸/锚点夹紧、loupe 逻辑取样、热键 QTimer 延后开层；
+      verify_screenshot_tool_gaps.py（不代清点验 gaps）
     gaps:
       - 主理人点验钉图（工具栏钉针 → 桌面置顶可拖 · Esc/双击关）
       - 主理人点验框选阶段放大镜/取色 loupe
@@ -77,7 +80,10 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: 个人最高频·剪贴板；Top3 approved；兑现搜索/隐私/送记事本
+    note: >-
+      个人最高频·剪贴板；Top3 approved；
+      2026-09-14：搜索+来源过滤、隐私时段持久化（暂停入库+遮罩）、送记事本（页/速贴）；
+      Agent 自测 scripts/verify_clipboard_history.py 已绿；点验 gaps 仍待主理人
     gaps:
       - 主理人点验搜索/隐私/送记事本后清 gaps
 
@@ -87,16 +93,12 @@ modules:
     office_freq: high
     toa2_ref: —
     note: >-
-      Wave★-3；Top3 v2 approved；单面WYSIWYG+自动保存+投喂链；
-      2026-09-10：Ctrl+V/拖入插图、图片拖角缩放、段距/行距/空段；
-      去掉大纲/正文分区框；更多菜单可导出 PDF；
-      完整 HTML：源码编辑 + WebEngine「网页」预览（不经设计区毁掉）
+      Wave★-3；PROD-01 §0.5.1：编辑/预览两面；无设计面；组件库=标记全集(21)；
+      工具栏同源；插图写 Markdown；默认编辑
     gaps:
-      - 主理人点验：去编辑预览叠层、自动保存、从剪贴板/最近历史/送入记事（含图）
-      - 主理人点验：简约↔多功能正文不丢、导入MD与复制HTML
-      - 主理人点验：Ctrl+V 插图可见占位；拖角缩放不闪、松手落盘、不扯乱上下文；段距/行距
-      - 主理人点验：更多 → 导出 PDF（标题+正文/图）
-      - 主理人点验：导入/打开完整 HTML → 网页预览正确；源码可改并保存
+      - 主理人点验：编辑↔预览切换不丢字；手写 MD 预览正确
+      - 主理人点验：工具栏≡组件库拖入；插图/粘贴图进源码与预览可见
+      - 主理人点验：自动保存；无设计面/无 TXT|MD 双格式
 
   web_workspace:
     status: mvp
@@ -114,16 +116,20 @@ modules:
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: Wave★-4；看板+日历拖选新建/双击编辑/标题获焦
+    note: >-
+      菜单「任务管理」；克制色轴：一视图一主色；行内第二维纯文字；日历单色条；
+      看板→日历→优先级；说明可送记事本。
     gaps:
-      - 主理人点验拖拽象限/日历拖选新建/双击编辑后清 gaps
+      - 主理人点验三视图克制色轴后清 gaps
 
   watermark_remover:
     status: mvp
     priority: P0
     office_freq: high
     toa2_ref: modules/watermark_remover/
-    note: 擦除豆包/角标；小白默认本地轻量；有条件点「安装 AI…」两步探索
+    note: >-
+      擦除豆包/角标；小白默认本地轻量 light；有条件点「安装 AI…」两步探索可勾选 lama。
+      2026-09-14 W3：大图限边预览+坐标映射、处理/批量/角标识别进线程、引擎文案 light/lama 对齐（点验前不改 status）
     gaps:
       - 主理人点验大图预览/多选后清 gaps
       - 点验：默认不勾 AI 时为 light；装完后勾选可为 lama；「安装 AI…」引导清晰
@@ -148,33 +154,35 @@ modules:
     gaps: []
 
   screenshot_translate:
-    status: missing
+    status: mvp
     priority: P0
     office_freq: high
     toa2_ref: —
     note: >-
-      能力已挂截图工具栏（OCR 对照窗 + 翻译原文）；有意无独立菜单页（避免空 stub）。
-      代码：services/screenshot_translate*.py · overlay 工具栏；点验后可再评估是否独立入口。
+      Wave★-8 mvp：工具栏翻译走 launch_translate_from_pixmap（后台 OCR→对照窗→翻译原文→复制）；
+      有意无独立菜单页；经 integrations（ocr/llm）；专用 translate 引擎可后续评估。
     gaps:
       - 主理人点验工具栏翻译主路径（OCR→对照窗→翻译原文→复制）
-      - 专用翻译引擎（现走 LLM）可后续评估
 
   # —— 其它白领 ——
   pomodoro:
-    status: mvp
+    status: Hold
     priority: P2
     office_freq: low
     toa2_ref: —
-    note: 未进八件套；可菜单隐藏
+    note: 专家组 2026-09-14 剔除排期；未进八件套；菜单可隐藏；不做强
 
   ocr_tool:
     status: mvp
     priority: P0
     office_freq: high
     toa2_ref: —
-    note: 框选 OCR；侧栏已隐藏，入口在截图工具栏
+    note: >-
+      框选 OCR；侧栏已隐藏，入口在截图工具栏。
+      引擎评估：默认本地 Tesseract（integrations OcrClient）；云端 provider 未实现；无 Paddle/Windows OCR。
+      中文：缺 chi_sim 时「启用中文识别」给 ≤2 步本机引导（进页不联网）；verify_ocr_chinese_guide.py。
     gaps:
-      - 中文引擎评估与安装引导
+      - 主理人点验：缺 chi_sim 引导两步 / 有包一键启用 / 截图工具栏中文回落提示
 
   llm_assistant:
     status: mvp
@@ -253,12 +261,13 @@ modules:
     priority: P1
     office_freq: medium
     toa2_ref: —
-    note: 中控台布局；图片(文/图/融合)+视频(Seedance)；Seedream/本机/Comfy
+    note: >-
+      中控台；页内 QMediaPlayer + 首尾帧（W5）；
+      专家组 2026-09-14：框选/权重下载已剔除计划
     gaps:
-      - 页内视频预览播放器（现用系统播放器）
-      - 交互坐标框选编辑（Seedream 高级）
-      - 首尾帧双图视频
-      - 在线自动下载本机权重（P1）
+      - 主理人点验：页内视频播放/暂停与系统打开回退
+      - 主理人点验：视频首帧+尾帧双图提交
+      # 已剔除：交互坐标框选；在线下载本机权重
 
   image_creator:
     status: mvp
@@ -271,13 +280,13 @@ modules:
       - 能力仍薄（仅纯色/噪点底图）
 
   image_adjust:
-    status: mvp
+    status: Hold
     priority: P2
     office_freq: medium
     toa2_ref: —
-    note: 旋转/翻转可用；侧栏已隐藏
+    note: 专家组 2026-09-14 Hold；侧栏已隐藏；非压强不开
     gaps:
-      - 批量与 EXIF 无损方向
+      - （已剔除计划）批量与 EXIF — 无压强不开
 
   batch_rename:
     status: mvp
@@ -404,14 +413,12 @@ modules:
       - 样例模板库
 
   generic_generator:
-    status: stub
-    priority: P1
+    status: Hold
+    priority: P2
     toa2_ref: modules/generic_generator/
-    note: 侧栏已隐藏（待迁移占位）
+    note: 专家组 2026-09-14 Hold；看板点验且主理人重开前不排；侧栏隐藏
     gaps:
-      - Excel 映射驱动批量生成
-      - GUI 任务配置
-      - 与 TOA2 generic_generator_gui 对齐
+      - （暂停）Excel 映射驱动 — 待主理人重开
 
   schedule_format_converter:
     status: done
@@ -430,6 +437,19 @@ modules:
     priority: P1
     toa2_ref: modules/teaching_assistant_resume/
     gaps: []
+
+  email_client:
+    status: mvp
+    priority: P2
+    toa2_ref: —
+    note: >-
+      邮箱代理：单账号 IMAP+SMTP+附件；Top3 approved（2026-09-14）；
+      默认 show:false；凭证分桶，不与 integrations.email 混用。
+    gaps:
+      - 主理人点验：绑 QQ/163 授权码失败时人话诊断可读
+      - 主理人点验：增量同步断网再连可续
+      - 主理人点验：发带附件信且进页不卡死
+      - 主理人点验：HTML 详情页内私有 WebEngine 可读
 
   assistant_recruit_post:
     status: mvp

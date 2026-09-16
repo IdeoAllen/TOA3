@@ -1,13 +1,14 @@
 ---
-description: TOA3 Top3+三独到处门禁——短；全文见工程标准 B1
+description: TOA3 产品亮点研究——鼓励非门禁；全文见 STD-01 B1.1
 alwaysApply: true
 ---
 
-# TOA3 · Top3 门禁（短）
+# TOA3 · 产品亮点研究（短 · 非开工门禁）
 
-开发/增强功能前必须：Top3 对标 → 与主理人确认**恰好 3 条**独到处 → `docs/research/<id>-top3.md` 为 `approved` → 才写业务码。
+**主理人 2026-09-14**：去掉开工障碍门禁；**直接并行开发需求**。  
+亮点研究 / 三独到处 / 专家组评审 = **鼓励补强**，**不挡写码**。
 
-停手：无文档 / 未确认 / 非 approved。
+仍须：分层 · widgets · 禁 UI 线程同步长联网 · `show_saved`。  
+对外称可商用 / 设当前版 → 仍过 **A10.4**（发版门禁，非开工门禁）。
 
-**全文流程**：`docs/规范/STD-01-工程标准与流程.md` B1  
-模板：`docs/research/_TEMPLATE-top3.md` · Skill：`toa3-sop-new-feature`
+**全文**：STD-01 B1 · B9 · A10.4 · Skill：`toa3-sop-new-feature`

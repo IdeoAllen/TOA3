@@ -261,6 +261,19 @@ class DirectoryGeneratorPage(BasePage):
 
         self.run_safe(_run, title="创建目录失败")
 
+    def apply_class_context(self, session) -> None:
+        """培训交付看板 handoff：写入父目录与名单。"""
+        root = str(getattr(session, "root_path", "") or "").strip()
+        roster = str(getattr(session, "roster_text", "") or "")
+        if root:
+            self._parent.setText(root)
+        if roster.strip():
+            self._names.setPlainText(roster)
+        self._preview()
+        name = str(getattr(session, "class_name", "") or "").strip()
+        tip = f"已载入班级「{name}」上下文" if name else "已载入班级上下文"
+        self.report_status(tip, level=StatusLevel.SUCCESS)
+
     def on_enter(self) -> None:
         self._preview()
         self.report_status("批量文件夹生成")

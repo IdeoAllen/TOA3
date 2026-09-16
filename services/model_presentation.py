@@ -32,7 +32,9 @@ def profile_region_code(prof: dict[str, Any]) -> str:
         "volces.com" in api_base
         or "moonshot" in api_base
         or "deepseek" in api_base
+        or "mxapi.org" in api_base
         or "doubao" in str(prof.get("id") or "").lower()
+        or str(prof.get("id") or "").lower().startswith("mxapi_")
     ):
         return "cn"
     return "intl"

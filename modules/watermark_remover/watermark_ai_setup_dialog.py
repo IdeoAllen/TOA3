@@ -26,7 +26,9 @@ class _LamaDownloadWorker(QObject):
             missing = list(st.get("missing") or [])
             if "PyTorch" in missing:
                 self.failed.emit(
-                    "本机还缺运行环境（PyTorch）。请点「完整一键安装」一次装齐，或到系统设置 → 安装本机模型。"
+                    "本机还缺运行环境（PyTorch）。\n"
+                    "请点「完整一键安装」一次装齐，或到系统设置 → 安装本机模型。\n"
+                    "不装也能继续用默认本地轻量 light。"
                 )
                 return
             ok, msg = download_weights(progress=_prog)
@@ -39,7 +41,7 @@ class _LamaDownloadWorker(QObject):
 
 
 class WatermarkAiSetupDialog(BaseDialog):
-    """探索 AI 增强：① 安装模型 → ② 勾选「AI 增强」。"""
+    """探索 AI 增强：① 安装模型 → ② 勾选「AI 增强」（装完可自动勾）。"""
 
     dialog_kind = "medium"
 
@@ -54,14 +56,15 @@ class WatermarkAiSetupDialog(BaseDialog):
         lay.setSpacing(12)
         lay.addWidget(
             HintLabel(
-                "默认本地修复已够用。若电脑有条件、想效果更好，按下面两步探索即可——"
-                "不用改配置文件。"
+                "默认已是本地轻量 light，开箱即用。\n"
+                "只有想效果更好时，才按下面两步装 LaMa（不用改配置文件）。"
             )
         )
         lay.addWidget(
             HintLabel(
-                "① 点「下载去水印模型」装好（只装这一件）\n"
-                "② 关闭本窗后，勾选页面上的「AI 增强」"
+                "① 点「下载去水印模型」装好 LaMa\n"
+                "② 关闭本窗后，页面会自动勾选「AI 增强」→ 导出走 lama\n"
+                "随时可取消勾选，立刻回到 light"
             )
         )
         self._status = HintLabel("")
@@ -98,13 +101,17 @@ class WatermarkAiSetupDialog(BaseDialog):
         if st.get("ready"):
             self.installed = True
             self._status.setText(
-                f"① 已完成 · {st.get('user_hint') or '模型就绪'}。请关窗后勾选「AI 增强」。"
+                f"① 已完成 · {st.get('user_hint') or 'LaMa 就绪'}。"
+                "关窗后将自动勾选「AI 增强」。"
             )
             self._btn_dl.setEnabled(False)
         else:
             self.installed = False
             miss = "、".join(st.get("missing") or []) or "待安装"
-            self._status.setText(f"① 待完成 · 缺 {miss}。点上方主按钮即可。")
+            self._status.setText(
+                f"① 待完成 · 缺 {miss}。点上方主按钮即可。"
+                "不装不影响 light 路径。"
+            )
 
     def _set_busy(self, busy: bool) -> None:
         self._btn_dl.setEnabled(not busy)
@@ -145,7 +152,10 @@ class WatermarkAiSetupDialog(BaseDialog):
     def _on_ok(self, msg: str) -> None:
         self._set_busy(False)
         self._refresh_status()
-        show_success(self, f"{msg}\n下一步：关闭本窗，勾选「AI 增强」。")
+        show_success(
+            self,
+            f"{msg}\n下一步：点「完成」关闭本窗；页面将自动勾选「AI 增强」（lama）。",
+        )
 
     def _on_fail(self, msg: str) -> None:
         self._set_busy(False)
