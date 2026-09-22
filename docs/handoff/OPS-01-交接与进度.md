@@ -30,10 +30,9 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**v3.1.18** 已发：stable = APP = update_manifest；直链可用；**更新说明已补写**（发布时曾留空，已入库并门禁：设当前版必须填说明）。  
-直链：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.18.exe  
-说明：全局介入档案与配置点：双击Ctrl唤起、拖入开桌面、沉浸全屏(F11)、退出/托盘均可配置；发版说明与版本对齐流程标准化。  
-对齐提交：`699ce72`（manifest）+ 扩白名单后补交壳/热键/ARCH-11（见最新 `release: TOA3 v3.1.18`）。  
+**发版中 v3.1.21（2026-09-22）**：直链已上传 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.21.exe 。运营台当前仍为 **3.1.20**。**待主理人设当前版**后跑 `--from-live --require-match --commit`。  
+本版要点：Harness 内嵌侧栏文件预览（`dsh-resource`）；Ctrl+Tab 切顶栏；承接记事组件库/桌面视频封面/编码智能体启动自愈等。  
+**v3.1.21** 线上当前版（切版前）：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.20.exe  
 **发版提交口径**：上传脚本自动 commit 多数跳过；**设当前版后 Agent 必须再跑** `--from-live --require-match --commit` 并回报 hash。  
 **全局介入档案**：`ARCH-11` + `global_shell_features` + `verify_global_shell`；Mac 仅口径。  
 **v3.1.17** 热键/预览；**v3.1.16** Harness CDN；**v3.1.14** 图片预览。
@@ -42,6 +41,8 @@ python -m app.main
 **助教招聘稿** `assistant_recruit_post`：**mvp 已落地**（业务侧栏 order=45）；命名即表单 + 话术锁定 + 复制即发；research `approved`。待点验清 gaps。  
 **助教打卡换装** `assistant_outfit_swap`：**mvp 已落地**（业务侧栏 order=46）；目录全量 + 着装预设 + 只换服装保水印；经 image_gen 编辑；research `approved`。待点验清 gaps。  
 **Harness（2026-09-10）**：`@nanmicoder/dsh-agent-teams` 依赖缺失 `uiConversation` → Failed to load plugins；已剔除并重启 `3082`；新增 profile **配置快照/恢复上次可用**（编码智能体 → 更多）；sanitize denylist。  
+**Harness 启动失败 mkdir 联接（2026-09-20）**：正式版 sidecar 日志 `UNKNOWN mkdir …/profiles/web/node_modules`——整树 JUNCTION 与新版 dsh `mkdirSync` 冲突。已把本机改成真目录+子联接并成功启动 3082；代码改为启动前自愈、禁止再做整树联接（下一版安装包带上）。
+**Harness 会话管理/技能总览红点（同日）**：sanitize 把本机 `link:` 的 `@dachengge/dsh-session-manager` / `dsh-skill-catalog` 当「无法解析」洗掉；已改保留有效 link/file 依赖，并从 last_good 恢复后重启 3082。
 **Harness 稳定 Host（同日续）**：按 ARCH-09 六件套收口——启动前 `preflight` 强制剔杀手插件；健康就绪节流标「上次可用」；失败自动再剔并重启；更多菜单补 **打开启动日志 / 安装目录 / 卸载（默认保留会话）**。  
 **Harness 交互压测（同日）**：抽出 `harness_chrome` 状态机（启/停/进度/忙碌互斥）；修修复→重启被 `finally` 清 busy、链式重启二次确认；`scripts/verify_harness_host_lifecycle.py --live` 启停往返已绿。  
 **Harness 启停口径统一（同日）**：内嵌/浏览器共用同一套进度与结果态；「启动服务」为主 CTA；「在浏览器打开」为次要另开窗；进页清掉离页残留占位；主区有 WebEngine 时始终装载（偏好仅控制是否另开浏览器）。  
@@ -80,6 +81,8 @@ python -m app.main
 **桌面浏览回推（同日）**：侧栏收口误把 `column_preview` 隐掉；主理人反馈后恢复 `show:true`（点验池 · PROD-01 §0.6 D）。
 **桌面紧凑布局（2026-09-16）**：工具栏路径框改为面包屑；快筛栏加文件名圆角检索；预览标题与源码/预览 Tab 同行，腾出垂直空间。
 **桌面 Office 结构化预览（同日）**：Word→HTML 标题/加粗/表格；Excel→工作表切换+表格；PPT→分页卡片；后台线程解析；非原样排版，完整仍「打开」。`verify_office_structured.py` 绿。
+**桌面视频首帧（同日）**：预览区抽视频首帧图（OpenCV/ffmpeg）；体积统一 B/KB/MB/GB（不再整文件只显示 KB）。`verify_video_poster.py`。
+**桌面视频白屏修复（同日）**：首帧回调改 QueuedConnection 回主线程；贴图延后重试，避免点几次后「有元信息无画面」。
 **主理人·记事排版（2026-09-15）**：TOA 提供好用工具，让用户自己轻松做出美观排版——**非预制内容堆观感**。已回写 `product.yml`、PROD-01/02。  
 **主理人·记事三路径（同日）**：① 右侧拖入美观组件（拖入长啥样就是啥样，只改字）② 类 Word 自由排版 ③ 手写 Markdown 可选且同风格展示；**禁止 Markdown 学习门槛**。已回写 product.yml / PROD-01/02。  
 **记事组件库落地（2026-09-15）**：设计默认 + 右侧 10 组件（点/拖插入）；页签改为设计→预览→源码；新建空白不塞范文；`verify_quick_notepad_gaps.py` 绿。待主理人点验 gaps。
@@ -116,6 +119,8 @@ python -m app.main
 **Harness 插件被洗空（2026-09-15）**：升预制 `0.1.5-rc.1.1` 时 `_ensure_profile_flavor` 把空 `prefab_essential_plugins` 当成白名单过滤 → 本机 15 插件冲成仅核心；`last_good` 也被标成洗后态。已从快照 `20260914_095729_987655` 恢复并改指针；代码改为预制升级**保留用户 bundles**；ARCH-10 §3.4.3 增「不洗用户插件」。**请重启 Harness 服务**验证插件回来。
 **MXAPI 接入模型管理（同日）**：`model_catalog` 增 `mxapi_nano_banana_2` / `gpt_image_2` / `nano_banana_pro`（`open.mxapi.org/v1`）；Key 自动认 Harness `MXAPI_API_KEY`；三卡共用密钥。
 **MXAPI 写入 DSH（同日）**：凭据补 `MXAPI_OPENAI_BASE_URL=/v1`（生图）+ `MXAPI_BASE_URL=/api/v2`（余额）；`$DSH_HOME/skills/image-generation` 与 AGENTS.md 改为 MXAPI 优先；**不**进 llm-pi-ai「模型」页（非对话模型）。
+**壳·Ctrl+Tab 切主菜单（2026-09-21）**：`Ctrl+Tab` / `Ctrl+Shift+Tab` 循环顶栏一级子模块；事件过滤拦 Tab 焦点占用 + ApplicationShortcut 兜底；配置 `hotkeys.next_domain` / `prev_domain`。
+**Harness 侧栏预览（2026-09-22）**：根因=Qt 未注册 `dsh-resource` → JS URL hostname 空 →「文件资源服务不可用」（浏览器正常）。已在 QApplication 前 `registerScheme(Syntax.Host)`；`verify_dsh_resource_url_scheme` 入 verify_all。重启 TOA3 后内嵌可预览。
 
 ---
 

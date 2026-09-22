@@ -56,6 +56,7 @@ def main() -> int:
         "verify_harness_full_scenarios.py",
         "verify_harness_cdn.py",
         "verify_harness_embed_default.py",
+        "verify_dsh_resource_url_scheme.py",
         "verify_harness_host_lifecycle.py",
         "verify_harness_providers.py",
         "verify_harness_release_align.py",

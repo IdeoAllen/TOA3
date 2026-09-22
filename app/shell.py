@@ -143,17 +143,37 @@ class _ThemeToolButton(QToolButton):
 
 
 class _ShellNavKeyFilter(QObject):
-    """Esc 退出沉浸；F11 应用内切换（不经 RegisterHotKey，避免双开互抢）。"""
+    """Esc 退出沉浸；F11 应用内切换；Ctrl+Tab 切换顶栏主菜单。"""
 
     def __init__(self, shell: "MainShell") -> None:
         super().__init__(shell)
         self._shell = shell
+
+    @staticmethod
+    def _domain_cycle_step(event) -> int | None:
+        """Ctrl+Tab → +1；Ctrl+Shift+Tab / Ctrl+Backtab → -1。"""
+        key = event.key()
+        mods = event.modifiers()
+        if not (mods & Qt.KeyboardModifier.ControlModifier):
+            return None
+        if mods & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier):
+            return None
+        if key == Qt.Key.Key_Backtab or (
+            key == Qt.Key.Key_Tab and bool(mods & Qt.KeyboardModifier.ShiftModifier)
+        ):
+            return -1
+        if key == Qt.Key.Key_Tab:
+            return 1
+        return None
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
         et = event.type()
         if et == QEvent.Type.ShortcutOverride:
             if not self._shell_key_target():
                 return False
+            if self._domain_cycle_step(event) is not None:
+                event.accept()
+                return True
             if (
                 event.key() == Qt.Key.Key_F11
                 and event.modifiers() == Qt.KeyboardModifier.NoModifier
@@ -169,6 +189,10 @@ class _ShellNavKeyFilter(QObject):
             return False
         if not self._shell_key_target():
             return False
+        step = self._domain_cycle_step(event)
+        if step is not None:
+            self._shell.cycle_domain(step)
+            return True
         if (
             event.key() == Qt.Key.Key_Escape
             and self._shell.is_immersive()
@@ -1130,6 +1154,9 @@ class MainShell(QMainWindow):
             str(hk.get("open_about") or "Alt+Shift+O"): self._show_about,
             str(hk.get("open_home") or "Ctrl+H"): self._go_home,
             "Ctrl+K": self._open_command_palette,
+            # 顶栏主菜单循环；事件过滤器优先拦截 Tab 焦点占用，此处作 ApplicationShortcut 兜底
+            str(hk.get("next_domain") or "Ctrl+Tab"): lambda: self.cycle_domain(1),
+            str(hk.get("prev_domain") or "Ctrl+Shift+Tab"): lambda: self.cycle_domain(-1),
         }
         # 沉浸全屏：仅 ApplicationShortcut（禁止 RegisterHotKey）；可配置关闭
         if immersive_on and fs_key and fs_key.lower() != "none":
@@ -1310,7 +1337,7 @@ class MainShell(QMainWindow):
         return out
 
     def cycle_domain(self, step: int) -> None:
-        """←/→：切换顶栏一级子模块（保留 API，壳层不再绑方向键）。"""
+        """Ctrl+Tab / Ctrl+Shift+Tab：循环切换顶栏一级子模块（主菜单）。"""
         domains = self._visible_domain_ids()
         if not domains:
             return

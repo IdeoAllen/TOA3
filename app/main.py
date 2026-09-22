@@ -27,9 +27,10 @@ def _configure_webengine_env() -> None:
     import os
     import sys
 
-    from services.qt_webengine_bootstrap import configure_frozen_qt_webengine
+    from services.qt_webengine_bootstrap import configure_qt_webengine
 
-    configure_frozen_qt_webengine()
+    # 须在 QApplication 前：含 dsh-resource 协议注册（Harness 侧栏文件预览）
+    configure_qt_webengine()
 
     key = "QTWEBENGINE_CHROMIUM_FLAGS"
     extras = [

@@ -82,6 +82,9 @@ hotkeys:
   switch_user: Alt+U
   open_settings: Alt+S
   open_home: Ctrl+H
+  # 顶栏一级子模块（主菜单 Tab）循环切换；仅应用前台
+  next_domain: Ctrl+Tab
+  prev_domain: Ctrl+Shift+Tab
   open_notepad: Alt+N
   open_pomodoro: Alt+P
   open_ocr: Alt+O

@@ -66,6 +66,10 @@ def diagnose_start_log(text: str | None = None) -> str:
     low = raw.lower()
     if "writer lock" in low or ".credentials.yaml.lock" in low:
         return "上次异常退出留下了凭证锁，服务起不来"
+    if "unknown error, mkdir" in low and "node_modules" in low:
+        return "Web 组件目录联接损坏（需改成真目录）"
+    if "errno: -4094" in low and "mkdir" in low:
+        return "Web 组件目录联接损坏（需改成真目录）"
     if "unknown top-level key" in low:
         return "凭证文件格式不对（有非法字段）"
     if "unexpected token" in low and ("json" in low or "\ufeff" in raw or "bom" in low):
@@ -88,7 +92,7 @@ def humanize_start_failure(*, default: str = "服务未能启动") -> str:
     cause = diagnose_start_log()
     if cause:
         # 凭证锁 / 插件拖死才强调修；普通异常退出先请再启
-        if "凭证锁" in cause or "插件" in cause:
+        if "凭证锁" in cause or "插件" in cause or "联接" in cause:
             return f"{cause}。请点「修一下」或「更多 → 环境维护」"
         return f"{cause}。请再点「启动服务」；仍不行再「更多 → 环境维护」"
     return f"{default}。请再点「启动服务」；仍不行再「更多 → 环境维护」"
@@ -262,7 +266,11 @@ def preflight_web_profile(*, home: Path | None = None) -> tuple[bool, str]:
         clear_stale_credential_locks,
         sanitize_credentials_document,
     )
-    from services.harness_plugins import strip_boot_killer_plugins, strip_utf8_bom_in_profile
+    from services.harness_plugins import (
+        ensure_web_node_modules_mkdirable,
+        strip_boot_killer_plugins,
+        strip_utf8_bom_in_profile,
+    )
 
     notes: list[str] = []
     h = Path(home) if home is not None else dsh_home_path()
@@ -275,6 +283,15 @@ def preflight_web_profile(*, home: Path | None = None) -> tuple[bool, str]:
             return False, lock_msg
     except Exception as exc:
         logger.warning("clear credential locks failed: %s", exc)
+
+    try:
+        ok_nm, nm_msg = ensure_web_node_modules_mkdirable(h)
+        if nm_msg and "可写" not in nm_msg:
+            notes.append(nm_msg)
+        if not ok_nm:
+            return False, nm_msg
+    except Exception as exc:
+        logger.warning("ensure web node_modules mkdirable failed: %s", exc)
 
     try:
         ok_bom, bom_msg = strip_utf8_bom_in_profile(h)

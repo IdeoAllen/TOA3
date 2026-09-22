@@ -49,6 +49,8 @@ def main() -> int:
         ("restart_app", str(hk.get("restart_app") or "Ctrl+Shift+R")),
         ("toggle_fullscreen", str(hk.get("toggle_fullscreen") or "F11")),
         ("open_settings", str(hk.get("open_settings") or "Alt+S")),
+        ("next_domain", str(hk.get("next_domain") or "Ctrl+Tab")),
+        ("prev_domain", str(hk.get("prev_domain") or "Ctrl+Shift+Tab")),
     ]
     for seq, mid in global_module_bindings().items():
         must_parse.append((f"module:{mid}", seq))

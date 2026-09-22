@@ -9,6 +9,52 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+_DSH_RESOURCE_SCHEME = b"dsh-resource"
+_dsh_resource_scheme_registered = False
+
+
+def register_dsh_resource_url_scheme() -> bool:
+    """注册 Harness `dsh-resource://` 自定义协议（须在 QApplication / 首个 WebEngine 之前）。
+
+    未注册时，Qt WebEngine 的 JS `new URL('dsh-resource://file/...')` 会把 hostname
+    解析成空串；`dsh-client-resources` 因而判定「无 file 提供方」，侧栏预览显示
+    「文件资源服务不可用」。系统 Chrome 解析正常，故浏览器里能预览、套件内嵌不行。
+    """
+    global _dsh_resource_scheme_registered
+    if _dsh_resource_scheme_registered:
+        return True
+    try:
+        from PySide6.QtWebEngineCore import QWebEngineUrlScheme
+    except ImportError:
+        logger.debug("QWebEngineUrlScheme 不可用，跳过 dsh-resource 注册")
+        return False
+    try:
+        existing = QWebEngineUrlScheme.schemeByName(_DSH_RESOURCE_SCHEME)
+        name = bytes(existing.name() or b"")
+        if name == _DSH_RESOURCE_SCHEME:
+            _dsh_resource_scheme_registered = True
+            return True
+    except Exception:
+        pass
+    try:
+        scheme = QWebEngineUrlScheme(_DSH_RESOURCE_SCHEME)
+        scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
+        # 仅校正 URL 解析；页面并不真导航到该协议
+        scheme.setFlags(QWebEngineUrlScheme.Flag.SecureScheme)
+        QWebEngineUrlScheme.registerScheme(scheme)
+        _dsh_resource_scheme_registered = True
+        logger.info("已注册 WebEngine URL scheme: dsh-resource（Harness 侧栏文件预览）")
+        return True
+    except Exception:
+        logger.warning("注册 dsh-resource URL scheme 失败", exc_info=True)
+        return False
+
+
+def configure_qt_webengine() -> None:
+    """QApplication 之前：自定义协议 + 冻结包路径。"""
+    register_dsh_resource_url_scheme()
+    configure_frozen_qt_webengine()
+
 
 def _frozen_base() -> Path | None:
     if not getattr(sys, "frozen", False):
@@ -104,7 +150,7 @@ def apply_frozen_qt_library_paths(app=None) -> None:
 
 
 def webengine_import_ok() -> bool:
-    configure_frozen_qt_webengine()
+    configure_qt_webengine()
     try:
         from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
 

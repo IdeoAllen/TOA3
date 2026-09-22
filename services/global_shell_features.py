@@ -106,6 +106,15 @@ GLOBAL_FEATURES: tuple[GlobalFeature, ...] = (
         mac_plan="默认 ⌘K；后续纳入 hotkeys.command_palette",
         verify="窗内映射含 Ctrl+K（Win）",
     ),
+    GlobalFeature(
+        id="cycle_domain_tabs",
+        title="顶栏主菜单循环切换",
+        config_keys=("next_domain", "prev_domain"),
+        layer="Shell",
+        win_impl="事件过滤 Ctrl+Tab / Ctrl+Shift+Tab + ApplicationShortcut 兜底 · shell.cycle_domain",
+        mac_plan="默认 ⌃⇥ / ⌃⇧⇥；仅前台",
+        verify="键可解析；窗内映射含 next/prev_domain",
+    ),
 )
 
 
