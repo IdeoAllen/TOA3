@@ -43,3 +43,10 @@ cache/
 # Harness 预制大包（走 CDN，勿进仓库）
 packaging/dist/harness/*.zip
 packaging/dist/*.exe
+
+# 运行产物 / 一次性脚本（勿进仓库）
+common/logs/*.log.*
+scripts/_tmp_*.py
+
+# 手工改前快照（原始内容可用 git 历史取得；勿进仓库）
+_backup_*.py
