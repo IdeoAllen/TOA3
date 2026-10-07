@@ -20,14 +20,17 @@
 | 5 | edition/授权隔离 | 配置不串；未授权模块不可用且提示诚实 |
 | 6 | 敏感面 | `release_config_guard` 绿；diff 无 secrets/IMAP 明文/样例密钥入包 |
 
-## 2. 发版五步（主理人裁定 · 说「发版」必须做完 1–2）
+## 2. 发版五步（主理人裁定 · 说「发版」必须做完 1–3）
+
+**分工（2026-09-22）**：Agent 备齐一切；**主理人只点「设为当前」**；切版后 Agent 对齐提交。
 
 | 步 | 动作 | 判据 |
 |----|------|------|
-| 1 | 升 `APP_VERSION` → verify → `python packaging/build_windows.py --clean --msi` | `packaging/dist/TOA3-Setup-v{ver}.exe` |
-| 2 | **上传安装包**（Agent 必做，禁止只丢本地路径） | `powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion {ver}` → 直链 200 |
-| 3 | **运营台设为当前版**（仅主理人） | https://toa-service.yczh.tech/admin/ → 版本发布 → **版本号=APP_VERSION** + **更新说明必填** → 试链 → 勾选「设为当前版」 |
-| 4 | 对齐并提交 | **上传时几乎不会成功**（线上尚未切版）。主理人设当前版后，Agent **必须立刻**执行并回报 commit hash：`python scripts/sync_release_version.py --from-live --require-match --commit` |
+| 1 | 升 `APP_VERSION` → 写好更新说明 → verify → `python packaging/build_windows.py --clean --msi` | `packaging/dist/TOA3-Setup-v{ver}.exe` |
+| 2 | **上传安装包**（Agent 必做） | `powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion {ver}` → 直链 200 |
+| 3 | **Agent 预登记运营台**（说明+直链已填，`is_current=false`） | `python ../toa-cloud/scripts/prepare_ops_release.py --version {ver} --notes "…"` → 列表可见该版 |
+| 4 | **主理人只点「设为当前」** | 运营台列表该行点一次即可；禁止再让主理人粘贴说明 |
+| 5 | 对齐并提交 | 切版后 Agent：`python scripts/sync_release_version.py --from-live --require-match --commit` 并回报 hash |
 | 5 | 验收 | 桌面「检查更新」+ https://www.yczh.tech/downloads/ 与 `APP_VERSION` 同号 |
 
 ### 本地打包门禁（步 1 内）

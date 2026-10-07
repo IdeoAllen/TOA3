@@ -660,7 +660,7 @@ menu:
     order: 20
     feature_id: user_extensions
     requires_license: true
-    show: false
+    show: true
   - class_name: JobSchedulerPage
     desc: 定时任务：间隔执行、立即试跑、jobs.json 落盘
     group: system
@@ -671,7 +671,7 @@ menu:
     order: 30
     feature_id: job_scheduler
     requires_license: false
-    show: false
+    show: true
   - class_name: NotificationsPage
     desc: 通知通道说明、试发与本会话最近通知
     group: system

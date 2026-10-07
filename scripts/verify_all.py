@@ -61,6 +61,7 @@ def main() -> int:
         "verify_harness_providers.py",
         "verify_harness_release_align.py",
         "verify_harness_simple_setup.py",
+        "verify_harness_system_backup.py",
         "verify_local_web_host_chrome.py",
         "verify_menu_promote_context.py",
         "debug_engines_to_business.py",

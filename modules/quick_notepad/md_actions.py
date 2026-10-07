@@ -25,23 +25,13 @@ from modules.quick_notepad.image_attrs import (
     size_label,
     suggest_size_key,
 )
+from modules.quick_notepad.media_store import path_as_uri, store_qimage
 from modules.quick_notepad.note_store import load_settings, save_settings
-from modules.quick_notepad.rich_body import images_dir, markdown_image_snippet
+from modules.quick_notepad.rich_body import markdown_image_snippet
 from widgets import ComboBox, HintLabel, LineEdit
 from widgets.dialog_actions import DialogButtonRow
 from widgets.list_edit import FormEditDialog
 
-MD_PREFIX = {
-    "h1": "# ",
-    "h2": "## ",
-    "h3": "### ",
-    "h4": "#### ",
-    "h5": "##### ",
-    "h6": "###### ",
-    "bullets": "- ",
-    "steps": "1. ",
-    "quote": "> ",
-}
 MD_WRAP = {
     "bold": ("**", "**"),
     "italic": ("*", "*"),
@@ -55,36 +45,28 @@ def _after(page, *, scroll_end: bool = False) -> None:
     page._after_md_mutation(scroll_end=scroll_end)
 
 
-def insert_md_prefix(page, prefix: str) -> None:
-    page._ensure_writable()
-    cur = page._md_source.textCursor()
-    cur.movePosition(QTextCursor.MoveOperation.StartOfBlock)
-    cur.insertText(prefix)
-    page._md_source.setTextCursor(cur)
-    _after(page)
-
-
 def insert_md_block_at_cursor(page, block: str) -> None:
     page._ensure_writable()
     cur = page._md_source.textCursor()
     piece = block if block.endswith("\n") else block + "\n"
     if cur.position() > 0 and not cur.atBlockStart():
         cur.insertText("\n")
-    cur.insertText(piece)
-    page._md_source.setTextCursor(cur)
-    _after(page)
-
-
-def wrap_md(page, left: str, right: str) -> None:
-    page._ensure_writable()
-    cur = page._md_source.textCursor()
-    sel = cur.selectedText().replace("\u2029", "\n") or "文字"
-    cur.insertText(f"{left}{sel}{right}")
+    if piece.lstrip().startswith("```"):
+        cur.insertText(piece)
+    elif hasattr(cur, "insertMarkdown"):
+        try:
+            cur.insertMarkdown(piece)
+        except Exception:
+            cur.insertText(piece)
+    else:
+        cur.insertText(piece)
     page._md_source.setTextCursor(cur)
     _after(page)
 
 
 def fmt_link_md(page) -> None:
+    from modules.quick_notepad.edit_ops import apply_link
+
     page._ensure_writable()
     cur = page._md_source.textCursor()
     selected = cur.selectedText().replace("\u2029", " ") or "链接文字"
@@ -97,9 +79,7 @@ def fmt_link_md(page) -> None:
     vals = dlg.values()
     text = (vals.get("text") or "链接").strip()
     url = (vals.get("url") or "").strip() or "https://"
-    cur.insertText(f"[{text}]({url})")
-    page._md_source.setTextCursor(cur)
-    _after(page)
+    apply_link(page, text, url)
 
 
 class _ImageInsertDialog(BaseDialog):
@@ -231,27 +211,38 @@ def insert_image_at_end(page, *, kind: str = "image") -> bool:
 
 
 def insert_clipboard_image_snippet(img: QImage, *, kind: str = "image") -> str:
-    """粘贴：不弹窗，按记忆/建议尺寸直接插入。"""
-    import uuid
-
+    """粘贴：不弹窗，按记忆/建议尺寸直接插入（走媒体库）。"""
     if img is None or img.isNull():
         return ""
     kind = "icon" if kind == "icon" else "image"
-    path = images_dir() / f"{uuid.uuid4().hex[:12]}.png"
-    if not img.save(str(path), "PNG"):
+    path = store_qimage(img, max_width=960)
+    if path is None:
         return ""
     size_key = _default_size_for(kind, img)
-    uri = path.resolve().as_uri()
-    return build_image_markdown(uri, alt="粘贴图片", size_key=size_key)
+    return build_image_markdown(
+        path_as_uri(path), alt="粘贴图片", size_key=size_key
+    )
 
 
 def toolbar_action(page, block_id: str) -> None:
+    from modules.quick_notepad.edit_ops import (
+        apply_heading,
+        apply_list,
+        apply_quote,
+        toggle_inline,
+    )
+
     bid = str(block_id or "").strip()
-    if bid in MD_PREFIX:
-        insert_md_prefix(page, MD_PREFIX[bid])
+    if bid in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        apply_heading(page, int(bid[1]))
+    elif bid == "bullets":
+        apply_list(page, ordered=False)
+    elif bid == "steps":
+        apply_list(page, ordered=True)
+    elif bid == "quote":
+        apply_quote(page)
     elif bid in MD_WRAP:
-        left, right = MD_WRAP[bid]
-        wrap_md(page, left, right)
+        toggle_inline(page, bid)
     elif bid in ("code_block", "table", "checklist", "hr"):
         md = markdown_for_block(bid)
         if md.strip():
@@ -274,6 +265,14 @@ def insert_native_markdown_block(page, block_id: str) -> bool:
         return insert_image_at_end(page, kind="image")
     if bid == "icon":
         return insert_image_at_end(page, kind="icon")
+    if bid == "highlight":
+        from modules.quick_notepad.rich_body import apply_highlight_to_selection
+
+        page._ensure_writable()
+        apply_highlight_to_selection(page._md_source)
+        _after(page, scroll_end=True)
+        page.report_status("已插入「高亮」· 文末", level=StatusLevel.SUCCESS)
+        return True
     md = markdown_for_block(bid)
     if not md.strip():
         return False

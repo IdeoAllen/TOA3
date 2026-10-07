@@ -13,6 +13,17 @@ from PySide6.QtWidgets import QTextEdit
 MIME_BLOCK = "application/x-toa-notepad-block"
 
 
+# 工具栏分栏顺序（图表不上工具栏）
+TOOLBAR_GROUP_ORDER = ("heading", "inline", "list", "block", "structure")
+TOOLBAR_GROUP_LABELS = {
+    "heading": "标题",
+    "inline": "文字",
+    "list": "列表",
+    "block": "块",
+    "structure": "结构",
+}
+
+
 @dataclass(frozen=True)
 class BlockSpec:
     id: str
@@ -22,6 +33,7 @@ class BlockSpec:
     html: str = ""
     group: str = "常用"
     toolbar: str = ""
+    toolbar_group: str = ""  # heading|inline|list|block|structure；空=不上工具栏
     markdown: str = ""
     surface: str = "md"
 
@@ -99,51 +111,67 @@ _MD: dict[str, str] = {
 }
 
 BLOCKS: tuple[BlockSpec, ...] = (
-    BlockSpec("h1", "标题 H1", "#", "写下一个好想法", toolbar="H1", group="常用"),
-    BlockSpec("h2", "标题 H2", "##", "今日要点", toolbar="H2", group="常用"),
-    BlockSpec("h3", "标题 H3", "###", "分步计划", toolbar="H3", group="常用"),
-    BlockSpec("h4", "标题 H4", "####", "小节标题", toolbar="H4", group="常用"),
-    BlockSpec("h5", "标题 H5", "#####", "细目", toolbar="H5", group="常用"),
-    BlockSpec("h6", "标题 H6", "######", "备注级", toolbar="H6", group="常用"),
-    BlockSpec("bold", "加粗", "**…**", "加粗文字", toolbar="B", group="常用"),
-    BlockSpec("italic", "斜体", "*…*", "斜体文字", toolbar="I", group="常用"),
-    BlockSpec("strike", "删除线", "~~…~~", "删除线文字", toolbar="S", group="常用"),
-    BlockSpec("highlight", "高亮", "==…==", "高亮重点", toolbar="高亮", group="常用"),
-    BlockSpec("bullets", "项目符号", "-", "无序列表", toolbar="•", group="常用"),
-    BlockSpec("steps", "编号列表", "1.", "有序列表", toolbar="1.", group="常用"),
-    BlockSpec("quote", "引用", ">", "规范摘录", toolbar="引用", group="常用"),
-    BlockSpec("inline_code", "行内代码", "`…`", "行内代码", toolbar="`", group="常用"),
-    BlockSpec("code_block", "代码块", "```", "代码围栏", toolbar="代码", group="常用"),
-    BlockSpec("hr", "分割线", "---", "分割线", toolbar="—", group="常用"),
-    BlockSpec("table", "表格", "表", "三列表", toolbar="表格", group="常用"),
-    BlockSpec("checklist", "待办清单", "- [ ]", "复选列表", toolbar="待办", group="常用"),
-    BlockSpec("link", "链接", "[]()", "链接", toolbar="链接", group="常用"),
-    BlockSpec("image", "图片", "![]()", "中图 · 可改大小", toolbar="图片", group="常用"),
-    BlockSpec("icon", "图标", "图标", "小图标 · 可改大小", toolbar="图标", group="常用"),
-    BlockSpec("time", "时间", "时间戳", "当前时间", toolbar="时间", group="常用"),
+    BlockSpec("h1", "标题 H1", "#", "写下一个好想法", toolbar="H1", toolbar_group="heading", group="常用"),
+    BlockSpec("h2", "标题 H2", "##", "今日要点", toolbar="H2", toolbar_group="heading", group="常用"),
+    BlockSpec("h3", "标题 H3", "###", "分步计划", toolbar="H3", toolbar_group="heading", group="常用"),
+    BlockSpec("h4", "标题 H4", "####", "小节标题", toolbar="H4", toolbar_group="heading", group="常用"),
+    BlockSpec("h5", "标题 H5", "#####", "细目", toolbar="H5", toolbar_group="heading", group="常用"),
+    BlockSpec("h6", "标题 H6", "######", "备注级", toolbar="H6", toolbar_group="heading", group="常用"),
+    BlockSpec("bold", "加粗", "**…**", "加粗文字", toolbar="B", toolbar_group="inline", group="常用"),
+    BlockSpec("italic", "斜体", "*…*", "斜体文字", toolbar="I", toolbar_group="inline", group="常用"),
+    BlockSpec("strike", "删除线", "~~…~~", "删除线文字", toolbar="S", toolbar_group="inline", group="常用"),
+    BlockSpec("highlight", "高亮", "==…==", "高亮重点", toolbar="高亮", toolbar_group="inline", group="常用"),
+    BlockSpec("inline_code", "行内代码", "`…`", "行内代码", toolbar="`", toolbar_group="inline", group="常用"),
+    BlockSpec("bullets", "项目符号", "-", "无序列表", toolbar="•", toolbar_group="list", group="常用"),
+    BlockSpec("steps", "编号列表", "1.", "有序列表", toolbar="1.", toolbar_group="list", group="常用"),
+    BlockSpec("checklist", "待办清单", "- [ ]", "复选列表", toolbar="待办", toolbar_group="list", group="常用"),
+    BlockSpec("quote", "引用", ">", "规范摘录", toolbar="引用", toolbar_group="block", group="常用"),
+    BlockSpec("code_block", "代码块", "```", "代码围栏", toolbar="代码", toolbar_group="block", group="常用"),
+    BlockSpec("hr", "分割线", "---", "分割线", toolbar="—", toolbar_group="block", group="常用"),
+    BlockSpec("table", "表格", "表", "三列表", toolbar="表格", toolbar_group="structure", group="常用"),
+    BlockSpec("link", "链接", "[]()", "链接", toolbar="链接", toolbar_group="structure", group="常用"),
+    BlockSpec("image", "图片", "![]()", "中图 · 可改大小", toolbar="图片", toolbar_group="structure", group="常用"),
+    BlockSpec("icon", "图标", "图标", "小图标 · 可改大小", toolbar="图标", toolbar_group="structure", group="常用"),
+    BlockSpec("time", "时间", "时间戳", "当前时间", toolbar="时间", toolbar_group="structure", group="常用"),
     BlockSpec(
         "mermaid_flow", "流程图 TD", "flowchart TD", "纵向流程",
-        group="图表", toolbar="",
-    ),    BlockSpec(
+        group="图表", toolbar="", toolbar_group="",
+    ),
+    BlockSpec(
         "mermaid_lr", "流程图 LR", "flowchart LR", "横向流程",
-        group="图表", toolbar="",
+        group="图表", toolbar="", toolbar_group="",
     ),
     BlockSpec(
         "mermaid_seq", "时序图", "sequenceDiagram", "请求/响应",
-        group="图表", toolbar="",
+        group="图表", toolbar="", toolbar_group="",
     ),
     BlockSpec(
         "mermaid_pie", "饼图", "pie", "占比",
-        group="图表", toolbar="",
+        group="图表", toolbar="", toolbar_group="",
     ),
     BlockSpec(
         "mermaid_gantt", "甘特图", "gantt", "计划条",
-        group="图表", toolbar="",
+        group="图表", toolbar="", toolbar_group="",
     ),
 )
 
 _BY_ID: dict[str, BlockSpec] = {b.id: b for b in BLOCKS}
 GROUP_ORDER = ("常用", "图表")
+
+
+def toolbar_blocks_by_group() -> list[tuple[str, tuple[BlockSpec, ...]]]:
+    """工具栏：按块级/行内分栏；图表不上工具栏。"""
+    buckets: dict[str, list[BlockSpec]] = {g: [] for g in TOOLBAR_GROUP_ORDER}
+    for b in BLOCKS:
+        if not (b.toolbar or "").strip():
+            continue
+        if b.group == "图表":
+            continue
+        g = (b.toolbar_group or "").strip()
+        if g not in buckets:
+            g = "structure"
+        buckets[g].append(b)
+    return [(g, tuple(buckets[g])) for g in TOOLBAR_GROUP_ORDER if buckets[g]]
 
 
 def blocks_by_group(surface: str = "md") -> list[tuple[str, tuple[BlockSpec, ...]]]:
@@ -244,7 +272,16 @@ def insert_markdown_snippet(edit, markdown: str, *, at_end: bool = False) -> boo
         elif not cur.atBlockStart() and cur.block().text().strip():
             cur.movePosition(QTextCursor.MoveOperation.EndOfBlock)
             cur.insertText("\n")
-        cur.insertText(piece)
+        # 围栏（含 mermaid）用纯文本插入，避免 insertMarkdown 拆坏 ```
+        if piece.lstrip().startswith("```") or "\n```" in piece:
+            cur.insertText(piece)
+        elif hasattr(cur, "insertMarkdown"):
+            try:
+                cur.insertMarkdown(piece)
+            except Exception:
+                cur.insertText(piece)
+        else:
+            cur.insertText(piece)
         edit.setTextCursor(cur)
         edit.ensureCursorVisible()
         if hasattr(edit, "setFocus"):

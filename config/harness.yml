@@ -21,7 +21,9 @@ harness:
   web_readability_boost: false
   theme_harmonize: false
   feed_auto_inject: false
-  # 双路线预制包：bundle 钉扎 0.1.5-rc.1.1（CDN zip）；dsh 内核 npm 仍为 0.1.5-rc.1（见 harness_setup.DSH_PINNED_VERSION）
+  # 双路线预制包：CDN zip 底座暂仍 0.1.5-rc.1.1；内核钉扎见 harness_setup.DSH_PINNED_VERSION（现 0.1.7-rc.2）。
+  # 已装用户「更新环境」优先 npm 原地升核（保留 .dsh）；新装 = zip 底座 + 解压后自动对齐钉扎。
+  # CDN 重建 0.1.7 包后改 URL/sha/version，走 SOP-04 §5。
   official_bundle_url: https://www.yczh.tech/downloads/harness-official-0.1.5-rc.1.1.zip
   official_sha256: 0d655f2ee47684fcbb54c0bac0454545ab074d48839c3a8cea1087dfb89fe3af
   official_bundle_version: "0.1.5-rc.1.1"

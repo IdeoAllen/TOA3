@@ -158,12 +158,15 @@ def store_and_snippet(
     size_key: str = DEFAULT_IMAGE_SIZE,
     kind: str = "image",
     max_store_width: int = 960,
+    prefer_move: bool = True,
 ) -> str:
-    """复制入库并生成可控大小的插图源码。"""
-    from modules.quick_notepad.rich_body import store_image_file
+    """入库并生成可控大小的插图源码（同盘优先 move）。"""
+    from modules.quick_notepad.media_store import path_as_uri, store_image_file
 
-    path = store_image_file(Path(src), max_width=max_store_width)
+    path = store_image_file(
+        Path(src), max_width=max_store_width, prefer_move=prefer_move
+    )
     img = QImage(str(path))
     key = normalize_size_key(size_key, fallback=suggest_size_key(img, kind=kind))
     name = (alt or path.name).strip() or path.name
-    return build_image_markdown(path.resolve().as_uri(), alt=name, size_key=key)
+    return build_image_markdown(path_as_uri(path), alt=name, size_key=key)

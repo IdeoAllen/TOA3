@@ -70,7 +70,7 @@
 
 落盘（唯一默认）：
   ~/.toa3/harness-runtime/
-    node/                         # 便携 Node（预制包）
+    node/                         # 便携 Node（预制包；须 ≥22.15，含 createZstdCompress；见 harness_runtime_heal）
     node_modules/@deepseek-ai/dsh/
     .dsh/                         # DSH_HOME：凭据、会话、web profile
     MANIFEST.json                 # flavor / version / plugins
@@ -80,6 +80,8 @@
 |---------------|----------|------------|------|
 | `official` | 安装官方版 | 便携 Node + dsh + **仅** `dsh-base` / `dsh-web-app` | 要干净、体积更小 |
 | `prefab` | 安装预制版 | 同上 + `prefab_essential_plugins` 白名单（禁 boot-killer） | 日常推荐 |
+
+**Node 下限（2026-09-24）**：会话持久化 `dsh-session-persistence-jsonl@0.1.5-rc.2+` 依赖 `node:zlib.createZstdCompress`（≥22.15）。预制包若仍带 22.14，启动前 `harness_runtime_heal` 会拒启或改用本机较新 Node；重建 CDN zip 时须内嵌 ≥22.15。`dshmarket` 因 undici 残缺暂入 boot denylist。
 
 **互斥规则**：同一 `harness-runtime` 同时只保留一种口味的程序树；换装覆盖 `node` / `node_modules` / profile 声明，**默认保留** `.dsh` 会话与 Key。
 
@@ -186,7 +188,7 @@ TOA Setup 发版 **≠** 强制换 Harness 程序树。切 `harness.yml` CDN 钉
 2. **不抢端口默认值**：发现外部 3082 已健康 → 优先「装入/刷新」；强杀须确认。  
 3. **不静默大包**：进页、TOA 升级、检查更新路径均**禁止**自动下 Harness zip。  
 4. **不抹会话与 Key**：换装/升级默认 `keep_user_data`；卸默认可选留 `.dsh`。  
-5. **不洗用户插件**：预制升级时 `prefab_essential_plugins` 为空 = **只不扩包**，**禁止**把已装 bundles 洗成仅核心（2026-09-14 事故）；官方精简版才允许压到核心。  
+5. **不洗用户插件**：预制升级时 `prefab_essential_plugins` 为空 = **只不扩包**，**禁止**把已装 bundles 洗成仅核心（2026-09-14 事故）；官方精简版才允许压到核心。升级路径必须：装前 `capture_profile_plugins` → 装后 `merge_profile_plugins` → `reinstall_missing_plugins`（registry 缺包自动 `dsh plugin add`；本地 link 失效只提示）。  
 6. **不阻断启停**：程序包可更新只是条；主 CTA 仍是启动/停止。  
 7. **不恐吓文案**：条目标「程序包可更新（可选）」+ 体积；禁止「不更新则无法使用」类措辞。  
 8. **不空转恢复**：无 `last_good` 快照 → 状态栏一句说明如何备份；不进入长时间忙碌遮罩。  
@@ -347,11 +349,14 @@ TOA Setup 发版 **≠** 强制换 Harness 程序树。切 `harness.yml` CDN 钉
 
 | 项 | 要求 |
 |----|------|
-| dsh 版本 | 预制包与 MANIFEST 钉扎；npm 回落亦应钉版本号（禁止长期漂 latest） |
-| denylist | 升级后复测商店插件；缺服务（如 `uiConversation`）进 `_BOOT_KILLER_PLUGINS` |
+| dsh 版本 | 代码钉扎 `DSH_PINNED_VERSION`（现 **0.1.7-rc.2**）；CDN zip 底座可暂慢一拍 |
+| 升核路径 | 已装：`upgrade_dsh_core_inplace`（npm 原地，保留 `.dsh` + 插件快照合并）；新装：zip 解压后自动对齐钉扎 |
+| denylist | 升级后复测商店插件；缺服务 / 假升级门 / undici 残缺等进 `_BOOT_KILLER_PLUGINS` |
 | Web 核心 | 仍仅官方 `dsh-base` / `dsh-web-app` 为启动必需 |
 | Token / 鉴权 | 保持「日志回补 + normalize_nav_url + 禁裸 URL 死循环」契约 |
 | 会话格式 | 升级若改 session 帧格式，须有迁移或「坏会话旁路 + 新建」话术 |
+
+**升级迭代（2026-09-28）**：改 `DSH_NPM_PACKAGE` / `DSH_PINNED_VERSION` → 已装用户点「更新环境」走 npm 升核；CDN 双包重建后改 `harness.yml` URL/sha/version（SOP-04 §5），勿长期漂 `latest`。
 
 ### 5.2 已装用户升级路径（整改须实现或明确砍掉）
 

@@ -76,6 +76,12 @@ def diagnose_start_log(text: str | None = None) -> str:
         return "插件清单文件带了异常字符（已可一键清理）"
     if "syntaxerror" in low and "json.parse" in low:
         return "插件配置文件无法解析"
+    if "memory-cache-store" in low and "dshmarket" in low:
+        return "插件市场 dshmarket 依赖损坏（undici），拖死了启动"
+    if "createzstdcompress" in low or "createzstddecompress" in low:
+        return "便携 Node 过旧（需 ≥22.15），会话插件无法加载"
+    if "logs/protobuf" in low or ("otlp-transformer" in low and "cannot find module" in low):
+        return "OpenTelemetry 组件残缺，拖死了启动"
     if log_suggests_plugin_boot_failure(raw):
         return "插件加载失败，拖死了启动"
     if "eaddrinuse" in low or "address already in use" in low:
@@ -123,10 +129,9 @@ def is_running(*, timeout: float = 1.5) -> bool:
         with urllib.request.urlopen(url, timeout=max(0.3, float(timeout))) as resp:
             return int(getattr(resp, "status", 200) or 200) < 500
     except urllib.error.HTTPError as exc:
-        # 401/403 = 鉴权门；服务活着
-        return int(getattr(exc, "code", 0) or 0) in (401, 403) or (
-            100 <= int(getattr(exc, "code", 0) or 0) < 500
-        )
+        # 401/403 = 鉴权门（活着）；404 常是半死/错进程，不能当就绪
+        code = int(getattr(exc, "code", 0) or 0)
+        return code in (401, 403) or (200 <= code < 400)
     except (urllib.error.URLError, OSError, ValueError):
         return False
 
@@ -276,6 +281,17 @@ def preflight_web_profile(*, home: Path | None = None) -> tuple[bool, str]:
     h = Path(home) if home is not None else dsh_home_path()
 
     try:
+        from services.harness_runtime_heal import ensure_runtime_boot_prereqs
+
+        ok_rt, rt_msg = ensure_runtime_boot_prereqs()
+        if rt_msg:
+            notes.append(rt_msg)
+        if not ok_rt:
+            return False, rt_msg or "运行时前置检查失败"
+    except Exception as exc:
+        logger.warning("runtime boot prereqs failed: %s", exc)
+
+    try:
         ok_lock, lock_msg = clear_stale_credential_locks(h)
         if lock_msg:
             notes.append(lock_msg)
@@ -389,15 +405,17 @@ def spawn_sidecar_process() -> tuple[bool, str]:
     node = node_exe_path()
     dsh = dsh_bin_path()
     env = _build_env()
-    args = [
-        str(node),
-        str(dsh),
+    from services.harness_dsh_launch import dsh_cli_argv
+
+    args = dsh_cli_argv(
         "--profile",
         "web",
         "--port",
         str(port),
         "--no-open",  # 禁止 dsh 自开系统浏览器；界面由套件内嵌
-    ]
+        node=node,
+        dsh=dsh,
+    )
     log_path = _sidecar_log_path()
     try:
     # 子进程存活期间保持句柄打开，避免 Windows 上日志丢失；行缓冲以便尽早读到 token
@@ -442,7 +460,8 @@ def wait_sidecar_ready(*, timeout_sec: float = 25.0) -> tuple[bool, str]:
             return False, humanize_start_failure(default="Harness 进程已退出")
         # 尽早抓 launch-token；HTTP 401 可能早于日志落盘，稍等几帧
         auth = _capture_auth_url_from_log(log_path)
-        if is_running() or _port_open(port):
+        # 仅认 HTTP 就绪；端口占用可能是半死进程，勿提前报成功
+        if is_running():
             if not auth:
                 for _ in range(15):
                     time.sleep(0.2)

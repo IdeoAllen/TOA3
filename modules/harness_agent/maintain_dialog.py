@@ -19,11 +19,12 @@ from widgets import (
     PasswordLineEdit,
     PrimaryButton,
     SecondaryButton,
+    SemanticLabel,
 )
 
 
 class HarnessMaintainDialog(BaseDialog):
-    """密钥 / 显示方式 / 出问题了 · 人话动作。路径级排障不进日常面。"""
+    """密钥 / 显示方式 / 版本备份 / 出问题了 · 人话动作。路径级排障不进日常面。"""
 
     dialog_kind = "medium"
 
@@ -35,6 +36,9 @@ class HarnessMaintainDialog(BaseDialog):
         on_restore: Callable[[], None] | None = None,
         on_upgrade: Callable[[], None] | None = None,
         on_restart: Callable[[], None] | None = None,
+        on_backup_system: Callable[[], None] | None = None,
+        on_restore_system: Callable[[], None] | None = None,
+        on_open_backups: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("环境维护")
@@ -42,6 +46,9 @@ class HarnessMaintainDialog(BaseDialog):
         self._on_restore = on_restore
         self._on_upgrade = on_upgrade
         self._on_restart = on_restart
+        self._on_backup_system = on_backup_system
+        self._on_restore_system = on_restore_system
+        self._on_open_backups = on_open_backups
 
         root = QVBoxLayout(self)
         root.setSpacing(12)
@@ -49,9 +56,76 @@ class HarnessMaintainDialog(BaseDialog):
         root.addWidget(
             HintLabel(
                 "日常在本页启停即可。这里改对话密钥、显示方式；"
-                "坏了再点下面的按钮。不用填路径。"
+                "手动升级前请先「备份系统」；坏了再点下面的按钮。"
             )
         )
+
+        # —— 版本信息 ——
+        ver = FormSection("运行环境版本")
+        try:
+            from services.harness_system_backup import list_system_backups, version_info
+
+            info = version_info()
+            snaps = list_system_backups()
+        except Exception:
+            info = {
+                "flavor_label": "?",
+                "installed_bundle": "?",
+                "pinned_bundle": "?",
+                "dsh_core": "?",
+                "dsh_pinned": "?",
+                "needs_repin": False,
+                "core_drift": False,
+            }
+            snaps = []
+
+        lines = (
+            f"口味：{info.get('flavor_label')}　"
+            f"程序包：本机 {info.get('installed_bundle')} → 钉扎 {info.get('pinned_bundle')}\n"
+            f"内核 dsh：本机 {info.get('dsh_core')} → 钉扎 {info.get('dsh_pinned')}"
+        )
+        kind = "warning" if info.get("needs_repin") else "info"
+        self._ver_banner = SemanticLabel(lines, kind=kind)
+        self._ver_banner.setWordWrap(True)
+        ver.add_widget(self._ver_banner)
+        if info.get("core_drift"):
+            ver.add_widget(
+                HintLabel(
+                    "本机内核已偏离运营宝钉扎（常见于在安装目录里手动 npm 升级）。"
+                    "请先「备份系统」，再点「更新环境」恢复官方程序包。"
+                )
+            )
+        else:
+            ver.add_widget(
+                HintLabel(
+                    "升级前点「备份系统」；升坏了可「从系统备份恢复」。"
+                    f"当前已有 {len(snaps)} 份系统备份（最多保留 3 代）。"
+                )
+            )
+
+        ver_row = QHBoxLayout()
+        btn_backup = PrimaryButton("备份系统")
+        btn_backup.setToolTip("升级前点这个：整包快照安装树与会话目录，升坏了能回去")
+        btn_backup.clicked.connect(self._click_backup_system)
+        ver_row.addWidget(btn_backup)
+
+        btn_upgrade = SecondaryButton("更新环境")
+        btn_upgrade.setToolTip("下载并换上钉扎版运行环境；会先自动备份")
+        btn_upgrade.clicked.connect(self._click_upgrade)
+        ver_row.addWidget(btn_upgrade)
+
+        btn_restore_sys = SecondaryButton("从系统备份恢复")
+        btn_restore_sys.setToolTip("用最近一次系统备份覆盖当前安装树")
+        btn_restore_sys.setEnabled(bool(snaps))
+        btn_restore_sys.clicked.connect(self._click_restore_system)
+        ver_row.addWidget(btn_restore_sys)
+
+        btn_open_bak = SecondaryButton("打开备份目录")
+        btn_open_bak.clicked.connect(self._click_open_backups)
+        ver_row.addWidget(btn_open_bak)
+        ver_row.addStretch(1)
+        ver.add_layout(ver_row)
+        root.addWidget(ver)
 
         # —— 常用 ——
         daily = FormSection("常用")
@@ -92,7 +166,7 @@ class HarnessMaintainDialog(BaseDialog):
         fix.add_widget(
             HintLabel(
                 "起不来、页面空白、插件搞挂：先「修一下」；"
-                "还不行再「回到上次能用的样子」或「更新环境」。"
+                "还不行再「回到上次能用的配置」或上面的「从系统备份恢复」。"
             )
         )
         fix_row = QHBoxLayout()
@@ -101,15 +175,10 @@ class HarnessMaintainDialog(BaseDialog):
         btn_repair.clicked.connect(self._click_repair)
         fix_row.addWidget(btn_repair)
 
-        btn_restore = SecondaryButton("回到上次能用的样子")
-        btn_restore.setToolTip("恢复到最近一次能正常打开时的配置")
+        btn_restore = SecondaryButton("回到上次能用的配置")
+        btn_restore.setToolTip("只恢复 web 插件配置快照（不含整包程序）")
         btn_restore.clicked.connect(self._click_restore)
         fix_row.addWidget(btn_restore)
-
-        btn_upgrade = SecondaryButton("更新环境")
-        btn_upgrade.setToolTip("下载并换上新版运行环境，会话与密钥默认保留")
-        btn_upgrade.clicked.connect(self._click_upgrade)
-        fix_row.addWidget(btn_upgrade)
 
         btn_restart = SecondaryButton("重新启动")
         btn_restart.setToolTip("关掉再开，不改配置")
@@ -178,6 +247,20 @@ class HarnessMaintainDialog(BaseDialog):
         self.accept()
         if self._on_restart:
             self._on_restart()
+
+    def _click_backup_system(self) -> None:
+        self.accept()
+        if self._on_backup_system:
+            self._on_backup_system()
+
+    def _click_restore_system(self) -> None:
+        self.accept()
+        if self._on_restore_system:
+            self._on_restore_system()
+
+    def _click_open_backups(self) -> None:
+        if self._on_open_backups:
+            self._on_open_backups()
 
     def _click_export_diag(self) -> None:
         from core.user_messages import show_saved

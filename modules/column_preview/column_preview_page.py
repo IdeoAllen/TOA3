@@ -203,6 +203,22 @@ class _OfficePreviewWorker(QObject):
             self.finished.emit(exc)
 
 
+class _VideoPosterWorker(QObject):
+    finished = Signal(object)
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._path = path
+
+    def run(self) -> None:
+        try:
+            from services.video_preview import extract_video_poster_png
+
+            self.finished.emit(extract_video_poster_png(self._path))
+        except Exception as exc:  # noqa: BLE001 — 预览线程统一回传
+            self.finished.emit(exc)
+
+
 _MODE_COLUMNS = "columns"
 _MODE_ICONS = "icons"
 _MODE_LIST = "list"
@@ -444,6 +460,18 @@ def _fmt_time(ts: float) -> str:
         return "—"
 
 
+def _format_byte_size(size: int) -> str:
+    """人类可读体积：B / KB / MB / GB。"""
+    n = max(0, int(size))
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} KB"
+    if n < 1024 * 1024 * 1024:
+        return f"{n / (1024 * 1024):.1f} MB"
+    return f"{n / (1024 * 1024 * 1024):.2f} GB"
+
+
 def _entry_meta(path: Path, is_dir: bool) -> tuple[str, str, str, str, float, float, int]:
     """显示用：修改、创建、类型、大小；排序用：mtime、ctime、size。"""
     try:
@@ -456,12 +484,8 @@ def _entry_meta(path: Path, is_dir: bool) -> tuple[str, str, str, str, float, fl
     kind = "文件夹" if is_dir else (path.suffix.upper().lstrip(".") or "文件")
     if is_dir:
         size_txt = "—"
-    elif size < 1024:
-        size_txt = f"{size} B"
-    elif size < 1024 * 1024:
-        size_txt = f"{size / 1024:.1f} KB"
     else:
-        size_txt = f"{size / (1024 * 1024):.1f} MB"
+        size_txt = _format_byte_size(size)
     return _fmt_time(mtime), _fmt_time(ctime), kind, size_txt, mtime, ctime, size
 
 
@@ -659,6 +683,12 @@ class ColumnPreviewPage(BasePage):
         self._office_thread: QThread | None = None
         self._office_sheets: list[OfficeSheet] = []
         self._office_path: Path | None = None
+        self._video_gen = 0
+        self._video_job_gen = 0
+        self._video_thread: QThread | None = None
+        self._video_path: Path | None = None
+        self._video_size_txt = ""
+        self._office_job_gen = 0
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 6, 8, 6)
@@ -2519,6 +2549,8 @@ class ColumnPreviewPage(BasePage):
         self._clear_html_web()
         self._office_gen += 1
         self._office_path = None
+        self._video_gen += 1
+        self._video_path = None
         self._stack.setCurrentIndex(_PAGE_IDLE)
         self._btn_open.setEnabled(False)
         self._btn_reveal.setEnabled(False)
@@ -2726,7 +2758,7 @@ class ColumnPreviewPage(BasePage):
 
     def _start_office_preview(self, path: Path) -> None:
         self._office_gen += 1
-        gen = self._office_gen
+        self._office_job_gen = self._office_gen
         self._office_path = path
         self._office_sheets = []
         self._office_note.setText("")
@@ -2738,33 +2770,30 @@ class ColumnPreviewPage(BasePage):
         worker = _OfficePreviewWorker(path)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-
-        def _done(result: object, g: int = gen, t: QThread = thread, w: _OfficePreviewWorker = worker) -> None:
-            try:
-                w.finished.disconnect()
-            except Exception:
-                pass
-            t.quit()
-            if g != self._office_gen:
-                return
-            if self._office_path is None or path_key(self._office_path) != path_key(path):
-                return
-            if isinstance(result, Exception):
-                self._office_error.setText(f"预览失败：{result}\n\n请点「打开」用系统程序查看。")
-                self._office_note.setText("")
-                self._office_stack.setCurrentIndex(_OFFICE_ERROR)
-                return
-            if isinstance(result, OfficePreview):
-                self._apply_office_preview(result)
-            else:
-                self._office_error.setText("预览失败：未知结果")
-                self._office_stack.setCurrentIndex(_OFFICE_ERROR)
-
-        worker.finished.connect(_done)
+        worker.finished.connect(
+            self._on_office_preview_finished, Qt.ConnectionType.QueuedConnection
+        )
+        worker.finished.connect(thread.quit)
         thread.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         self._office_thread = thread
         thread.start()
+
+    def _on_office_preview_finished(self, result: object) -> None:
+        path = self._office_path
+        job = getattr(self, "_office_job_gen", -1)
+        if job != self._office_gen or path is None:
+            return
+        if isinstance(result, Exception):
+            self._office_error.setText(f"预览失败：{result}\n\n请点「打开」用系统程序查看。")
+            self._office_note.setText("")
+            self._office_stack.setCurrentIndex(_OFFICE_ERROR)
+            return
+        if isinstance(result, OfficePreview):
+            self._apply_office_preview(result)
+            return
+        self._office_error.setText("预览失败：未知结果")
+        self._office_stack.setCurrentIndex(_OFFICE_ERROR)
 
     def _apply_office_preview(self, preview: OfficePreview) -> None:
         note = preview.note or ""
@@ -2890,12 +2919,15 @@ class ColumnPreviewPage(BasePage):
             size = path.stat().st_size
         except OSError:
             size = 0
-        size_txt = f"{size:,} 字节" if size < 1024 else f"{size / 1024:.1f} KB"
+        size_txt = _format_byte_size(size)
         self._preview_meta.setText(f"{ext or '无扩展名'} · {size_txt}\n{path}")
         # 非 HTML/Markdown 先收起双模式
         if ext not in _HTML_EXT and ext not in _MARKDOWN_EXT:
             self._set_doc_mode(None)
             self._clear_html_web()
+        # 切换文件时取消进行中的视频首帧任务
+        self._video_gen += 1
+        self._video_path = None
 
         if ext in _IMAGE_EXT and path.is_file():
             pm = _load_image_as_displayed(path)
@@ -2909,7 +2941,7 @@ class ColumnPreviewPage(BasePage):
                 return
             self._raw_preview_pm = pm
             self._stack.setCurrentIndex(_PAGE_IMAGE)
-            QTimer.singleShot(0, self._relayout_image)
+            self._schedule_image_relayout()
             return
         if ext in _PDF_EXT and path.is_file():
             pm, pages = _load_pdf_first_page(path, parent=self)
@@ -2922,7 +2954,7 @@ class ColumnPreviewPage(BasePage):
             page_tip = f" · 预览第 1/{pages} 页" if pages > 1 else " · 预览"
             self._preview_meta.setText(f"PDF{page_tip} · {size_txt}\n{path}")
             self._stack.setCurrentIndex(_PAGE_IMAGE)
-            QTimer.singleShot(0, self._relayout_image)
+            self._schedule_image_relayout()
             return
         if is_office_preview_path(path) and path.is_file():
             self._raw_preview_pm = QPixmap()
@@ -2984,17 +3016,7 @@ class ColumnPreviewPage(BasePage):
         self._set_doc_mode(None)
         self._clear_html_web()
         if ext in _VIDEO_EXT and path.is_file():
-            self._raw_preview_pm = QPixmap()
-            self._preview_image.clear()
-            self._preview_text.setPlainText(
-                f"视频文件\n\n"
-                f"名称：{path.name}\n"
-                f"大小：{size_txt}\n"
-                f"路径：{path}\n\n"
-                f"点「打开」用系统播放器查看。"
-            )
-            self._preview_meta.setText(f"视频 · {ext} · {size_txt}\n{path}")
-            self._stack.setCurrentIndex(_PAGE_TEXT)
+            self._start_video_poster(path, size_txt=size_txt)
             return
         if ext in _AUDIO_EXT and path.is_file():
             self._raw_preview_pm = QPixmap()
@@ -3013,16 +3035,91 @@ class ColumnPreviewPage(BasePage):
         self._preview_image.clear()
         self._stack.setCurrentIndex(_PAGE_OTHER)
 
+    def _start_video_poster(self, path: Path, *, size_txt: str) -> None:
+        self._raw_preview_pm = QPixmap()
+        self._preview_image.clear()
+        self._preview_text.setPlainText(
+            f"视频文件\n\n"
+            f"名称：{path.name}\n"
+            f"大小：{size_txt}\n\n"
+            f"正在提取首帧…"
+        )
+        self._preview_meta.setText(f"视频 · {path.suffix.lower()} · {size_txt}\n{path}")
+        self._stack.setCurrentIndex(_PAGE_TEXT)
+
+        self._video_gen += 1
+        self._video_job_gen = self._video_gen
+        self._video_path = path
+        self._video_size_txt = size_txt
+
+        thread = QThread(self)
+        worker = _VideoPosterWorker(path)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        # 必须 QueuedConnection：否则可能在工作线程改 QPixmap/控件 → 点几次后白屏
+        worker.finished.connect(
+            self._on_video_poster_finished, Qt.ConnectionType.QueuedConnection
+        )
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._video_thread = thread
+        thread.start()
+
+    def _on_video_poster_finished(self, result: object) -> None:
+        path = self._video_path
+        size_txt = getattr(self, "_video_size_txt", "")
+        job = getattr(self, "_video_job_gen", -1)
+        if job != self._video_gen or path is None:
+            return
+        if isinstance(result, (bytes, bytearray)) and result:
+            pm = QPixmap()
+            if pm.loadFromData(bytes(result)) and not pm.isNull():
+                self._raw_preview_pm = QPixmap(pm)
+                self._preview_meta.setText(f"视频 · 首帧预览 · {size_txt}\n{path}")
+                self._stack.setCurrentIndex(_PAGE_IMAGE)
+                self._schedule_image_relayout()
+                return
+        tip = ""
+        if isinstance(result, Exception):
+            tip = f"\n\n（首帧提取失败：{result}）"
+        self._raw_preview_pm = QPixmap()
+        self._preview_image.clear()
+        self._preview_text.setPlainText(
+            f"视频文件\n\n"
+            f"名称：{path.name}\n"
+            f"大小：{size_txt}\n"
+            f"路径：{path}\n\n"
+            f"点「打开」用系统播放器查看。{tip}"
+        )
+        self._preview_meta.setText(f"视频 · {path.suffix.lower()} · {size_txt}\n{path}")
+        self._stack.setCurrentIndex(_PAGE_TEXT)
+
+    def _schedule_image_relayout(self) -> None:
+        """切到图片页后视口可能尚未就绪，立即 + 延后各贴一次。"""
+        self._relayout_image()
+        QTimer.singleShot(0, self._relayout_image)
+        QTimer.singleShot(48, self._relayout_image)
+
     def _relayout_image(self) -> None:
         if self._raw_preview_pm.isNull():
+            return
+        if self._stack.currentIndex() != _PAGE_IMAGE:
             return
         vp = self._image_scroll.viewport()
         max_w = max(120, vp.width() - 16)
         max_h = max(120, vp.height() - 16)
+        # 视口尚未布局时先用预览窗估算，避免 120×120 贴完后不再刷新
+        if vp.width() < 40 or vp.height() < 40:
+            pane = getattr(self, "_preview_pane", None)
+            if pane is not None and pane.width() > 80:
+                max_w = max(120, pane.width() - 40)
+                max_h = max(120, max(160, pane.height() - 120))
         fitted = _fit_pixmap(self._raw_preview_pm, max_w, max_h, parent=self)
+        if fitted.isNull():
+            return
         self._preview_image.setPixmap(fitted)
         dpr = fitted.devicePixelRatio() or 1.0
-        # 逻辑尺寸 = 物理宽高 / DPR，保证铺满可用预览区而非「白框角点」
         self._preview_image.setFixedSize(
             max(1, int(round(fitted.width() / dpr))),
             max(1, int(round(fitted.height() / dpr))),

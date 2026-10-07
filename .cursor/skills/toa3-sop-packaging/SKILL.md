@@ -15,14 +15,18 @@ description: >-
 
 ## 说「发版」必须做完（TOA Setup）
 
-1. bump `APP_VERSION` → verify → `packaging/build_windows.py --clean --msi`  
+**分工（主理人裁定 2026-09-22）**：Agent 备齐版本号/说明/直链/运营台预登记；**主理人只点「设为当前」**；切版后 Agent 立刻对齐提交。
+
+1. bump `APP_VERSION` → 写好 `release_notes`（SOP-04 §2.1 模板）→ `verify_all` → `packaging/build_windows.py --clean --msi`  
 2. **立刻上传**：`powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`  
-3. **停住**：请主理人在运营台「版本发布」→ 试链 → **设为当前版**（更新说明必填）  
-4. **主理人确认已切版后立刻提交**（禁止只依赖上传脚本自动 commit——上传时线上多半还是旧号，会跳过）：  
+3. **Agent 预登记运营台**（`is_current=false`，说明/直链已填）：  
+   `python ../toa-cloud/scripts/prepare_ops_release.py --version x.y.z --notes "……"`  
+4. **停住**：请主理人只点「设为当前」（禁止让主理人再填说明）  
+5. **主理人确认已切版后立刻提交**：  
    `python scripts/sync_release_version.py --from-live --require-match --commit`  
    回报 commit hash；失败不得当发版完成。
 
-禁止只交付本地 `dist/` 路径、把上传甩给主理人。  
+禁止只交付本地 `dist/` 路径、把上传/填说明甩给主理人。  
 禁止打进 `data/user` / secrets / `license.json` / `app.dev.yml` / **`harness-*.zip`**。  
 DMS 下载说明只建 draft，人审后部署（≠ TOA 安装包上传）。
 

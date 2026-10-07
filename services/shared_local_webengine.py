@@ -121,10 +121,37 @@ def _park_view_quiet(view) -> None:
             pass
 
 
+def _configure_shared_profile(profile) -> None:
+    """Cookie 落盘 + 桌面 Chrome UA；语言偏好跟系统中文，避免内嵌默认英文。"""
+    try:
+        from PySide6.QtWebEngineCore import QWebEngineProfile
+
+        profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies
+        )
+    except Exception:
+        pass
+    try:
+        profile.setHttpUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    except Exception:
+        pass
+    try:
+        # 无此项时 dsh-client-locale 会跟 navigator.language；Qt 常为 en → 界面全英文
+        profile.setHttpAcceptLanguage("zh-CN,zh;q=0.9,en;q=0.8")
+    except Exception:
+        pass
+
+
 def _ensure_view():
     """懒创建唯一 View + Profile（进程内单例）。"""
     global _view, _profile
     if _qt_alive(_view):
+        # 进程已有 Profile 时也补一次策略（热更新代码后无需重建 View）
+        if _qt_alive(_profile):
+            _configure_shared_profile(_profile)
         return _view
     # 先拆预热占位，禁止与真 View 双 Chromium 抖窗
     try:
@@ -151,6 +178,9 @@ def _ensure_view():
         _profile = QWebEngineProfile("toa3_local_web_engines_shared", holder)
         _profile.setPersistentStoragePath(str(profile_dir))
         _profile.setCachePath(str(profile_dir / "cache"))
+        _configure_shared_profile(_profile)
+    else:
+        _configure_shared_profile(_profile)
 
     _view = QWebEngineView(holder)
     page = ToaWebEnginePage(_profile, _view)
@@ -179,6 +209,90 @@ def painted_url() -> str:
         return str(_view.url().toString() or "")
     except Exception:
         return ""
+
+
+def force_navigate(url: str, *, clear_http_cache: bool = True) -> bool:
+    """无视同 URL 短路，强制 setUrl（Harness 刷新/重鉴权用）。"""
+    global _current_url
+    view = _ensure_view()
+    if view is None or not url:
+        return False
+    nav = normalize_nav_url(url)
+    if clear_http_cache:
+        clear_profile_http_cache()
+    try:
+        from services.webengine_host import ToaWebEnginePage
+
+        page = view.page()
+        if isinstance(page, ToaWebEnginePage):
+            page.begin_forced_navigation()
+    except Exception:
+        pass
+    from PySide6.QtCore import QUrl
+
+    _current_url = nav
+    view.setUrl(QUrl(nav))
+    _wake_view(view)
+    logger.debug("force_navigate url=%s", nav)
+    return True
+
+
+def clear_profile_http_cache() -> None:
+    if _qt_alive(_profile):
+        try:
+            _profile.clearHttpCache()
+        except Exception:
+            pass
+
+
+def wipe_shared_profile_storage(*, keep_running_view: bool = True) -> str:
+    """清共享 WebEngine 磁盘档案（Cookie/LocalStorage/IndexedDB）。
+
+    调用方应先停靠/销毁 View，或随后重启 TOA，否则进程内 Profile 仍占旧句柄。
+    """
+    from services.storage_paths import module_data_dir
+
+    root = module_data_dir("local_web_engine", create=True) / "shared_browser_profile"
+    if not root.is_dir():
+        return "无内嵌浏览器档案"
+    cleared = 0
+    for name in (
+        "Cookies",
+        "Cookies-journal",
+        "Network Persistent State",
+        "Local Storage",
+        "Session Storage",
+        "IndexedDB",
+        "Service Worker",
+        "CacheStorage",
+        "GPUCache",
+        "Code Cache",
+        "cache",
+        "blob_storage",
+        "WebStorage",
+        "databases",
+        "DawnCache",
+        "Shared Dictionary",
+    ):
+        path = root / name
+        if not path.exists():
+            continue
+        try:
+            if path.is_dir():
+                import shutil
+
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
+            cleared += 1
+        except OSError:
+            pass
+    clear_profile_http_cache()
+    if not keep_running_view:
+        # 仅清标记；真正拆 View 由 release(destroy=True) 负责
+        global _current_url
+        _current_url = ""
+    return f"已清理内嵌浏览器缓存 {cleared} 项"
 
 
 def live_view() -> Any:

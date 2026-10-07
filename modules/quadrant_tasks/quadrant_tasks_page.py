@@ -102,6 +102,33 @@ def _send_task_to_notepad(task: dict, shell) -> bool:
     return False
 
 
+class _RowTitle(QLabel):
+    """行内标题过长时省略，全文在 tooltip。"""
+
+    def __init__(self, full: str, parent=None) -> None:
+        super().__init__(parent)
+        self._full = full or ""
+        self.setText(self._full)
+        self.setWordWrap(False)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        width = max(8, self.contentsRect().width())
+        elided = self.fontMetrics().elidedText(
+            self._full, Qt.TextElideMode.ElideRight, width
+        )
+        if self.text() != elided:
+            self.setText(elided)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = super().sizeHint()
+        width = self.width()
+        if width > 8:
+            hint.setWidth(min(hint.width(), width))
+        return hint
+
+
 class _TaskRow(QWidget):
     """任务行：勾选 · 标题 · 优先级/状态徽章 · 截止。"""
 
@@ -125,8 +152,7 @@ class _TaskRow(QWidget):
         lay.addWidget(self._cb, 0, Qt.AlignmentFlag.AlignVCenter)
 
         title = str(task.get("title") or "")
-        self._title = QLabel(title)
-        self._title.setWordWrap(False)
+        self._title = _RowTitle(title)
         title_font = self._title.font()
         title_font.setBold(True)
         self._title.setFont(title_font)

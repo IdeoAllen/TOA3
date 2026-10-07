@@ -1,5 +1,5 @@
 # 发版默认（无个人路径）。与 config/harness.yml 行为对齐：
-# 默认套件内嵌；路径空 → 进页走四步开用；双路线 CDN zip。
+# 默认套件内嵌；路径空 → 进页走四步开用；双路线 CDN zip 底座；内核钉扎见 DSH_PINNED_VERSION。
 
 harness:
   enabled: true

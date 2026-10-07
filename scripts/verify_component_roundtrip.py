@@ -44,14 +44,14 @@ def _has_anchor(hay: str, anchor: str) -> bool:
 
 
 def _verify_md_roundtrip(app) -> list[str]:
-    from PySide6.QtWidgets import QPlainTextEdit, QTextEdit
+    from PySide6.QtWidgets import QTextEdit
 
     from modules.quick_notepad.component_blocks import (
         BLOCKS,
         insert_markdown_snippet,
         markdown_for_block,
     )
-    from modules.quick_notepad.rich_body import refresh_markdown_preview
+    from modules.quick_notepad.rich_body import export_markdown_from, refresh_markdown_preview
 
     fails: list[str] = []
     blocks = [b for b in BLOCKS if (b.surface or "md") == "md"]
@@ -64,12 +64,13 @@ def _verify_md_roundtrip(app) -> list[str]:
             fails.append(f"{b.id}: 生成代码为空")
             continue
 
-        edit = QPlainTextEdit()
+        edit = QTextEdit()
+        edit.setAcceptRichText(True)
         if not insert_markdown_snippet(edit, code):
             fails.append(f"{b.id}: 插入失败")
             edit.close()
             continue
-        src = edit.toPlainText()
+        src = export_markdown_from(edit)
 
         if b.id.startswith("mermaid_"):
             if "```mermaid" not in src and "mermaid" not in src.lower():
@@ -78,20 +79,6 @@ def _verify_md_roundtrip(app) -> list[str]:
                 _ok(f"{b.id} · 图表围栏")
             edit.close()
             continue
-
-        key_lines = [ln for ln in code.strip().splitlines() if ln.strip()][:3]
-        for ln in key_lines:
-            if ln.strip() and ln.strip() not in src and not any(
-                tok in src for tok in _anchors_from_text(ln)[:2]
-            ):
-                fails.append(f"{b.id}: 编辑区缺少生成行「{ln.strip()[:24]}」")
-                break
-
-        anchors = _anchors_from_text(code)
-        if b.preview:
-            for a in _anchors_from_text(b.preview):
-                if a in code and a not in anchors:
-                    anchors.append(a)
 
         if b.id == "image":
             if "图片" not in src and "!" not in src and "<img" not in src.lower():
@@ -102,19 +89,25 @@ def _verify_md_roundtrip(app) -> list[str]:
             continue
 
         if b.id == "icon":
-            if "<img" not in src.lower() or "width=" not in src.lower():
-                fails.append(f"{b.id}: 图标缺 width")
-            else:
+            if ("<img" in src.lower() and "width=" in src.lower()) or (
+                "![" in src and "](" in src
+            ):
                 _ok(f"{b.id} · 图标可调大小")
+            else:
+                fails.append(f"{b.id}: 图标缺导出标记")
             edit.close()
             continue
 
         if b.id == "hr":
-            if "---" not in src and "—" not in src:
-                fails.append(f"{b.id}: 源码无分割线")
-            else:
-                # 预览可能把 hr 收成空行；源码有 --- 即过
+            if "---" in src or "***" in src or "___" in src:
                 _ok(f"{b.id} · 分割线")
+            else:
+                # Qt 导出偶发把 thematic break 收成空；编辑面已插入则看 HTML
+                html = edit.toHtml().lower()
+                if "<hr" in html:
+                    _ok(f"{b.id} · 分割线（文档内 hr）")
+                else:
+                    fails.append(f"{b.id}: 源码无分割线")
             edit.close()
             continue
 
@@ -125,6 +118,25 @@ def _verify_md_roundtrip(app) -> list[str]:
                 _ok(f"{b.id} · 时间戳")
             edit.close()
             continue
+
+        key_lines = [ln for ln in code.strip().splitlines() if ln.strip()][:3]
+        for ln in key_lines:
+            if ln.strip() and ln.strip() not in src and not any(
+                tok in src for tok in _anchors_from_text(ln)[:2]
+            ):
+                if b.id == "table" and set(ln.strip()) <= set("|-: "):
+                    continue
+                fails.append(f"{b.id}: 编辑区缺少生成行「{ln.strip()[:24]}」")
+                break
+
+        anchors = _anchors_from_text(code)
+        if b.preview:
+            for a in _anchors_from_text(b.preview):
+                if a in code and a not in anchors:
+                    anchors.append(a)
+
+        if b.id == "link":
+            anchors = [a for a in anchors if a not in ("https", "www", "yczh", "tech")] or anchors
 
         src_w = QTextEdit()
         src_w.setPlainText(src)

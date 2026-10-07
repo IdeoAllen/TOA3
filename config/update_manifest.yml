@@ -1,27 +1,9 @@
 # 本地回退清单（远程 manifest 不可达时使用）
 # 须与运营台当前 stable 对齐；由 scripts/sync_release_version.py 在发版后同步。
 product: TOA3
-version: 3.1.21
+version: 3.1.23
 channel: stable
-release_notes: '【版本】v3.1.21
-
-  【本版要点】
-
-  1. Harness 内嵌侧栏可预览文件（修复「文件资源服务不可用」）
-
-  2. Ctrl+Tab / Ctrl+Shift+Tab 切换顶栏主菜单
-
-  3. 编码智能体启动自愈；记事编辑预览与组件库；桌面视频封面
-
-  【全局介入/热键】
-
-  - 新增 next_domain=Ctrl+Tab、prev_domain=Ctrl+Shift+Tab（仅应用前台）
-
-  【已知限制】
-
-  - 其余 Qt WebEngine ≠ 完整 Chrome 处仍可「在浏览器打开」
-
-  【验收】安装包直链试链通过；检查更新可见本号'
+release_notes: TOA3 3.1.23
 download_page: https://www.yczh.tech/downloads/
-download_url: https://www.yczh.tech/downloads/TOA3-Setup-v3.1.21.exe
+download_url: https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe
 min_version: 3.0.0

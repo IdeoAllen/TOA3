@@ -92,16 +92,41 @@ def _qt_alive(obj) -> bool:
             return False
 
 
+class _HarnessBgWorker(QObject):
+    """通用后台任务：把任意 fn() 结果抛回 UI 线程。"""
+
+    finished = Signal(object)
+
+    def __init__(self, fn) -> None:
+        super().__init__()
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.finished.emit(self._fn())
+        except Exception as exc:
+            self.finished.emit((False, str(exc) or exc.__class__.__name__))
+
+
 class _HarnessInstallWorker(QObject):
-    """后台下载/解压官方或预制包。"""
+    """后台：可选升级前备份 + CDN 换装或 npm 原地升核（禁止跑在 UI 线程）。"""
 
     progress = Signal(str, int, str)  # msg, pct, stage
     finished = Signal(bool, str, str)  # ok, text, flavor
 
-    def __init__(self, flavor: str, cancel_event) -> None:
+    def __init__(
+        self,
+        flavor: str,
+        cancel_event,
+        *,
+        with_backup: bool = False,
+        upgrade_via: str = "cdn",
+    ) -> None:
         super().__init__()
         self._flavor = flavor
         self._cancel_event = cancel_event
+        self._with_backup = bool(with_backup)
+        self._upgrade_via = str(upgrade_via or "cdn").strip().lower()
 
     def run(self) -> None:
         def _prog(msg: str, pct: int, stage: str = "") -> None:
@@ -111,11 +136,44 @@ class _HarnessInstallWorker(QObject):
             return bool(self._cancel_event.is_set())
 
         try:
-            ok, text = install_harness_runtime(
-                self._flavor,
-                progress=_prog,
-                cancel=_cancel,
-            )
+            if self._with_backup:
+                if _cancel():
+                    self.finished.emit(False, "已取消安装", self._flavor)
+                    return
+                _prog("正在备份系统（跳过可重建目录）…", 1, "backup")
+                try:
+                    from services.harness_system_backup import backup_system
+
+                    ok_b, msg_b, _ = backup_system(
+                        reason="pre_upgrade",
+                        stop_service=True,
+                        progress=lambda m: _prog(str(m), 2, "backup"),
+                    )
+                    if ok_b:
+                        _prog((msg_b or "备份完成")[:120], 4, "backup")
+                    else:
+                        _prog(
+                            f"备份未完成，继续更新：{(msg_b or '')[:80]}",
+                            3,
+                            "backup",
+                        )
+                except Exception as exc:
+                    _prog(f"备份异常，继续更新：{exc}", 3, "backup")
+
+            if self._upgrade_via == "npm":
+                from services.harness_setup import upgrade_dsh_core_inplace
+
+                ok, text = upgrade_dsh_core_inplace(
+                    progress=_prog,
+                    cancel=_cancel,
+                    flavor=self._flavor,
+                )
+            else:
+                ok, text = install_harness_runtime(
+                    self._flavor,
+                    progress=_prog,
+                    cancel=_cancel,
+                )
             self.finished.emit(bool(ok), str(text or ""), self._flavor)
         except Exception as exc:
             self.finished.emit(False, str(exc) or exc.__class__.__name__, self._flavor)
@@ -172,6 +230,12 @@ def _make_harness_accept_nav(*, base_url: str):
         return True
 
     return _accept
+
+
+def _is_dead_board_url(url: str) -> bool:
+    """旧 task-board 深链 /board#skills 在现行核上 404。"""
+    u = (url or "").split("?", 1)[0].split("#", 1)[0].rstrip("/").lower()
+    return u.endswith("/board") or u.endswith(":3082/board")
 
 
 def _make_harness_web_page(profile, view, *, base_url: str):
@@ -392,6 +456,8 @@ class HarnessAgentPage(BasePage):
         self._install_worker: _HarnessInstallWorker | None = None
         self._install_cancel = None
         self._install_flavor = ""
+        self._bg_thread: QThread | None = None
+        self._bg_worker: _HarnessBgWorker | None = None
 
         m = page_content_margins()
         outer = QVBoxLayout(self)
@@ -479,6 +545,7 @@ class HarnessAgentPage(BasePage):
         self._upgrade_strip.dismissed.connect(self._on_upgrade_nudge_dismiss)
         self._upgrade_strip.snooze_today_requested.connect(self._on_upgrade_nudge_snooze_today)
         self._upgrade_strip.start_requested.connect(self._on_start_after_upgrade)
+        self._upgrade_strip.cancel_requested.connect(self._on_cancel_install)
         outer.addWidget(self._upgrade_strip)
 
         self._instance_strip = InstanceStrip(self)
@@ -544,6 +611,7 @@ class HarnessAgentPage(BasePage):
 
         # 日常收拢：环境维护（密钥/修/还原/更新）；打开目录等仍在此
         self._more_menu.addAction("环境维护…", self._open_maintain)
+        self._more_menu.addAction("备份系统", self._on_backup_system)
         self._more_menu.addAction("重新启动", self._on_restart)
         self._more_menu.addAction("回到主界面", self._on_go_home)
 
@@ -551,6 +619,7 @@ class HarnessAgentPage(BasePage):
         open_menu.addAction("启动记录", self._open_sidecar_log)
         open_menu.addAction("安装目录", self._open_install_root)
         open_menu.addAction("会话数据", self._open_dsh_home)
+        open_menu.addAction("系统备份目录", self._open_system_backups)
         open_menu.addAction("导出最近会话", self._export_recent)
 
         self._more_menu.addSeparator()
@@ -1384,11 +1453,18 @@ class HarnessAgentPage(BasePage):
         if available and is_snoozed_today and is_snoozed_today(available):
             self._upgrade_strip.clear()
             return
+        detail_extra = ""
+        if info.get("core_drift"):
+            detail_extra = (
+                f"本机内核 {info.get('dsh_core')} 已偏离钉扎 {info.get('dsh_pinned')}；"
+                "更新前会自动备份系统。"
+            )
         self._upgrade_strip.show_update(
             label=str(info.get("label") or "运行环境"),
             installed=str(info.get("installed_version") or "?"),
             available=str(info.get("available_version") or available or "?"),
             size_hint_mb=int(info.get("size_hint_mb") or 0),
+            detail_extra=detail_extra,
         )
 
     def _on_upgrade_nudge_dismiss(self) -> None:
@@ -1866,9 +1942,23 @@ class HarnessAgentPage(BasePage):
         if self._view is None or not self._page_active():
             return
         url = _harness_entry_url()
-        current = (self._view.url().toString() or "").rstrip("/")
-        target = url.rstrip("/")
-        if not force and current.startswith(target) and self._web_embedded_ok:
+        current = (self._view.url().toString() or "")
+        # 画面已是裸主机、入口却带 token → 必须重进（否则侧栏会话树常空）
+        if (
+            not force
+            and self._web_embedded_ok
+            and _url_has_launch_token(url)
+            and _url_has_launch_token(current)
+            and current.split("?")[0].rstrip("/") == url.split("?")[0].rstrip("/")
+        ):
+            self._show_web_embed()
+            return
+        if (
+            not force
+            and self._web_embedded_ok
+            and not _url_has_launch_token(url)
+            and current.rstrip("/").startswith(url.rstrip("/"))
+        ):
             self._show_web_embed()
             return
         self._begin_home_navigation(url, force=force)
@@ -1879,13 +1969,28 @@ class HarnessAgentPage(BasePage):
             self._ensure_view()
         if not _qt_alive(self._view):
             return
-        home = (url or _harness_entry_url()).rstrip("/")
-        current = (self._view.url().toString() or "").rstrip("/")
+        # 禁止对裸 127.0.0.1 做 reload：须带 launch-token，否则内嵌 Cookie 未种 → 侧栏会话空
+        home = url or _harness_entry_url()
+        if not _url_has_launch_token(home):
+            try:
+                from services.harness_sidecar import _capture_auth_url_from_log
+
+                _capture_auth_url_from_log()
+                home = _harness_entry_url()
+            except Exception:
+                pass
         self._web_nav_overlay = True
         self._web_embedded_ok = False
         self._show_web_idle(IDLE[Progress.LOADING_UI], block_input=True)
         self._set_action_progress_visible(False)
         self._arm_loading_watchdog()
+        try:
+            from services.shared_local_webengine import force_navigate
+
+            if force_navigate(home, clear_http_cache=True):
+                return
+        except Exception:
+            pass
         try:
             from services.webengine_host import ToaWebEnginePage
 
@@ -1894,10 +1999,6 @@ class HarnessAgentPage(BasePage):
                 page.begin_forced_navigation()
         except Exception:
             pass
-        # 深链页必须 setUrl 回主页；仅同 URL 才 reload
-        if force and current.rstrip("/") == home:
-            self._view.reload()
-            return
         self._view.setUrl(QUrl(normalize_nav_url(home)))
 
     def _arm_loading_watchdog(self) -> None:
@@ -2026,7 +2127,14 @@ class HarnessAgentPage(BasePage):
             self._status_checked_at = 0.0
             self._refresh_status_http()
             return
-        # 服务在跑：一律回主 URL（解决深链卡死 / 遮罩揭不开）
+        # 服务在跑：清一次站点缓存再回主 URL（解决内嵌侧栏空、浏览器却正常）
+        try:
+            from services.shared_local_webengine import wipe_shared_profile_storage
+
+            wipe_shared_profile_storage(keep_running_view=True)
+        except Exception:
+            pass
+        self._sidebar_reset_done = False
         self._navigate_home_now()
 
     def _on_web_load_started(self) -> None:
@@ -2048,6 +2156,14 @@ class HarnessAgentPage(BasePage):
         __import__("logging").getLogger("TOA3.harness_agent").info(
             "web loadFinished ok=%s url=%s", ok, cur[:120]
         )
+        # 旧插件深链 /board#skills → 本核 404：立刻回主界面
+        if _is_dead_board_url(cur):
+            self.report_status(
+                "技能中心旧地址已失效，正在回到主界面…",
+                level=StatusLevel.WARNING,
+            )
+            self._begin_home_navigation(force=True)
+            return
         try:
             from services.webengine_host import ToaWebEnginePage
 
@@ -2117,10 +2233,94 @@ class HarnessAgentPage(BasePage):
         QTimer.singleShot(120, self._focus_web_view)
         self._set_progress(Progress.READY, idle=False, toast=True)
         self._set_capability_hint(True)
+        # 侧栏会话树空白自愈：SPA 水合后再探一次
+        QTimer.singleShot(2200, self._probe_sidebar_sessions)
         # 禁止自动外开；能力不及处由 capability_hint 提示
         if self._pending_prepare_after_reload:
             self._pending_prepare_after_reload = False
             QTimer.singleShot(700, self._run_prepare_session)
+
+    def _probe_sidebar_sessions(self) -> None:
+        """内嵌偶发「有壳无会话树」：清站点存储后带 token 重进（每进程最多一次）。"""
+        if not self._page_active() or not _qt_alive(self._view):
+            return
+        if getattr(self, "_sidebar_reset_done", False):
+            return
+
+        def _on_probe(raw) -> None:
+            if not self._page_active():
+                return
+            try:
+                import json as _json
+
+                info = _json.loads(raw or "{}")
+            except Exception:
+                info = {}
+            has_skill = bool(info.get("hasSkill"))
+            has_ws = bool(info.get("hasWs"))
+            __import__("logging").getLogger("TOA3.harness_agent").info(
+                "sidebar probe skill=%s ws=%s links=%s size=%sx%s text=%s",
+                has_skill,
+                has_ws,
+                info.get("links"),
+                info.get("w"),
+                info.get("h"),
+                info.get("len"),
+            )
+            # 已出 Harness 壳但看不到任一工作区名 → 客户端状态坏了
+            if has_skill and not has_ws:
+                self._sidebar_reset_done = True
+                self.report_status(
+                    "内嵌侧栏未载入会话，正在清理缓存并重进…",
+                    level=StatusLevel.WARNING,
+                )
+                self._reset_embed_client_and_reenter()
+
+        js = (
+            "(function(){"
+            "var t=(document.body&&(document.body.innerText||document.body.textContent))||'';"
+            "var hasSkill=t.indexOf('技能中心')>=0||t.indexOf('新会话')>=0;"
+            "var hasWs=/工作区|鸡参|harness|助教|巨龙|闹钟|品牌/.test(t);"
+            "return JSON.stringify({"
+            "hasSkill:hasSkill,hasWs:hasWs,"
+            "links:document.querySelectorAll('a,button,[role=button]').length,"
+            "w:window.innerWidth,h:window.innerHeight,len:t.length"
+            "});"
+            "})()"
+        )
+        try:
+            self._view.page().runJavaScript(js, _on_probe)
+        except Exception:
+            pass
+
+    def _reset_embed_client_and_reenter(self) -> None:
+        """清内嵌站点存储 + HTTP 缓存，再带 launch-token 进主页。"""
+        if not _qt_alive(self._view):
+            return
+        entry = _harness_entry_url()
+        try:
+            from services.shared_local_webengine import clear_profile_http_cache
+
+            clear_profile_http_cache()
+        except Exception:
+            pass
+        clear_js = (
+            "try{localStorage.clear();}catch(e){}"
+            "try{sessionStorage.clear();}catch(e){}"
+            "try{indexedDB.databases&&indexedDB.databases().then(function(dbs){"
+            "dbs.forEach(function(d){try{indexedDB.deleteDatabase(d.name);}catch(x){}});"
+            "});}catch(e){}"
+        )
+        try:
+            self._view.page().runJavaScript(clear_js)
+        except Exception:
+            pass
+        QTimer.singleShot(
+            200,
+            lambda: self._begin_home_navigation(entry, force=True)
+            if self._page_active()
+            else None,
+        )
 
     def _handle_web_load_failed(self) -> None:
         """loadFinished=false：同域可揭罩；鉴权拒才重开 token（最多一次）。"""
@@ -2207,12 +2407,15 @@ class HarnessAgentPage(BasePage):
 
 
     def _run_bg(self, fn, *, busy_label: str, on_ok, on_err=None, phase: BusyPhase | None = None) -> None:
+        """后台线程跑耗时任务（真正不卡 UI）。历史名仍叫 _run_bg。"""
         if self._action_busy:
             self.report_status("上一项操作仍在进行", level=StatusLevel.WARNING)
             return
+        if getattr(self, "_bg_thread", None) is not None:
+            self.report_status("上一项后台任务仍在进行", level=StatusLevel.WARNING)
+            return
 
         def _safe_fn():
-            """把异常收成 (False, msg)，避免 run_safe 弹框后不清 busy。"""
             try:
                 return fn()
             except OSError as exc:
@@ -2222,26 +2425,48 @@ class HarnessAgentPage(BasePage):
             except Exception as exc:
                 return False, str(exc) or exc.__class__.__name__
 
-        def _wrapped_ok(payload) -> None:
-            chained = False
-            try:
-                if payload is None:
-                    if on_err is not None:
-                        on_err()
-                    return
-                # on_ok 返回 True 表示已转入下一忙碌操作（如修复→重启），勿清 busy
-                chained = bool(on_ok(payload))
-            finally:
-                if not chained:
-                    self._set_action_busy(False)
+        self._bg_on_ok = on_ok
+        self._bg_on_err = on_err
+        worker = _HarnessBgWorker(_safe_fn)
+        thread = QThread(self)
+        worker.moveToThread(thread)
 
         self._set_action_busy(
             True,
             busy_label,
             phase=phase or infer_busy_phase(busy_label),
         )
-        self._show_web_idle(busy_label, block_input=True)
-        self.run_safe(_safe_fn, on_success=_wrapped_ok)
+        # 不挡 Web：其它功能页可切；本页仅显示忙碌条
+        self._show_web_idle(busy_label, block_input=False)
+
+        thread.started.connect(worker.run)
+        # 接到 Page 方法上，保证 QueuedConnection 回 UI 线程
+        worker.finished.connect(self._on_bg_finished)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._bg_thread = thread
+        self._bg_worker = worker
+        thread.start()
+
+    def _on_bg_finished(self, payload) -> None:
+        chained = False
+        on_ok = getattr(self, "_bg_on_ok", None)
+        on_err = getattr(self, "_bg_on_err", None)
+        self._bg_on_ok = None
+        self._bg_on_err = None
+        self._bg_thread = None
+        self._bg_worker = None
+        try:
+            if payload is None:
+                if on_err is not None:
+                    on_err()
+                return
+            if on_ok is not None:
+                chained = bool(on_ok(payload))
+        finally:
+            if not chained:
+                self._set_action_busy(False)
 
     def _after_sidecar_started(self, ok: bool, msg: str) -> None:
         if not self._page_active():
@@ -2661,6 +2886,9 @@ class HarnessAgentPage(BasePage):
             on_restore=self._on_restore_last_good,
             on_upgrade=self._on_upgrade_runtime,
             on_restart=lambda: self._on_restart(confirm=True),
+            on_backup_system=self._on_backup_system,
+            on_restore_system=self._on_restore_system,
+            on_open_backups=self._open_system_backups,
         )
         dlg.exec()
         # 保存显示方式后刷新主区
@@ -2703,12 +2931,31 @@ class HarnessAgentPage(BasePage):
         thread.start()
 
     def _on_install_progress(self, msg: str, pct: int, stage: str = "") -> None:
+        # 升级走条上进度（不切装门、不挡其它页）；首装仍用 SetupGate
+        if self._upgrade_in_progress:
+            try:
+                self._upgrade_strip.set_progress(msg, pct, stage)
+            except RuntimeError:
+                pass
+            return
         self._setup_gate.set_install_progress(msg, pct, stage)
 
     def _on_cancel_install(self) -> None:
         if self._install_cancel is not None:
             self._install_cancel.set()
-            self._setup_gate.set_install_progress("正在取消…", self._setup_gate._progress.value(), "cancel")
+            if self._upgrade_in_progress:
+                try:
+                    self._upgrade_strip.set_progress(
+                        "正在取消…",
+                        self._upgrade_strip._progress.value(),
+                        "cancel",
+                    )
+                except RuntimeError:
+                    pass
+            else:
+                self._setup_gate.set_install_progress(
+                    "正在取消…", self._setup_gate._progress.value(), "cancel"
+                )
             self.report_status("正在取消安装…", level=StatusLevel.INFO)
 
     def _on_install_finished(self, ok: bool, text: str, flavor: str) -> None:
@@ -2722,15 +2969,26 @@ class HarnessAgentPage(BasePage):
             from services.harness_setup import NEED_NODE_PREFIX
 
             detail = str(text or "")
+            if was_upgrade:
+                self._body_stack.setCurrentIndex(1)
+                # 失败后恢复可点「更新」的提示条（避免卡在进度态）
+                try:
+                    self._upgrade_strip.clear()
+                    self._refresh_upgrade_nudge()
+                except Exception:
+                    pass
+                if detail and "已取消" not in detail:
+                    show_warning(self, detail)
+                elif "已取消" in detail:
+                    self.report_status("已取消更新", level=StatusLevel.INFO)
+                self._deferred_enter()
+                return
             if detail.startswith(NEED_NODE_PREFIX):
                 self._setup_gate.mark_need_node(detail[len(NEED_NODE_PREFIX) :].strip())
             else:
                 self._setup_gate.show_install_failed(detail, flavor=flavor)
                 if detail and "已取消" not in detail:
                     show_warning(self, detail)
-            # 升级失败：若已装过，回到工作区让用户继续修
-            if was_upgrade and Path(str(load_harness_config().get("dsh_bin") or "")).is_file():
-                self._body_stack.setCurrentIndex(1)
             self._deferred_enter()
             return
         self.report_status(text, level=StatusLevel.SUCCESS)
@@ -3060,12 +3318,89 @@ class HarnessAgentPage(BasePage):
 
         self._run_bg(_job, busy_label="正在备份配置…", on_ok=_after)
 
+    def _on_backup_system(self) -> None:
+        """升级前整树备份（ARCH-09 版本备份）。"""
+        if not ask_confirm(
+            self,
+            "将备份当前运行环境配置与会话（跳过可重建的程序包目录）。\n"
+            "后台进行、不卡窗口；保留最近 3 代。是否继续？",
+            title="备份系统",
+        ):
+            return
+
+        def _job() -> tuple[bool, str]:
+            from services.harness_system_backup import backup_system
+
+            ok, msg, _ = backup_system(reason="manual", stop_service=False)
+            return ok, msg
+
+        def _after(result: tuple[bool, str]):
+            ok, text = result
+            if ok:
+                from core.user_messages import show_saved
+                from services.harness_system_backup import open_backup_dir
+
+                show_saved(self, text, str(open_backup_dir()))
+            self.report_status(text, level=StatusLevel.SUCCESS if ok else StatusLevel.WARNING)
+            return False
+
+        self._run_bg(_job, busy_label="正在备份系统…", on_ok=_after)
+
+    def _on_restore_system(self) -> None:
+        from services.harness_system_backup import list_system_backups, restore_latest_system
+
+        snaps = list_system_backups()
+        if not snaps:
+            self.report_status(
+                "尚无系统备份。请先在「更多 → 备份系统」或「环境维护」点备份。",
+                level=StatusLevel.WARNING,
+            )
+            return
+        latest = snaps[0]
+        label = (
+            f"{latest.get('id')} · 程序包 {latest.get('installed_bundle') or '?'} · "
+            f"内核 {latest.get('dsh_core') or '?'}"
+        )
+        if not ask_confirm(
+            self,
+            f"将用最近一次系统备份覆盖当前安装树：\n{label}\n"
+            "会先再打一份『恢复前』备份。是否继续？",
+            title="从系统备份恢复",
+        ):
+            return
+
+        def _job() -> tuple[bool, str]:
+            return restore_latest_system()
+
+        def _after(result: tuple[bool, str]):
+            ok, text = result
+            if not ok:
+                self.report_status(text, level=StatusLevel.WARNING)
+                return False
+            self.report_status(text, level=StatusLevel.SUCCESS)
+            self._force_good_snapshot = True
+            self._on_restart(confirm=False)
+            return True
+
+        self._run_bg(
+            _job,
+            busy_label="正在从系统备份恢复…",
+            on_ok=_after,
+            phase=BusyPhase.RESTORING,
+        )
+
+    def _open_system_backups(self) -> None:
+        from services.harness_system_backup import open_backup_dir
+
+        open_in_file_manager(open_backup_dir())
+
     def _on_restore_last_good(self) -> None:
         from services.harness_profile_versions import list_snapshots, restore_last_good
 
         if not list_snapshots():
             self.report_status(
-                "尚无「上次可用」备份。请先能正常打开服务后，在「更多 → 环境维护」点「备份当前配置」。",
+                "尚无「上次可用」配置备份。健康跑通后会自动留下；"
+                "整包回滚请用「从系统备份恢复」。",
                 level=StatusLevel.WARNING,
             )
             return
@@ -3107,21 +3442,31 @@ class HarnessAgentPage(BasePage):
         show_saved(self, "启动日志", str(path))
 
     def _on_upgrade_runtime(self) -> None:
-        """方案 A：显式换装程序树，默认保留 .dsh 会话与 Key。"""
+        """换装程序树：全程 QThread 后台跑（备份+下载），条上进度，不卡 UI 线程。"""
         from services.harness_prefab import (
             FLAVOR_LABELS,
             FLAVOR_PREFAB,
+            make_cancel_event,
             normalize_flavor,
             read_installed_manifest,
             runtime_update_available,
         )
         from services.harness_setup import default_install_root
+        from services.harness_system_backup import version_info
+
+        if self._install_thread is not None or self._upgrade_in_progress:
+            self.report_status("更新仍在进行，请看上方进度条", level=StatusLevel.WARNING)
+            return
 
         root = default_install_root()
         manifest = read_installed_manifest(root)
         flavor = normalize_flavor(str(manifest.get("flavor") or FLAVOR_PREFAB))
         label = FLAVOR_LABELS.get(flavor, flavor)
         update = runtime_update_available(root)
+        info = version_info(root)
+        upgrade_via = str((update or {}).get("upgrade_via") or "cdn")
+        if not update and info.get("core_drift"):
+            upgrade_via = "npm"
         size_mb = int((update or {}).get("size_hint_mb") or 0)
         size_s = f"约 {size_mb} MB，" if size_mb > 0 else ""
         ver_s = ""
@@ -3130,20 +3475,53 @@ class HarnessAgentPage(BasePage):
                 f"\n版本：{update.get('installed_version')} → "
                 f"{update.get('available_version')}"
             )
-        if not ask_confirm(
-            self,
-            f"将下载并覆盖本机运行环境（当前口味：{label}）。{ver_s}\n"
-            f"{size_s}会话与 API Key 默认保留。是否继续？",
-            title="更新环境",
-        ):
+        elif info.get("needs_repin"):
+            ver_s = (
+                f"\n本机内核 {info.get('dsh_core')} 偏离钉扎 {info.get('dsh_pinned')}，"
+                "将覆盖为配置钉扎包。"
+            )
+        if upgrade_via == "npm":
+            confirm_body = (
+                f"将后台备份并以 npm 原地升级内核（当前口味：{label}）。{ver_s}\n"
+                "会话、API Key、工作区与已装插件默认保留（不重下整包）。\n"
+                "期间可切到其它功能页。是否继续？"
+            )
+        else:
+            confirm_body = (
+                f"将后台备份并下载覆盖本机运行环境（当前口味：{label}）。{ver_s}\n"
+                f"{size_s}会话、API Key 与已装插件默认保留。\n"
+                "下载期间可切到其它功能页，窗口不会卡住。是否继续？"
+            )
+        if not ask_confirm(self, confirm_body, title="更新环境"):
             return
-        self._upgrade_strip.clear()
+
         self._upgrade_nudge_snoozed = ""
         self._awaiting_start_after_upgrade = False
         self._upgrade_in_progress = True
         self._force_good_snapshot = False
-        # 复用四步安装通道（进度条 + 可取消）；装门会切到前台
-        self._on_one_click_install(flavor)
+        self._install_flavor = flavor
+
+        # 留在工作区：条上进度；勿切装门、勿 _run_bg（那是 UI 线程同步）
+        self._body_stack.setCurrentIndex(1)
+        self._upgrade_strip.show_progressing()
+        self.report_status("正在后台更新运行环境…", level=StatusLevel.INFO)
+
+        cancel_ev, _ = make_cancel_event()
+        self._install_cancel = cancel_ev
+        thread = QThread(self)
+        worker = _HarnessInstallWorker(
+            flavor, cancel_ev, with_backup=True, upgrade_via=upgrade_via
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_install_progress)
+        worker.finished.connect(self._on_install_finished)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._install_thread = thread
+        self._install_worker = worker
+        thread.start()
 
     def _on_uninstall(self) -> None:
         if not ask_confirm(

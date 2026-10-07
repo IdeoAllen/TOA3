@@ -30,9 +30,9 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**发版中 v3.1.21（2026-09-22）**：直链已上传 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.21.exe 。运营台当前仍为 **3.1.20**。**待主理人设当前版**后跑 `--from-live --require-match --commit`。  
-本版要点：Harness 内嵌侧栏文件预览（`dsh-resource`）；Ctrl+Tab 切顶栏；承接记事组件库/桌面视频封面/编码智能体启动自愈等。  
-**v3.1.21** 线上当前版（切版前）：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.20.exe  
+**Harness 启动（2026-09-28）**：用户 `harness.yml` 的 `dsh_bin` 指到 `dsh-guard.mjs` 后，3.1.23 按五级父目录把启动器写到 `C:\Users\toa_dsh_launch.mjs` → Errno 13。已改回正式 `bin.js`；源码改为包装脚本直接执行、启动器只落 `~/.toa3/harness-runtime`。主理人需完全退出运营宝再开。  
+**发版待点按钮 v3.1.23（2026-09-28）**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe ；运营台已预登记（说明齐、`is_current=false`）。**主理人只点「设为当前」** → Agent 再 `--from-live --require-match --commit`。分工已写入 SOP-04 / toa3-sop-packaging。  
+**v3.1.22** 上一版：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.22.exe 。  
 **发版提交口径**：上传脚本自动 commit 多数跳过；**设当前版后 Agent 必须再跑** `--from-live --require-match --commit` 并回报 hash。  
 **全局介入档案**：`ARCH-11` + `global_shell_features` + `verify_global_shell`；Mac 仅口径。  
 **v3.1.17** 热键/预览；**v3.1.16** Harness CDN；**v3.1.14** 图片预览。
@@ -112,6 +112,13 @@ python -m app.main
 **主理人·记事收录原则（同日）**：TOA 纳入项 **不需与菜鸟一致**；只求 **好用·高频·常用，不贪多**。已回写 PROD-01 §0.5.1 / product.yml / PROD-02。后续扩组件须证高频缺口。
 **记事手写 MD 预览（同日）**：编码面手写（无组件）切预览须正确解析；高亮展开避开代码围栏；verify 覆盖标题/列表/引用/代码/表/链/待办/高亮。
 **记事取消设计面（2026-09-16）**：只保留 **编辑/预览**；组件库=标记全集；工具栏同源；`verify_quick_notepad_gaps` 等四条绿。
+**记事内核体验（2026-09-29）**：参照 DartBinEditor Lite 体验标准：工具栏分栏；统一 `preview_pipeline`；`media_store` 分批落盘；编辑↔预览落点。
+**记事所见即所得（同日）**：主理人要求「打开就像成品文档」的阅读态 + **所见即所得编辑**；预览改为纸面 Web 阅读态；落盘仍 Markdown。已回写 PROD-01 §0.5.1 / product.yml / PROD-02 / manifest gaps。剪藏/多页签/主题包未做。待主理人点验 gaps。
+**记事预览对标（同日）**：预览不再沿用 Qt 行内样式；纸面接管标题层级、引用条、提示块、待办框、表头、代码块与图表框。颜色仍跟当前主题。
+**记事组件原样解析（同日）**：在录 27 项阅读态按语义还原（加粗/斜体/删除线/行内代码/高亮/围栏换行/图表）。`verify_quick_notepad_gaps` 绿。待主理人点验 gaps。
+**记事借鉴 WPS（2026-09-30）**：主理人要求提升写作能力。已加源码页签、效率指南、导入 Markdown。公式与另存 Word 未做。
+**记事三面对齐（2026-09-30）**：主理人要求预览、编辑、源码对齐。未改编辑面时原文逐字保留；改过之后三面和落盘锁同一串 Markdown。待主理人点验 gaps。
+**撤回微信嵌窗（2026-09-30）**：主理人：嵌窗没法用，不要这功能。要的是办公助手支持在线沟通，不是把微信窗口嵌进主区。已删 `wechat_host`；方向写入 PROD-01 §2「建议不做」。
 **记事图表进组件库（同日）**：「图表」分组集中 Mermaid（流程 TD/LR · 时序 · 饼图 · 甘特）；拖入编辑窗；预览本机 `mermaid.min.js` 出图；不上工具栏挤占。
 **记事组件卡给样子（同日）**：常用卡=预览同口径渲染；图表卡迷你示意图；图片卡占位示意；tip「卡片=拖入后的样子」。
 **记事图片/图标可调大小（同日）**：组件拆「图片/图标」；插入弹窗选显示大小（小图标48·小160·中360·大560·宽720·原图）；默认按像素建议并记忆；源码落 `<img width>`；预览钳过大图。
@@ -121,6 +128,22 @@ python -m app.main
 **MXAPI 写入 DSH（同日）**：凭据补 `MXAPI_OPENAI_BASE_URL=/v1`（生图）+ `MXAPI_BASE_URL=/api/v2`（余额）；`$DSH_HOME/skills/image-generation` 与 AGENTS.md 改为 MXAPI 优先；**不**进 llm-pi-ai「模型」页（非对话模型）。
 **壳·Ctrl+Tab 切主菜单（2026-09-21）**：`Ctrl+Tab` / `Ctrl+Shift+Tab` 循环顶栏一级子模块；事件过滤拦 Tab 焦点占用 + ApplicationShortcut 兜底；配置 `hotkeys.next_domain` / `prev_domain`。
 **Harness 侧栏预览（2026-09-22）**：根因=Qt 未注册 `dsh-resource` → JS URL hostname 空 →「文件资源服务不可用」（浏览器正常）。已在 QApplication 前 `registerScheme(Syntax.Host)`；`verify_dsh_resource_url_scheme` 入 verify_all。重启 TOA3 后内嵌可预览。
+**Harness 备份系统 + 内核漂移提示（2026-09-24）**：本机 dsh 被手动升到 `0.1.7-rc.1`（偏离钉扎 `0.1.5-rc.1`），「修一下」救不了。已加：更多/环境维护「备份系统」与版本对照；更新环境前自动备份；内核漂移进页提示「更新」恢复钉扎包；`verify_harness_system_backup`。请先备份再点「更新环境」。
+**Harness 升级保插件（同日）**：安装/更新环境装前快照 bundles+deps，装后合并并重装缺失 registry 包；denylist（如 cost-manager）仍剔除。门禁扩 `verify_harness_simple_setup`。
+**Harness 升级卡死解堵（同日）**：① 升级前整树备份含 `node_modules` 像卡死 → 改为跳过可重建的 `node_modules`/`node`；② `dsh-vision-router` / task-board 等 `settingsScope` → denylist；已剔并重启服务可用。请再点「更新」回钉扎内核。
+**Harness 更新不卡窗（同日）**：根因=`_run_bg`→`run_safe` 在 UI 线程同步备份。改为 QThread 后台备份+下载；UpgradeStrip 进度条/取消；可切其它功能页。
+**侧栏恢复扩展/定时任务（同日）**：`user_extensions` / `job_scheduler` 曾因点验池收口 `show: false`；主理人要回 → 已改 `show: true`（系统组）。
+**Harness 更新后起不来（同日续）**：根因三件——① 便携 Node **22.14** 无 `createZstdCompress`（会话插件要 ≥22.15）；② `@opentelemetry/otlp-transformer` 缺 `logs/`；③ `dshmarket` undici 残缺。已升本机便携 Node→**22.22.0**、补齐 otel、denylist `dshmarket`；新增 `harness_runtime_heal` 启动前自愈；`is_running` 不再把 404 当就绪。本机 3082 已带 token 拉起。下次重建 prefab 须内嵌 Node≥22.15。
+**Harness 内嵌≠浏览器（同日）**：会话数据未丢（浏览器可见工作区树）；内嵌空白侧栏多为 WebEngine Cookie/入口未带 token。已：强制持久 Cookie、桌面 Chrome UA、刷新一律 `force_navigate(token URL)` 清 HTTP 缓存。需**重启 TOA** 后再点「刷新」。
+**Harness 费用管理 + 中文（同日）**：cost-manager 曾因无 `output.schema` 进 denylist→面板消失；本地包已补 `output.{schema,render}`，移出 denylist 并重启；`settings.yaml` 写 `locale.preference: zh`；WebEngine `Accept-Language: zh-CN`。`/cost` `/board` 已 200。用户需**重启 TOA** 再刷新内嵌。
+**Harness「请更新到 0.1.2」误报（同日）**：本机内核已是 **0.1.5-rc.1**；弹窗来自 `dsh-context` 误读到 pnpm 里残留的 `dsh-session@0.1.0-rc.8`。已卸掉 `dsh-context`（非必要）并恢复服务；真要升内核走编码智能体「更新环境」。点「知道了」即可，**无需**按弹窗升版。
+**Harness 升核 0.1.7-rc.2（2026-09-28）**：代码钉扎 `DSH_PINNED_VERSION=0.1.7-rc.2`；新增 `upgrade_dsh_core_inplace`（npm 原地升核，保留 `.dsh`+插件合并）；「更新环境」内核落后时走 npm 不重下整包。CDN zip 底座暂仍 0.1.5-rc.1.1（新装解压后自动对齐钉扎）。本机已升核并启动；费用管理保留；denylist 含 vision-router / task-board / dshmarket / dsh-context。请**重启 TOA** 后刷新。
+**发版待点按钮 v3.1.23（同日）**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe ；运营台已预登记（`is_current=false`）。**主理人只点「设为当前」** → Agent 再 `--from-live --require-match --commit`。
+**Harness denylist 复测移出 dshmarket / dsh-context（2026-10-07）**：核已钉扎 `0.1.7-rc.2`，两条原始理由复测均不成立——① `dshmarket` 原理由「undici@7.29.0 缺 `lib/cache/memory-cache-store`」，实测 `dshmarket@1.66.9 → undici@7.30.0`，`lib/cache/` 下 memory / sqlite 两个 store 均在；② `dsh-context` 原理由「版本探针误读 peer 为 `0.1.0-rc.8` 弹假升级门」，实测 profile 内 `dsh-session` / `dsh-settings` 均为 `0.1.7-rc.2`，`peer >=0.1.5-rc.1` 对齐。已从 `services/harness_plugins.py` `_BOOT_KILLER_PLUGINS` 移出两键（原样注释留证 + 复现命令），剩 3 键（agent-teams / vision-router / task-board）。复测：`dsh --profile web --dump-config` exit=0 无 `did not activate`；实启 3082 侧 `dsh-context` 导入失败已随降级 `0.49.1` 消除。模拟 `_dep_keepable` 判定 15 bundle 全保留。
+**Harness profile 插件清单恢复（同日）**：`~/.toa3/harness-runtime/.dsh/profiles/web/package.json` 曾被历次 `*-before-repair-*` 修复削到只剩 3 个 `@dachengge` link，而 `pnpm-lock.yaml` 完整保留 11 项声明。按 lock 补回 8 项（skill-explorer / archify / config-manager / ffmpeg / notifier / ppt-master / preview / skillhub）+ dshmarket / dsh-context，`pnpm install --prefer-offline` 复用本地 store（reused 133 / downloaded 0）。现 13 bundle 全绿。备份 `profiles/_backup_before_plugin_restore_20261007/`。
+**video-checker 追平 link/file 依赖判定（同日）**：该仓库 9/16 由 TOA3 脚手架分叉，`harness_plugins.py` 停在该日版本，缺 `_dep_keepable` / `_link_dep_target`，且无 `harness_dsh_launch.py`（故不能整文件覆盖）。已精确移植两函数 + `sanitize_web_profile_package` 两处判定（link 目标存在即保留，未进 bundles 时补回），`py_compile` 通过。该分叉与本机 profile 同一 `dsh_home`，属实际风险面。备份 `services/_backup_harness_plugins_20261007.py`。
+**门禁夹具同步（同日）**：`verify_harness_simple_setup.py` L201-210 原以 `dshmarket` 作 denylist 夹具，移出后断言必崩（已复现 AssertionError）。改用仍在 denylist 的 `dsh-vision-router`，断言语义不变；`verify_all` 该项恢复绿。
+**遗留 · CDN 证书过期（同日，非本次改动）**：`www.yczh.tech` TLS 证书已过期，`verify_version_align.py` / `verify_harness_cdn.py` 报 `CERTIFICATE_VERIFY_FAILED`。影响 CDN 门禁与「更新环境」下载校验，**需续签证书**。
 
 ---
 
@@ -155,6 +178,11 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 
 | 项 | 说明 |
 |----|------|
+| 更新 | 2026-10-07 · Harness denylist 复测移出 + profile 插件清单恢复 |
+| 改了哪些 | `services/harness_plugins.py`（denylist 减 2 键）；`profiles/web/package.json`（+10 插件）；`scripts/verify_harness_simple_setup.py`（denylist 夹具 dshmarket→dsh-vision-router） |
+| 核实结果 | 15 bundle 全绿；`--dump-config` exit=0 无 `did not activate`；`verify_all` 仅剩 2 项环境失败（CDN 证书过期） |
+| 待主理人 | 启动 TOA3 后确认「已移除拖死/无法解析的插件」提示消失 |
+| 旁支 | video-checker 同名文件已精确移植 `_dep_keepable` / `_link_dep_target`（不整文件覆盖，因缺 `harness_dsh_launch`） |
 | 更新 | 2026-09-14 · 侧栏点验收口 + 四象限状态看板 |
 | 核实结果 | done16 / mvp32 / Hold4 / stub1；Hold 侧栏已对齐隐藏 |
 | 侧栏 | §0.6 D：非点验 mvp 收掉；邮箱等点验池已推上 |

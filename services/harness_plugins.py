@@ -26,9 +26,23 @@ _CORE_MARKERS = (
 # 键=包名；值=人话原因（会写进 sanitize 提示）。
 _BOOT_KILLER_PLUGINS: dict[str, str] = {
     "@nanmicoder/dsh-agent-teams": "依赖 uiConversation，当前 dsh 核心未提供该服务",
-    # 本地 link 的 cost-manager：tool 未声明 output schema → 注册失败，易拖死 web 会话
-    "@dachengge/dsh-cost-manager": "tool 未声明 output schema，启动期注册失败",
+    # 等 settingsScope 永不激活 → Failed to load plugins（0.1.5–0.1.7 均见过；升核后若复测通过可移出）
+    "dsh-vision-router": "waiting for settingsScope，拖死 web boot",
+    "@linxin666/dsh-client-ui-task-board": "waiting for settingsScope，拖死 web boot",
+    # —— 已移出（2026-10-07 复测于 dsh 0.1.7-rc.2，两条原始理由均不再成立）——
+    #   dshmarket  : 原理由「undici@7.29.0 缺 lib/cache/memory-cache-store」。
+    #                实测 dshmarket@1.66.9 → undici@7.30.0，lib/cache/ 下
+    #                memory-cache-store.js、sqlite-cache-store.js 均在。
+    #   dsh-context: 原理由「版本探针误读 peer 为 0.1.0-rc.8 → 弹假升级门」。
+    #                实测 profile 内 dsh-session / dsh-settings 均为 0.1.7-rc.2，
+    #                peer >=0.1.5-rc.1 对齐，无假门。
+    # 复现命令（勿删）：
+    #   dsh --profile web --dump-config   # 应 exit=0 且无 "did not activate"
+    #   dsh --profile web                 # stderr 应无 "failed to import"
+    # 若日后换核复测失败，把对应键按原格式加回即可。
 }
+# 说明：@dachengge/dsh-cost-manager 已补 output.schema；主理人要费用面板 → 不进 denylist。
+
 # Windows STATUS_UNTRUSTED_MOUNT_POINT — 穿越「不受信任」联接/装入点
 _WINERR_UNTRUSTED_MOUNT = 448
 
@@ -292,9 +306,11 @@ def web_profile_ready(home: Path, *, dsh: Path | None = None) -> bool:
 
 
 def link_web_profile_node_modules(dsh: Path, home: Path) -> tuple[bool, str]:
-    """
-    将 profile/web/node_modules 链接到 dsh 包内 vendored 目录。
-    公开 npm 无法拉取 @deepseek-ai 私有包时，这是 WorkBuddy 路径的可靠修复方式。
+    """确保 profile/web/node_modules 为「真目录」并挂上核心组件。
+
+    新版 dsh 启动时对 ``web/node_modules`` 做 ``mkdirSync``；Windows 上若是
+    整树联接会报 UNKNOWN（errno -4094）导致「启动进程异常退出」。
+    因此改为：真目录 + 子项联接（或复制）到 dsh 内置树。
     """
     vendored = dsh_vendored_node_modules(dsh)
     if vendored is None:
@@ -306,33 +322,72 @@ def link_web_profile_node_modules(dsh: Path, home: Path) -> tuple[bool, str]:
         return False, _friendly_os_error(exc)
     link = web_profile_node_modules(home)
     try:
-        if _path_lexists(link):
-            if web_profile_ready(home, dsh=dsh):
-                return True, "Web 组件目录已就绪"
-            if _same_resolved(link, vendored) and _markers_ready_at(vendored):
-                return True, "Web 组件已链接"
+        # 整树联接必须拆掉，否则 dsh mkdir 必炸
+        if _path_lexists(link) and (
+            _is_reparse_point(link) or (os.name == "nt" and link.is_symlink())
+        ):
             _remove_node_modules(link)
-        if os.name == "nt":
-            result = subprocess.run(
-                ["cmd", "/c", "mklink", "/J", str(link), str(vendored)],
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            if result.returncode != 0:
-                tail = (result.stderr or result.stdout or "").strip()[-300:]
-                return False, tail or "创建 node_modules 联接失败"
-        else:
-            link.symlink_to(vendored, target_is_directory=True)
+        if not link.is_dir():
+            if _path_lexists(link):
+                _remove_node_modules(link)
+            link.mkdir(parents=True, exist_ok=True)
+        ok_mat, mat_msg = _materialize_vendored_children(link, vendored)
+        if not ok_mat:
+            return False, mat_msg
     except OSError as exc:
         return False, _friendly_os_error(exc)
     if web_profile_ready(home, dsh=dsh):
-        return True, "已链接 dsh 内置 Web 组件"
+        return True, "已就绪 Web 组件目录（真目录）"
     return False, "链接后仍缺少核心 Web 组件，请点「修复运行环境」"
 
 
+def _materialize_vendored_children(dest: Path, vendored: Path) -> tuple[bool, str]:
+    """把 vendored 下顶层包挂到 dest（联接优先，失败则跳过已存在项）。"""
+    try:
+        children = [p for p in vendored.iterdir() if p.name not in (".", "..")]
+    except OSError as exc:
+        return False, _friendly_os_error(exc)
+    if not children:
+        return False, "内置组件目录为空"
+    linked = 0
+    for child in children:
+        # .bin / .pnpm 是 npm 联接，不是 Web 组件。挂到 profile 后
+        # dsh 0.1.7 会对每个联接 realpath，Windows 上 .bin 会报 UNKNOWN -4094 并退出。
+        if child.name in (".bin", ".pnpm"):
+            continue
+        target = dest / child.name
+        if _path_lexists(target):
+            # 已有真目录或可用联接则保留
+            if _safe_is_dir(target) or _is_reparse_point(target):
+                linked += 1
+                continue
+            _remove_node_modules(target)
+        try:
+            if os.name == "nt":
+                result = subprocess.run(
+                    ["cmd", "/c", "mklink", "/J", str(target), str(child)],
+                    capture_output=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+                if result.returncode != 0:
+                    # 联接失败：目录则复制（仅核心 scope 值得拷）
+                    if child.is_dir() and child.name.startswith("@"):
+                        shutil.copytree(child, target, dirs_exist_ok=True)
+                    else:
+                        continue
+            else:
+                target.symlink_to(child, target_is_directory=child.is_dir())
+            linked += 1
+        except OSError:
+            continue
+    if linked <= 0:
+        return False, "无法挂载内置 Web 组件"
+    return True, f"已挂载 {linked} 项组件"
+
+
 def heal_web_profile_junction(dsh: Path | None = None, home: Path | None = None) -> tuple[bool, str]:
-    """重建 web/node_modules 联接（专治 WinError 448 陈旧装入点）。"""
+    """重建 web/node_modules（拆整树联接 → 真目录 + 子联接）。"""
     dsh = dsh or dsh_bin_path()
     home = home or dsh_home_path()
     if not dsh.is_file():
@@ -346,6 +401,86 @@ def heal_web_profile_junction(dsh: Path | None = None, home: Path | None = None)
     return link_web_profile_node_modules(dsh, home)
 
 
+def ensure_web_node_modules_mkdirable(home: Path | None = None) -> tuple[bool, str]:
+    """启动前：若 web/node_modules 是整树联接则拆成真目录，避免 dsh mkdir 失败。"""
+    h = Path(home) if home is not None else dsh_home_path()
+    link = web_profile_node_modules(h)
+    notes: list[str] = []
+    if not _path_lexists(link):
+        try:
+            link.mkdir(parents=True, exist_ok=True)
+            return True, "已创建 Web 组件目录"
+        except OSError as exc:
+            return False, _friendly_os_error(exc)
+    if _is_reparse_point(link) or (os.name == "nt" and link.is_symlink()):
+        dsh = dsh_bin_path()
+        ok, msg = heal_web_profile_junction(dsh, h)
+        return ok, msg or "已把联接改为真目录"
+    if not link.is_dir():
+        try:
+            _remove_node_modules(link)
+            link.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return False, _friendly_os_error(exc)
+        return True, "已重建 Web 组件目录"
+    # 子项误做成「文件联接」（如 .modules.yaml → 运行时同名文件）会导致 pnpm EPERM
+    ok_meta, meta_msg = heal_pnpm_meta_file_junctions(h)
+    if meta_msg:
+        notes.append(meta_msg)
+    if not ok_meta:
+        return False, meta_msg or "pnpm 元数据联接修复失败"
+    return True, "；".join(notes) if notes else "Web 组件目录可写"
+
+
+def heal_pnpm_meta_file_junctions(home: Path | None = None) -> tuple[bool, str]:
+    """把 profile/node_modules 下误建的文件级联接还原成真文件。
+
+    历史「整树联接」拆分后，偶发把 ``.modules.yaml`` 也联到 runtime 同名文件；
+    pnpm install/add 对其 rename 时 Windows 报 EPERM，插件装不上。
+    """
+    h = Path(home) if home is not None else dsh_home_path()
+    mods = web_profile_node_modules(h)
+    if not mods.is_dir():
+        return True, ""
+    fixed: list[str] = []
+    # 仅处理 pnpm 会改写的元数据文件名
+    for name in (".modules.yaml", ".package-lock.json", ".modules.yaml.bak"):
+        path = mods / name
+        if not _path_lexists(path):
+            continue
+        if not (_is_reparse_point(path) or (os.name == "nt" and path.is_symlink())):
+            continue
+        target = _junction_target_nt(path)
+        # 拆联接
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["cmd", "/c", "rmdir", str(path)],
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            if _path_lexists(path):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        except OSError as exc:
+            return False, _friendly_os_error(exc)
+        # 有可读目标则拷成真文件，否则留给 pnpm 重建
+        if target is not None and target.is_file():
+            try:
+                shutil.copy2(target, path)
+                fixed.append(name)
+            except OSError as exc:
+                logger.warning("copy pnpm meta %s failed: %s", name, exc)
+                fixed.append(f"{name}(已拆联接)")
+        else:
+            fixed.append(f"{name}(已拆联接)")
+    if not fixed:
+        return True, ""
+    return True, "已修复 pnpm 元数据联接：" + "、".join(fixed)
+
+
 def _run_plugin_add(
     node: Path,
     dsh: Path,
@@ -353,7 +488,17 @@ def _run_plugin_add(
     *,
     timeout: float = 300.0,
 ) -> tuple[bool, str]:
-    cmd = [str(node), str(dsh), "plugin", "--profile", _PROFILE, "add", *_WEB_BUNDLES]
+    from services.harness_dsh_launch import dsh_cli_argv
+
+    cmd = dsh_cli_argv(
+        "plugin",
+        "--profile",
+        _PROFILE,
+        "add",
+        *_WEB_BUNDLES,
+        node=node,
+        dsh=dsh,
+    )
     env = os.environ.copy()
     env["DSH_HOME"] = str(home)
     try:
@@ -380,6 +525,28 @@ def _run_plugin_add(
         return False, _friendly_os_error(exc)
 
 
+def _link_dep_target(ver: object) -> Path | None:
+    """解析 package.json 依赖里的 link:/file: 本地路径。"""
+    raw = str(ver or "").strip()
+    if not raw:
+        return None
+    low = raw.lower()
+    if low.startswith("link:"):
+        raw = raw[5:]
+    elif low.startswith("file:"):
+        raw = raw[5:]
+    else:
+        return None
+    raw = raw.strip().strip("\"'")
+    if not raw:
+        return None
+    p = Path(raw)
+    try:
+        return p if p.is_absolute() else (Path.cwd() / p).resolve()
+    except OSError:
+        return p
+
+
 def _bundle_resolvable(name: str, search_roots: list[Path]) -> bool:
     """profile bundle 是否能在给定 node_modules 根中解析到包目录。"""
     rels: list[str] = []
@@ -393,6 +560,20 @@ def _bundle_resolvable(name: str, search_roots: list[Path]) -> bool:
             if _safe_child_exists(root, rel):
                 return True
     return False
+
+
+def _dep_keepable(name: str, ver: object, search_roots: list[Path]) -> bool:
+    """依赖是否应保留：可解析包，或 link/file 指向本机仍存在的目录。"""
+    key = str(name or "").strip()
+    if not key or key in _BOOT_KILLER_PLUGINS:
+        return False
+    link = _link_dep_target(ver)
+    if link is not None:
+        try:
+            return link.is_dir() and (link / "package.json").is_file()
+        except OSError:
+            return False
+    return _bundle_resolvable(key, search_roots)
 
 
 def strip_utf8_bom_in_profile(home: Path | None = None, *, limit: int = 400) -> tuple[bool, str]:
@@ -478,7 +659,8 @@ def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tupl
     dsh_block = data.setdefault("dsh", {})
     profile = dsh_block.setdefault("profile", {})
     raw_bundles = list(profile.get("bundles") or [])
-    # 始终保留核心；其余仅保留可解析且非启动杀手
+    deps = dict(data.get("dependencies") or {})
+    # 始终保留核心；其余仅保留可解析 / 本机 link 且非启动杀手
     kept: list[str] = []
     for core in _WEB_BUNDLES:
         if core not in kept:
@@ -493,13 +675,12 @@ def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tupl
             dropped.append(name)
             killer_notes.append(f"{name}（{_BOOT_KILLER_PLUGINS[name]}）")
             continue
-        if _bundle_resolvable(name, roots):
+        if _dep_keepable(name, deps.get(name), roots):
             kept.append(name)
         else:
             dropped.append(name)
     profile["bundles"] = kept
 
-    deps = dict(data.get("dependencies") or {})
     new_deps: dict[str, Any] = {}
     for name, ver in deps.items():
         key = str(name).strip()
@@ -508,10 +689,14 @@ def sanitize_web_profile_package(home: Path, *, dsh: Path | None = None) -> tupl
                 dropped.append(key)
                 killer_notes.append(f"{key}（{_BOOT_KILLER_PLUGINS[key]}）")
             continue
-        if key in kept or _bundle_resolvable(key, roots):
+        if key in kept or _dep_keepable(key, ver, roots):
             new_deps[key] = ver
+            if key not in kept and _dep_keepable(key, ver, roots):
+                # link 依赖仍在但未进 bundles 时补回，避免设置页丢面板
+                kept.append(key)
         elif key not in dropped:
             dropped.append(key)
+    profile["bundles"] = kept
     data["dependencies"] = new_deps
 
     try:
@@ -648,6 +833,237 @@ def list_plugins() -> list[dict[str, str]]:
     return out
 
 
+def capture_profile_plugins(home: Path | None = None) -> dict[str, Any]:
+    """升级前快照：bundles + dependencies（不含密钥）。"""
+    from services.harness_config import dsh_home_path
+
+    h = Path(home) if home is not None else dsh_home_path()
+    path = profile_dir_for(h) / "package.json"
+    empty: dict[str, Any] = {"bundles": [], "dependencies": {}, "path": str(path)}
+    if not path.is_file():
+        return empty
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return empty
+    bundles = list(((data.get("dsh") or {}).get("profile") or {}).get("bundles") or [])
+    deps = dict(data.get("dependencies") or {})
+    return {
+        "bundles": [str(b).strip() for b in bundles if str(b).strip()],
+        "dependencies": {str(k): v for k, v in deps.items() if str(k).strip()},
+        "path": str(path),
+    }
+
+
+def merge_profile_plugins(
+    home: Path,
+    snapshot: dict[str, Any] | None,
+    *,
+    flavor: str = "prefab",
+) -> tuple[bool, str]:
+    """把升级前快照合并回 package.json（禁洗用户插件；仍剔除 denylist）。
+
+    官方精简版只保证核心 + 快照里仍可解析/可 link 的扩展写回 dependencies，
+    bundles 仍压到核心（与 ARCH-10 官方语义一致）。预制版 bundles/deps 全量合并。
+    """
+    if not snapshot:
+        return True, "无插件快照，跳过合并"
+    path = profile_dir_for(home) / "package.json"
+    try:
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            data = {
+                "name": "dsh-profile-web",
+                "private": True,
+                "dependencies": {},
+                "dsh": {"profile": {"bundles": list(_WEB_BUNDLES)}},
+            }
+    except (json.JSONDecodeError, OSError) as exc:
+        return False, str(exc)
+
+    snap_bundles = [str(b).strip() for b in (snapshot.get("bundles") or []) if str(b).strip()]
+    snap_deps = dict(snapshot.get("dependencies") or {})
+    dsh_block = data.setdefault("dsh", {})
+    profile = dsh_block.setdefault("profile", {})
+    cur_bundles = [str(b).strip() for b in (profile.get("bundles") or []) if str(b).strip()]
+    cur_deps = dict(data.get("dependencies") or {})
+
+    # 依赖：快照优先补回（denylist 除外）
+    merged_deps = dict(cur_deps)
+    restored_deps = 0
+    for name, ver in snap_deps.items():
+        key = str(name).strip()
+        if not key or key in _BOOT_KILLER_PLUGINS:
+            continue
+        if key not in merged_deps:
+            merged_deps[key] = ver
+            restored_deps += 1
+        elif key in merged_deps and not merged_deps.get(key) and ver:
+            merged_deps[key] = ver
+
+    # bundles
+    merged_bundles: list[str] = []
+    for core in _WEB_BUNDLES:
+        if core not in merged_bundles:
+            merged_bundles.append(core)
+
+    is_official = str(flavor or "").strip().lower() in (
+        "official",
+        "官方",
+        "官方精简版",
+    )
+    if is_official:
+        # 官方：bundles 仅核心；扩展仍留在 dependencies，设置页可见、不拖死 boot
+        pass
+    else:
+        for name in cur_bundles + snap_bundles:
+            key = str(name).strip()
+            if not key or key in merged_bundles or key in _BOOT_KILLER_PLUGINS:
+                continue
+            merged_bundles.append(key)
+        # 快照 deps 里有、bundles 没有的也挂上（设置页面板）
+        for name in snap_deps:
+            key = str(name).strip()
+            if not key or key in merged_bundles or key in _BOOT_KILLER_PLUGINS:
+                continue
+            if key in _WEB_BUNDLES:
+                continue
+            merged_bundles.append(key)
+
+    profile["bundles"] = merged_bundles
+    data["dependencies"] = merged_deps
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return False, _friendly_os_error(exc)
+    return True, f"已合并插件清单（补回依赖 {restored_deps} 项，bundles {len(merged_bundles)}）"
+
+
+def reinstall_missing_plugins(
+    home: Path,
+    snapshot: dict[str, Any] | None,
+    *,
+    dsh: Path | None = None,
+    progress: Any = None,
+) -> tuple[bool, str]:
+    """对快照中缺失/不可解析的 registry 插件尝试 ``dsh plugin add``；link 失效只记警告。"""
+    if not snapshot:
+        return True, "无插件快照"
+    snap_deps = dict(snapshot.get("dependencies") or {})
+    if not snap_deps:
+        return True, "快照无扩展依赖"
+
+    path = profile_dir_for(home) / "package.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (json.JSONDecodeError, OSError):
+        data = {}
+
+    search: list[Path] = []
+    mods = web_profile_node_modules(home)
+    if _path_lexists(mods) and not _is_reparse_point(mods):
+        search.append(mods)
+    if dsh is not None:
+        vendored = dsh_vendored_node_modules(dsh)
+        if vendored is not None:
+            search.append(vendored)
+
+    ok_names: list[str] = []
+    fail_names: list[str] = []
+    skip_link: list[str] = []
+    for name, ver in snap_deps.items():
+        key = str(name).strip()
+        if not key or key in _BOOT_KILLER_PLUGINS or key in _WEB_BUNDLES:
+            continue
+        if _dep_keepable(key, ver, search):
+            ok_names.append(key)
+            continue
+        link = _link_dep_target(ver)
+        if link is not None:
+            skip_link.append(key)
+            continue
+        # registry 包：尝试重新 add
+        spec = key
+        ver_s = str(ver or "").strip()
+        if ver_s and not ver_s.lower().startswith(("link:", "file:", "workspace:")):
+            spec = f"{key}@{ver_s}"
+        if callable(progress):
+            try:
+                progress(f"正在重装插件 {key}…")
+            except Exception:
+                pass
+        rok, rmsg = add_plugin(spec)
+        if rok:
+            ok_names.append(key)
+        else:
+            # 再试裸包名
+            if spec != key:
+                rok2, rmsg2 = add_plugin(key)
+                if rok2:
+                    ok_names.append(key)
+                    continue
+                rmsg = rmsg2 or rmsg
+            fail_names.append(f"{key}（{rmsg[:80]}）" if rmsg else key)
+            logger.warning("reinstall plugin failed %s: %s", key, rmsg)
+
+    parts: list[str] = []
+    if ok_names:
+        parts.append(f"可用/已重装 {len(ok_names)} 个")
+    if skip_link:
+        parts.append(f"本地 link 失效未自动装：{'、'.join(skip_link[:6])}")
+    if fail_names:
+        parts.append(f"重装失败：{'、'.join(fail_names[:6])}")
+    if not parts:
+        return True, "无需重装插件"
+    # link 失效不算整次安装失败；registry 全失败才 False
+    ok = len(fail_names) == 0 or len(ok_names) > 0
+    return ok, "；".join(parts)
+
+
+def ensure_plugins_after_install(
+    home: Path,
+    snapshot: dict[str, Any] | None,
+    *,
+    flavor: str = "prefab",
+    node: Path | None = None,
+    dsh: Path | None = None,
+    progress: Any = None,
+) -> tuple[bool, str]:
+    """安装/升级后：合并快照 → 链核心 → 软 sanitize → 重装缺失。"""
+    notes: list[str] = []
+    ok_m, msg_m = merge_profile_plugins(home, snapshot, flavor=flavor)
+    notes.append(msg_m)
+    if not ok_m:
+        return False, msg_m
+
+    node_p = node
+    dsh_p = dsh
+    if node_p is None or dsh_p is None:
+        try:
+            node_p = node_p or node_exe_path()
+            dsh_p = dsh_p or dsh_bin_path()
+        except Exception:
+            pass
+    if node_p is not None and dsh_p is not None and Path(node_p).is_file() and Path(dsh_p).is_file():
+        ok_e, msg_e = ensure_web_profile_bundles(Path(node_p), Path(dsh_p), home)
+        notes.append(msg_e)
+        if not ok_e:
+            return False, "；".join(notes)
+        # 再合并一次：sanitize 可能误删，快照盖回（denylist 仍剔）
+        ok_m2, msg_m2 = merge_profile_plugins(home, snapshot, flavor=flavor)
+        if "补回" in msg_m2:
+            notes.append(msg_m2)
+        ok_r, msg_r = reinstall_missing_plugins(
+            home, snapshot, dsh=Path(dsh_p), progress=progress
+        )
+        notes.append(msg_r)
+        if not ok_r and "重装失败" in msg_r and "可用/已重装" not in msg_r:
+            return False, "；".join(notes)
+    return True, "；".join(notes)
+
+
 def _run_dsh_plugin(pnpm_args: list[str], *, timeout: float = 300.0) -> tuple[bool, str]:
     node = node_exe_path()
     dsh = dsh_bin_path()
@@ -655,7 +1071,16 @@ def _run_dsh_plugin(pnpm_args: list[str], *, timeout: float = 300.0) -> tuple[bo
         return False, "请先完成 Node 与 dsh 安装。"
     home = dsh_home_path()
     home.mkdir(parents=True, exist_ok=True)
-    cmd = [str(node), str(dsh), "plugin", "--profile", _PROFILE, *pnpm_args]
+    from services.harness_dsh_launch import dsh_cli_argv
+
+    cmd = dsh_cli_argv(
+        "plugin",
+        "--profile",
+        _PROFILE,
+        *pnpm_args,
+        node=node,
+        dsh=dsh,
+    )
     env = os.environ.copy()
     env["DSH_HOME"] = str(home)
     try:

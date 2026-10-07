@@ -43,9 +43,15 @@ def main() -> int:
         fails.append(f"图表分组不足: {len(charts)}")
 
     for b in md_blocks:
-        # 常用须有工具栏；图表可空（集中组件库）
-        if b.group != "图表" and not (b.toolbar or "").strip():
-            fails.append(f"{b.id}: 常用项缺 toolbar")
+        # 常用须有工具栏 + toolbar_group；图表可空（集中组件库）
+        if b.group != "图表":
+            if not (b.toolbar or "").strip():
+                fails.append(f"{b.id}: 常用项缺 toolbar")
+            if not (b.toolbar_group or "").strip():
+                fails.append(f"{b.id}: 常用项缺 toolbar_group")
+        else:
+            if (b.toolbar or "").strip():
+                fails.append(f"{b.id}: 图表不应上工具栏")
         if not (b.preview or "").strip() and b.id not in ("hr", "image", "time"):
             fails.append(f"{b.id}: 缺 preview 文案")
         md = markdown_for_block(b.id)

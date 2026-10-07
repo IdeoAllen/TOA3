@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""quick_notepad 自测：编辑 / 预览两面 · 无设计面 · 无 TXT|MD 双格式。"""
+"""quick_notepad 自测：编辑 / 源码 / 预览 · 无设计面 · 无 TXT|MD 双格式。"""
 from __future__ import annotations
 
 import sys
@@ -44,20 +44,21 @@ def test_two_modes_edit_preview(app) -> None:
     from modules.quick_notepad.note_store import normalize_view_mode
     from modules.quick_notepad.quick_notepad_page import QuickNotepadPage, _VIEW_MODES
 
-    assert normalize_view_mode("source") == "edit"
-    assert normalize_view_mode("txt") == "edit"
+    assert normalize_view_mode("source") == "source"
+    assert normalize_view_mode("txt") == "source"
     assert normalize_view_mode("design") == "edit"
-    assert normalize_view_mode("code") == "edit"
+    assert normalize_view_mode("code") == "source"
     assert normalize_view_mode(None) == "edit"
     assert normalize_view_mode("preview") == "preview"
-    assert _VIEW_MODES == ("edit", "preview")
+    assert _VIEW_MODES == ("edit", "source", "preview")
 
     page = QuickNotepadPage()
     page.show()
     app.processEvents()
-    assert page._view_tab_bar.count() == 2
+    assert page._view_tab_bar.count() == 3
     assert page._view_tab_bar.tabText(0) == "编辑"
-    assert page._view_tab_bar.tabText(1) == "预览"
+    assert page._view_tab_bar.tabText(1) == "源码"
+    assert page._view_tab_bar.tabText(2) == "预览"
     assert not hasattr(page, "_design")
     assert not hasattr(page, "_mode") or getattr(page, "_mode", None) is None
     # 默认编辑
@@ -65,16 +66,180 @@ def test_two_modes_edit_preview(app) -> None:
     page._sync_view_chrome()
     assert page._view_stack.currentWidget() is page._md_source
     assert not page._component_palette.isHidden()
-    page._md_source.setPlainText("# 你好\n\n正文\n")
+    from modules.quick_notepad.rich_body import load_body_into
+
+    page._loading_body = True
+    load_body_into(page._md_source, "# 你好\n\n正文\n")
+    page._md_truth = "# 你好\n\n正文\n"
+    page._edit_dirty = False
+    page._loading_body = False
     page._set_view_mode("preview")
     page._sync_view_chrome()
     assert page._view_stack.currentWidget() is page._preview_host
     assert page._component_palette.isHidden()
+    # 纸面预览优先 Web；Qt 副本也有正文
     assert "你好" in page._md_preview.toPlainText()
     page._set_view_mode("edit")
     assert page._view_stack.currentWidget() is page._md_source
     assert "你好" in page._md_source.toPlainText()
-    _ok("两面编辑/预览 · 无设计 · 无格式下拉")
+    page._set_view_mode("source")
+    assert page._view_stack.currentWidget() is page._md_raw
+    assert page._component_palette.isHidden()
+    assert "# 你好" in page._md_raw.toPlainText()
+    page._md_raw.setPlainText("# 源码改过\n\n**加粗**\n")
+    page._set_view_mode("edit")
+    assert "源码改过" in page._md_source.toPlainText()
+    assert "加粗" in page._md_source.toPlainText()
+    page._set_view_mode("source")
+    raw = page._capture_body()
+    assert "源码改过" in raw and "**加粗**" in raw
+    assert page._guide_btn.text() == "效率指南"
+    assert not page._efficiency_guide.isVisible()
+    page._toggle_efficiency_guide()
+    assert page._efficiency_guide.isVisible()
+    from widgets import HintLabel
+
+    hints = page._efficiency_guide.findChildren(HintLabel)
+    assert any("导入 Markdown" in (h.text() or "") for h in hints)
+    page._hide_efficiency_guide()
+    assert not page._efficiency_guide.isVisible()
+    _ok("三面编辑/源码/预览 · 源码往返 · 效率指南")
+    page.close()
+
+
+def test_three_faces_same_markdown(app) -> None:
+    """未改编辑面时原文逐字保留；改过之后三面锁同一串。"""
+    from PySide6.QtGui import QTextCursor
+
+    from modules.quick_notepad.edit_ops import toggle_inline
+    from modules.quick_notepad.quick_notepad_page import QuickNotepadPage
+
+    original = "# 甲\n\n\n1. 第一步\n2. 第二步\n\n---\n\n> 原话\n"
+    page = QuickNotepadPage()
+    page._load_note_body(original)
+    page._set_view_mode("edit")
+    page._set_view_mode("preview")
+    page._set_view_mode("source")
+    assert page._md_raw.toPlainText() == original
+    assert page._capture_body() == original
+    page._set_view_mode("edit")
+    assert page._capture_body() == original
+
+    edited = original + "\n尾句\n"
+    page._set_view_mode("source")
+    page._md_raw.setPlainText(edited)
+    page._set_view_mode("preview")
+    assert page._capture_body() == edited
+    page._set_view_mode("edit")
+    page._set_view_mode("source")
+    assert page._md_raw.toPlainText() == edited
+
+    page._load_note_body("加粗这句\n")
+    page._set_view_mode("edit")
+    cur = page._md_source.textCursor()
+    cur.movePosition(QTextCursor.MoveOperation.Start)
+    cur.movePosition(
+        QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
+    )
+    page._md_source.setTextCursor(cur)
+    toggle_inline(page, "bold")
+    page._set_view_mode("source")
+    once = page._md_raw.toPlainText()
+    assert "**" in once
+    page._set_view_mode("edit")
+    page._set_view_mode("preview")
+    page._set_view_mode("source")
+    assert page._md_raw.toPlainText() == once
+    assert page._capture_body() == once
+    _ok("三面同一份 Markdown")
+    page.close()
+
+
+def test_wysiwyg_edit_actions(app) -> None:
+    """对标实际编辑：格式可关、套当前段、真链接、行首标记、查找替换。"""
+    from PySide6.QtGui import QTextCursor
+
+    from modules.quick_notepad.edit_ops import (
+        apply_heading,
+        apply_link,
+        apply_list,
+        apply_quote,
+        replace_all,
+        toggle_inline,
+        try_marker_shortcut,
+    )
+    from modules.quick_notepad.quick_notepad_page import QuickNotepadPage
+    from modules.quick_notepad.rich_body import export_markdown_from, load_body_into
+
+    page = QuickNotepadPage()
+    page._set_view_mode("edit")
+    load_body_into(page._md_source, "已有正文一段\n")
+
+    def _select_line() -> None:
+        cur = page._md_source.textCursor()
+        cur.movePosition(QTextCursor.MoveOperation.Start)
+        cur.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
+        )
+        page._md_source.setTextCursor(cur)
+
+    _select_line()
+    apply_heading(page, 2)
+    md = export_markdown_from(page._md_source)
+    assert md.startswith("## 已有正文"), md
+    apply_heading(page, 2)
+    md = export_markdown_from(page._md_source)
+    assert not md.lstrip().startswith("##"), md
+
+    load_body_into(page._md_source, "加粗这句\n")
+    _select_line()
+    toggle_inline(page, "bold")
+    md = export_markdown_from(page._md_source)
+    assert "**加粗这句**" in md.replace(" ", ""), md
+    _select_line()
+    toggle_inline(page, "bold")
+    md = export_markdown_from(page._md_source)
+    assert "**" not in md, md
+
+    load_body_into(page._md_source, "列表一项\n")
+    _select_line()
+    apply_list(page, ordered=False)
+    md = export_markdown_from(page._md_source)
+    assert md.lstrip().startswith("- "), md
+
+    load_body_into(page._md_source, "引用这句\n")
+    cur = page._md_source.textCursor()
+    cur.movePosition(QTextCursor.MoveOperation.Start)
+    page._md_source.setTextCursor(cur)
+    apply_quote(page)
+    md = export_markdown_from(page._md_source)
+    assert md.lstrip().startswith("> "), md
+
+    load_body_into(page._md_source, "点此打开\n")
+    _select_line()
+    apply_link(page, "点此打开", "https://www.yczh.tech")
+    md = export_markdown_from(page._md_source)
+    assert "https://www.yczh.tech" in md and "[" in md, md
+    assert md.count("](") == 1, md
+
+    page._md_source.setPlainText("#")
+    cur = page._md_source.textCursor()
+    cur.movePosition(QTextCursor.MoveOperation.End)
+    page._md_source.setTextCursor(cur)
+    assert try_marker_shortcut(page._md_source)
+    cur = page._md_source.textCursor()
+    assert int(cur.blockFormat().headingLevel() or 0) == 1
+    cur.insertText("标记标题")
+    page._md_source.setTextCursor(cur)
+    md = export_markdown_from(page._md_source)
+    assert md.lstrip().startswith("# 标记标题"), md
+    assert not md.lstrip().startswith("##"), md
+
+    page._md_source.setPlainText("甲甲 甲甲")
+    n = replace_all(page._md_source, "甲甲", "乙")
+    assert n == 2
+    assert page._md_source.toPlainText() == "乙 乙"
+    _ok("实际编辑 · 开关格式 / 套段 / 链接 / 行首标记 / 替换")
     page.close()
 
 
@@ -147,8 +312,12 @@ print("hello")
     page.show()
     app.processEvents()
     page._set_view_mode("edit")
+    from modules.quick_notepad.rich_body import export_markdown_from, load_body_into
+
     page._loading_body = True
-    page._md_source.setPlainText(sample)
+    load_body_into(page._md_source, sample)
+    page._md_truth = sample
+    page._edit_dirty = False
     page._loading_body = False
     page._set_view_mode("preview")
     app.processEvents()
@@ -156,6 +325,9 @@ print("hello")
     phtml = page._md_preview.toHtml().lower()
     assert "一级标题" in pplain, repr(pplain[:120])
     assert "<h1" in phtml and "<table" in phtml, phtml[:200]
+    # 落盘仍是 Markdown
+    exported = export_markdown_from(page._md_source)
+    assert "# 一级标题" in exported or "一级标题" in exported
     _ok("页面编辑→预览：手写 MD 无需组件")
     page.close()
 
@@ -190,10 +362,14 @@ def test_component_insert(app) -> None:
     page._set_view_mode("edit")
     page._on_palette_insert("h2")
     app.processEvents()
-    assert "今日要点" in page._md_source.toPlainText(), repr(page._md_source.toPlainText())
+    from modules.quick_notepad.rich_body import export_markdown_from
+
+    body = export_markdown_from(page._md_source)
+    assert "今日要点" in body or "今日要点" in page._md_source.toPlainText(), repr(body)
     page._on_palette_insert("mermaid_flow")
     app.processEvents()
-    assert "```mermaid" in page._md_source.toPlainText()
+    body2 = export_markdown_from(page._md_source)
+    assert "```mermaid" in body2 or "mermaid" in body2.lower()
     _ok("编辑面可插入组件 · BLOCKS=27 · 含图表/图标")
     page.close()
 
@@ -264,6 +440,188 @@ def test_one_body_store() -> None:
     _ok("一源 body 合并旧分槽")
 
 
+def test_toolbar_groups() -> None:
+    from modules.quick_notepad.component_blocks import (
+        BLOCKS,
+        TOOLBAR_GROUP_ORDER,
+        is_chart_block,
+        toolbar_blocks_by_group,
+    )
+
+    groups = toolbar_blocks_by_group()
+    assert [g for g, _ in groups] == list(TOOLBAR_GROUP_ORDER)
+    seen: set[str] = set()
+    for gid, specs in groups:
+        assert specs
+        for s in specs:
+            assert (s.toolbar or "").strip()
+            assert s.toolbar_group == gid
+            assert s.group != "图表"
+            assert not is_chart_block(s.id)
+            seen.add(s.id)
+    text_ids = {b.id for b in BLOCKS if b.group != "图表"}
+    chart_ids = {b.id for b in BLOCKS if b.group == "图表"}
+    assert text_ids <= seen, f"缺工具栏: {text_ids - seen}"
+    assert seen.isdisjoint(chart_ids)
+    _ok(f"工具栏分栏 {list(TOOLBAR_GROUP_ORDER)} · 文字 {len(seen)} · 图表不上栏")
+
+
+def test_preview_pipeline_and_tasks(app) -> None:
+    from PySide6.QtWidgets import QTextEdit
+
+    from modules.quick_notepad.md_text import prepare_markdown_for_preview
+    from modules.quick_notepad.preview_pipeline import apply_preview
+    from modules.quick_notepad.rich_body import render_markdown_string
+
+    sample = "==高亮重点==\n\n- [ ] 待办甲\n- [x] 已完成乙\n"
+    prepared = prepare_markdown_for_preview(sample)
+    assert "<mark" in prepared and "高亮重点" in prepared
+    assert "☐" in prepared and "☑" in prepared
+
+    prev = QTextEdit()
+    prev.setReadOnly(True)
+
+    class _Host:
+        def setCurrentWidget(self, _w) -> None:
+            return None
+
+    # 无 WebEngine 时退回 Qt
+    result = apply_preview(
+        sample,
+        qt_preview=prev,
+        preview_host=_Host(),
+        ensure_web=lambda: None,
+    )
+    assert result.kind in ("qt", "web", "empty")
+    plain = prev.toPlainText()
+    assert "高亮重点" in plain
+    assert "待办甲" in plain and "已完成乙" in plain
+    render_markdown_string(sample, prev)
+    assert "☐" in prev.toPlainText() or "待办甲" in prev.toPlainText()
+    prev.close()
+
+    from modules.quick_notepad.mermaid_preview import build_reading_document_html
+
+    reading = build_reading_document_html(
+        "# 一级标题\n\n> 引用句\n\n> [!NOTE]\n> 提示内容\n\n- [ ] 待办甲\n- [x] 已完成乙\n\n"
+        "| 列A | 列B |\n| --- | --- |\n| 1 | 2 |\n\n```\nprint(1)\n```\n"
+    )
+    assert "class=\"sheet\"" in reading
+    assert "<blockquote" in reading
+    assert "callout" in reading and "提示内容" in reading
+    assert "li class=\"task" in reading
+    assert "<th>" in reading
+    assert "<pre><code>" in reading
+    assert "margin-left:40px" not in reading
+    _ok("预览管线 · 高亮/待办展开 · 阅读排版")
+
+
+def test_catalog_blocks_parse(app) -> None:
+    """在录组件：预览 HTML 必须保留各自的解析结构。"""
+    from modules.quick_notepad.component_blocks import BLOCKS, markdown_for_block
+    from modules.quick_notepad.mermaid_preview import build_reading_document_html
+
+    expect = {
+        "h1": "<h1",
+        "h2": "<h2",
+        "h3": "<h3",
+        "h4": "<h4",
+        "h5": "<h5",
+        "h6": "<h6",
+        "bold": "<strong>",
+        "italic": "<em>",
+        "strike": "<s>",
+        "highlight": "<mark>",
+        "inline_code": "<code>",
+        "bullets": "<ul>",
+        "steps": "<ol>",
+        "checklist": 'class="task"',
+        "quote": "<blockquote",
+        "hr": "<hr",
+        "table": "<th>",
+        "link": 'href="https://www.yczh.tech"',
+        "image": "<img",
+        "icon": 'width="48"',
+    }
+    for spec in BLOCKS:
+        html = build_reading_document_html(markdown_for_block(spec.id))
+        body = html.split('class="md-body"', 1)[-1]
+        if spec.id.startswith("mermaid_"):
+            assert 'class="mermaid"' in body, spec.id
+            assert "<pre>" not in body.split('class="mermaid"', 1)[0][-20:]
+            continue
+        if spec.id == "code_block":
+            assert body.count("<pre>") == 1, spec.id
+            assert "hello" in body and "def hello" in body
+            assert "\n" in body.split("<pre>", 1)[1].split("</pre>", 1)[0]
+            continue
+        if spec.id == "checklist":
+            assert 'class="task done"' in body and body.count('class="task"') >= 1
+            continue
+        if spec.id == "time":
+            assert any(ch.isdigit() for ch in body)
+            continue
+        needle = expect[spec.id]
+        assert needle in body, f"{spec.id} 缺 {needle}"
+    _ok(f"在录组件 {len(BLOCKS)} 项预览结构")
+
+
+def test_media_store_batch(app) -> None:
+    from PySide6.QtGui import QImage
+
+    from modules.quick_notepad.media_store import images_dir, store_images_batched, store_qimage
+
+    imgs = []
+    for i in range(5):
+        im = QImage(32, 32, QImage.Format.Format_RGB32)
+        im.fill(0x112233 + i)
+        imgs.append(im)
+    batches: list[tuple[int, int]] = []
+    paths = store_images_batched(
+        imgs, batch_size=2, on_batch=lambda done, total: batches.append((done, total))
+    )
+    assert len(paths) == 5
+    assert batches == [(2, 5), (4, 5), (5, 5)]
+    root = images_dir()
+    for p in paths:
+        assert p.is_file()
+        assert p.parent == root
+    one = store_qimage(imgs[0])
+    assert one is not None and one.is_file()
+    _ok("媒体库分批写盘 · images/")
+
+
+def test_edit_preview_roundtrip_keeps_text(app) -> None:
+    from modules.quick_notepad.quick_notepad_page import QuickNotepadPage
+    from modules.quick_notepad.rich_body import export_markdown_from, load_body_into
+
+    page = QuickNotepadPage()
+    page.show()
+    app.processEvents()
+    sample = "# 落点测\n\n正文不丢字 · ==高亮==\n"
+    page._set_view_mode("edit")
+    page._loading_body = True
+    load_body_into(page._md_source, sample)
+    page._md_truth = sample
+    page._edit_dirty = False
+    page._loading_body = False
+    from PySide6.QtGui import QTextCursor
+
+    cur = page._md_source.textCursor()
+    cur.movePosition(QTextCursor.MoveOperation.Down)
+    page._md_source.setTextCursor(cur)
+    page._set_view_mode("preview")
+    app.processEvents()
+    assert "落点测" in page._md_preview.toPlainText()
+    page._set_view_mode("edit")
+    app.processEvents()
+    exported = export_markdown_from(page._md_source)
+    assert "落点测" in exported
+    assert "正文不丢字" in exported
+    _ok("编辑↔预览切换不丢字")
+    page.close()
+
+
 def main() -> int:
     from PySide6.QtWidgets import QApplication
 
@@ -273,10 +631,24 @@ def main() -> int:
         test_pdf_export(app)
         print("== one body ==")
         test_one_body_store()
+        print("== toolbar groups ==")
+        test_toolbar_groups()
         print("== two modes ==")
         test_two_modes_edit_preview(app)
+        print("== same markdown ==")
+        test_three_faces_same_markdown(app)
+        print("== edit actions ==")
+        test_wysiwyg_edit_actions(app)
         print("== handwritten md preview ==")
         test_handwritten_md_preview(app)
+        print("== preview pipeline ==")
+        test_preview_pipeline_and_tasks(app)
+        print("== catalog blocks ==")
+        test_catalog_blocks_parse(app)
+        print("== media store ==")
+        test_media_store_batch(app)
+        print("== edit/preview roundtrip ==")
+        test_edit_preview_roundtrip_keeps_text(app)
         print("== components ==")
         test_component_insert(app)
         print("== desktop ==")

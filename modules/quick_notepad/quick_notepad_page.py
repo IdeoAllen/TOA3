@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QMenu,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -29,11 +30,15 @@ from core.ui_spec import page_content_margins
 from core.user_messages import show_warning
 from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
 from modules.clipboard_history.history_store import push_text
-from modules.quick_notepad.component_blocks import BLOCKS, MIME_BLOCK, block_id_from_mime
+from modules.quick_notepad.component_blocks import (
+    MIME_BLOCK,
+    TOOLBAR_GROUP_LABELS,
+    block_id_from_mime,
+    toolbar_blocks_by_group,
+)
 from modules.quick_notepad.component_palette import ComponentPalette
-from modules.quick_notepad.markdown_highlighter import MarkdownHighlighter
+from modules.quick_notepad.efficiency_guide import EfficiencyGuide
 from modules.quick_notepad.md_actions import on_palette_insert, toolbar_action
-from modules.quick_notepad.md_text import sanitize_md_source
 from modules.quick_notepad.note_crud import (
     on_delete,
     on_edit_title,
@@ -62,7 +67,8 @@ from modules.quick_notepad.note_store import (
 )
 from modules.quick_notepad.outline_ops import reload_tree as reload_outline_tree, select_tree_id
 from modules.quick_notepad.outline_tree import OutlineKeyFilter, OutlineTree
-from modules.quick_notepad.rich_body import refresh_editor_preview
+from modules.quick_notepad.preview_pipeline import PreviewController, scroll_preview_to_source_line
+from modules.quick_notepad.rich_body import export_markdown_from, load_body_into
 from services.icon_registry import get_icon
 from widgets import (
     DangerButton,
@@ -78,8 +84,20 @@ from widgets import (
 )
 from widgets.metrics import BUTTON_MIN_HEIGHT
 
-_VIEW_MODES = ("edit", "preview")
-_VIEW_TAB_LABELS = ("编辑", "预览")
+_VIEW_MODES = ("edit", "source", "preview")
+_VIEW_TAB_LABELS = ("编辑", "源码", "预览")
+
+
+class _ToolbarSep(QFrame):
+    """工具栏组分隔线。"""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("NotepadFmtToolbarSep")
+        self.setFrameShape(QFrame.Shape.VLine)
+        self.setFrameShadow(QFrame.Shadow.Plain)
+        self.setFixedWidth(8)
+        self.setMinimumHeight(22)
 
 
 class QuickNotepadPage(BasePage):
@@ -116,6 +134,12 @@ class QuickNotepadPage(BasePage):
         self._autosave_timer.setSingleShot(True)
         self._autosave_timer.setInterval(800)
         self._autosave_timer.timeout.connect(self._on_autosave)
+        self._edit_cursor_pos = 0
+        self._edit_scroll_value = 0
+        self._preview_line = 0
+        self._md_truth = ""
+        self._edit_dirty = False
+        self._preview_controller: PreviewController | None = None
 
         outer = QVBoxLayout(self)
         m = page_content_margins()
@@ -219,7 +243,7 @@ class QuickNotepadPage(BasePage):
 
         more = MenuButton("更多")
         more_menu = QMenu(more)
-        self._act_import = more_menu.addAction("导入文件")
+        self._act_import = more_menu.addAction("导入 Markdown")
         self._act_import.triggered.connect(self._on_import_md)
         more_menu.addAction("导出 PDF").triggered.connect(self._on_export_pdf)
         more_menu.addAction("复制正文").triggered.connect(self._to_clipboard)
@@ -229,19 +253,58 @@ class QuickNotepadPage(BasePage):
 
         self._fmt_toolbar_host = QWidget()
         self._fmt_toolbar_host.setObjectName("NotepadFmtToolbar")
-        self._fmt_toolbar = QHBoxLayout(self._fmt_toolbar_host)
+        host_lay = QVBoxLayout(self._fmt_toolbar_host)
+        host_lay.setContentsMargins(0, 0, 0, 0)
+        host_lay.setSpacing(0)
+        scroll = QScrollArea()
+        scroll.setObjectName("NotepadFmtToolbarScroll")
+        scroll.setWidgetResizable(False)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFixedHeight(40)
+        bar = QWidget()
+        self._fmt_toolbar = QHBoxLayout(bar)
         self._fmt_toolbar.setContentsMargins(4, 2, 4, 2)
         self._fmt_toolbar.setSpacing(2)
         self._fmt_btns: list = []
-        for spec in BLOCKS:
-            if not (spec.toolbar or "").strip():
-                continue  # 图表等仅组件库
-            btn = SecondaryButton(spec.toolbar)
-            btn.setToolTip(spec.hint or spec.title)
-            btn.clicked.connect(lambda _c=False, b=spec.id: self._toolbar_action(b))
-            self._fmt_toolbar.addWidget(btn)
-            self._fmt_btns.append(btn)
+        self._fmt_seps: list = []
+        groups = toolbar_blocks_by_group()
+        for gi, (group_id, specs) in enumerate(groups):
+            if gi > 0:
+                sep = _ToolbarSep(bar)
+                sep.setToolTip(TOOLBAR_GROUP_LABELS.get(group_id, group_id))
+                self._fmt_toolbar.addWidget(sep)
+                self._fmt_seps.append(sep)
+            for spec in specs:
+                btn = SecondaryButton(spec.toolbar)
+                tip = spec.hint or spec.title
+                label = TOOLBAR_GROUP_LABELS.get(spec.toolbar_group or "", "")
+                if label:
+                    tip = f"{label} · {tip}"
+                btn.setToolTip(tip)
+                btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+                btn.clicked.connect(lambda _c=False, b=spec.id: self._toolbar_action(b))
+                self._fmt_toolbar.addWidget(btn)
+                self._fmt_btns.append(btn)
+        sep = _ToolbarSep(bar)
+        sep.setToolTip("编辑动作")
+        self._fmt_toolbar.addWidget(sep)
+        self._fmt_seps.append(sep)
+        clear_btn = SecondaryButton("清除")
+        clear_btn.setToolTip("清除当前段和选区格式 · Ctrl+\\")
+        clear_btn.clicked.connect(self._clear_format)
+        self._fmt_toolbar.addWidget(clear_btn)
+        self._fmt_btns.append(clear_btn)
+        find_btn = SecondaryButton("查找")
+        find_btn.setToolTip("查找替换 · Ctrl+F")
+        find_btn.clicked.connect(self._open_find_replace)
+        self._fmt_toolbar.addWidget(find_btn)
+        self._fmt_btns.append(find_btn)
         self._fmt_toolbar.addStretch(1)
+        bar.adjustSize()
+        scroll.setWidget(bar)
+        host_lay.addWidget(scroll)
         editor_lay.addWidget(self._fmt_toolbar_host)
 
         self._editor_surface = QWidget()
@@ -262,9 +325,10 @@ class QuickNotepadPage(BasePage):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
 
-        self._md_source = PlainTextEdit()
-        self._md_source.setObjectName("MarkdownSourceEdit")
-        self._md_source.setPlaceholderText("编辑 · Markdown 源码…")
+        self._md_source = TextEdit()
+        self._md_source.setObjectName("MarkdownDesignEdit")
+        self._md_source.setAcceptRichText(True)
+        self._md_source.setPlaceholderText("编辑 · 所见即所得（落盘仍为 Markdown）…")
         self._view_stack.addWidget(self._md_source)
 
         self._preview_host = QStackedWidget()
@@ -275,9 +339,6 @@ class QuickNotepadPage(BasePage):
         self._md_preview_web = None
         self._view_stack.addWidget(self._preview_host)
 
-        self._md_highlighter = MarkdownHighlighter(
-            self._md_source.document(), AppState.get().palette or {}
-        )
         # 兼容旧引用
         self._plain = self._md_source
         write_lay.addWidget(self._view_stack, 1)
@@ -293,10 +354,19 @@ class QuickNotepadPage(BasePage):
         editor_lay.addWidget(self._editor_surface, 1)
         self._body = self._md_source
 
+        self._efficiency_guide = EfficiencyGuide(editor)
+        self._efficiency_guide.hide_requested.connect(self._hide_efficiency_guide)
+        self._efficiency_guide.setVisible(False)
+        editor_lay.addWidget(self._efficiency_guide)
+
         footer = QHBoxLayout()
         footer.setContentsMargins(4, 2, 4, 0)
         self._word_count = HintLabel("")
         footer.addWidget(self._word_count, 1)
+        self._guide_btn = SecondaryButton("效率指南")
+        self._guide_btn.setToolTip("语法和快捷键，可随时收起")
+        self._guide_btn.clicked.connect(self._toggle_efficiency_guide)
+        footer.addWidget(self._guide_btn)
         editor_lay.addLayout(footer)
 
         splitter.addWidget(editor)
@@ -305,10 +375,25 @@ class QuickNotepadPage(BasePage):
         splitter.setSizes([280, 720])
         outer.addWidget(splitter, 1)
 
+        self._md_raw = PlainTextEdit()
+        self._md_raw.setObjectName("MarkdownSourceEdit")
+        self._md_raw.setPlaceholderText("源码 · 直接改 Markdown，切回编辑即回到版式…")
+        mono = QFont("Cascadia Code")
+        mono.setStyleHint(QFont.StyleHint.Monospace)
+        mono.setPointSize(11)
+        self._md_raw.setFont(mono)
+        self._view_stack.insertWidget(1, self._md_raw)
+        from modules.quick_notepad.markdown_highlighter import MarkdownHighlighter
+
+        self._md_hl = MarkdownHighlighter(
+            self._md_raw.document(), AppState.get().palette or {}
+        )
+
         self.setAcceptDrops(True)
         self._write_pane = write_pane
         for w in (
             self._md_source,
+            self._md_raw,
             self._md_preview,
             self._editor_surface,
             write_pane,
@@ -320,12 +405,30 @@ class QuickNotepadPage(BasePage):
         if vp is not None:
             vp.setAcceptDrops(True)
             vp.installEventFilter(self)
+        raw_vp = self._md_raw.viewport()
+        if raw_vp is not None:
+            raw_vp.setAcceptDrops(True)
+            raw_vp.installEventFilter(self)
 
         self._md_source.textChanged.connect(self._on_md_source_changed)
+        self._md_raw.textChanged.connect(self._on_md_raw_changed)
         sanitize_tree()
         reload_outline_tree(self)
         self.apply_page_focus_policy()
+        self._preview_controller = PreviewController(
+            get_source_text=self._canonical_markdown,
+            qt_preview=self._md_preview,
+            preview_host=self._preview_host,
+            ensure_web=self._ensure_preview_web,
+            on_large=self._on_preview_large_hint,
+            parent=self,
+        )
         self._load_mode_from_settings()
+
+    def _on_preview_large_hint(self, msg: str) -> None:
+        tip = (msg or "").strip()
+        if tip:
+            self.report_status(tip, level=StatusLevel.INFO)
 
     def _fmt(self) -> str:
         return "md"
@@ -375,19 +478,41 @@ class QuickNotepadPage(BasePage):
         mode = normalize_view_mode(getattr(self, "_view_mode", None))
         if mode == "preview":
             return self._md_preview
+        if mode == "source":
+            return self._md_raw
         return self._md_source
 
+    def _canonical_markdown(self) -> str:
+        """三面共用的 Markdown。没改过编辑面时保持原文，不让 Qt 重排。"""
+        mode = normalize_view_mode(getattr(self, "_view_mode", None))
+        if mode == "source":
+            self._md_truth = self._md_raw.toPlainText()
+            self._edit_dirty = False
+            return self._md_truth
+        if mode == "edit" and self._edit_dirty:
+            self._md_truth = export_markdown_from(self._md_source)
+            self._edit_dirty = False
+            return self._md_truth
+        if (
+            mode == "edit"
+            and not self._md_truth
+            and (self._md_source.toPlainText() or "").strip()
+        ):
+            self._md_truth = export_markdown_from(self._md_source)
+        return self._md_truth
+
     def _capture_body(self) -> str:
-        return sanitize_md_source(self._md_source.toPlainText())
+        return self._canonical_markdown()
 
     def _ensure_writable(self) -> None:
-        if normalize_view_mode(self._view_mode) == "preview":
+        if normalize_view_mode(self._view_mode) != "edit":
             self._set_view_mode("edit")
 
     def _ensure_md_writable(self) -> None:
         self._ensure_writable()
 
     def _after_md_mutation(self, *, scroll_end: bool = False) -> None:
+        self._edit_dirty = True
         if scroll_end:
             edit = self._active_editor()
             if edit is self._md_preview:
@@ -420,26 +545,50 @@ class QuickNotepadPage(BasePage):
         self._md_preview_web = web
         return web
 
-    def _refresh_current_preview(self) -> None:
-        from modules.quick_notepad.mermaid_preview import (
-            build_mermaid_preview_html,
-            has_mermaid,
-            mermaid_js_path,
+    def _refresh_current_preview(self, *, force: bool = True) -> None:
+        ctrl = self._preview_controller
+        if ctrl is None:
+            return
+        ctrl.request_refresh(force=force)
+
+    def _remember_edit_anchor(self) -> None:
+        cur = self._md_source.textCursor()
+        self._edit_cursor_pos = int(cur.position())
+        bar = self._md_source.verticalScrollBar()
+        self._edit_scroll_value = int(bar.value()) if bar is not None else 0
+
+    def _restore_edit_anchor(self) -> None:
+        doc = self._md_source.document()
+        if doc is None:
+            return
+        pos = max(0, min(int(self._edit_cursor_pos), len(self._md_source.toPlainText())))
+        cur = self._md_source.textCursor()
+        cur.setPosition(pos)
+        self._md_source.setTextCursor(cur)
+        bar = self._md_source.verticalScrollBar()
+        if bar is not None:
+            bar.setValue(int(self._edit_scroll_value))
+        self._md_source.ensureCursorVisible()
+
+    def _scroll_preview_to_edit_line(self) -> None:
+        line = int(getattr(self, "_preview_line", 0) or 0)
+        target = self._preview_host.currentWidget() or self._md_preview
+        # WebEngine 粗略滚：按比例
+        if target is not self._md_preview and hasattr(target, "page"):
+            text = self._canonical_markdown() or ""
+            total = max(1, text.count("\n"))
+            ratio = min(1.0, max(0.0, line / total))
+            try:
+                target.page().runJavaScript(
+                    f"window.scrollTo(0, Math.max(0, "
+                    f"(document.body.scrollHeight - window.innerHeight) * {ratio:.4f}));"
+                )
+            except Exception:
+                pass
+            return
+        scroll_preview_to_source_line(
+            self._md_preview, line, self._md_source.toPlainText()
         )
-
-        md = self._md_source.toPlainText()
-        if has_mermaid(md) and mermaid_js_path().is_file():
-            web = self._ensure_preview_web()
-            if web is not None:
-                from PySide6.QtCore import QUrl
-
-                html = build_mermaid_preview_html(md)
-                base = QUrl.fromLocalFile(str(mermaid_js_path().parent.resolve()) + "/")
-                web.setHtml(html, base)
-                self._preview_host.setCurrentWidget(web)
-                return
-        refresh_editor_preview(source=self._md_source, preview=self._md_preview)
-        self._preview_host.setCurrentWidget(self._md_preview)
 
     def _load_mode_from_settings(self) -> None:
         st = load_settings()
@@ -448,6 +597,8 @@ class QuickNotepadPage(BasePage):
         font.setPointSize(11)
         for w in (self._md_source, self._md_preview):
             w.setFont(font)
+        if bool(st.get("guide_open")):
+            self._efficiency_guide.setVisible(True)
         self._apply_view_mode(self._view_mode)
 
     def _view_mode_index(self, mode: str) -> int:
@@ -462,10 +613,36 @@ class QuickNotepadPage(BasePage):
 
     def _set_view_mode(self, mode: str) -> None:
         mode = normalize_view_mode(mode)
-        if mode != self._view_mode:
+        prev = normalize_view_mode(self._view_mode)
+        if mode != prev:
+            if prev == "edit":
+                self._remember_edit_anchor()
+            self._canonical_markdown()
+            md = self._md_truth
+            if mode == "source":
+                self._loading_body = True
+                try:
+                    if self._md_raw.toPlainText() != md:
+                        self._md_raw.setPlainText(md)
+                finally:
+                    self._loading_body = False
+            elif mode == "edit":
+                self._loading_body = True
+                try:
+                    load_body_into(self._md_source, md)
+                    self._edit_dirty = False
+                finally:
+                    self._loading_body = False
+            anchor = self._md_raw if prev == "source" else self._md_source
+            block = anchor.textCursor().block()
+            self._preview_line = block.blockNumber() if block is not None else 0
             self._view_mode = mode
             save_settings({"view_mode": mode})
         self._apply_view_mode(mode)
+        if mode == "preview":
+            QTimer.singleShot(0, self._scroll_preview_to_edit_line)
+        elif mode == "edit" and prev != "edit":
+            QTimer.singleShot(0, self._restore_edit_anchor)
         self.schedule_primary_focus()
 
     def _apply_view_mode(self, mode: str) -> None:
@@ -475,9 +652,12 @@ class QuickNotepadPage(BasePage):
         self._view_tab_bar.setCurrentIndex(self._view_mode_index(mode))
         self._view_tab_bar.blockSignals(False)
         if mode == "preview":
-            self._refresh_current_preview()
+            self._refresh_current_preview(force=True)
             self._view_stack.setCurrentWidget(self._preview_host)
             self._body = self._preview_host.currentWidget() or self._md_preview
+        elif mode == "source":
+            self._view_stack.setCurrentWidget(self._md_raw)
+            self._body = self._md_raw
         else:
             self._view_stack.setCurrentWidget(self._md_source)
             self._body = self._md_source
@@ -486,22 +666,47 @@ class QuickNotepadPage(BasePage):
     def _on_md_source_changed(self) -> None:
         if self._loading_body:
             return
+        if normalize_view_mode(self._view_mode) == "source":
+            return
+        self._edit_dirty = True
         self._on_body_changed()
         if normalize_view_mode(self._view_mode) == "preview":
-            self._refresh_current_preview()
+            self._refresh_current_preview(force=False)
+
+    def _on_md_raw_changed(self) -> None:
+        if self._loading_body:
+            return
+        if normalize_view_mode(self._view_mode) != "source":
+            return
+        self._on_body_changed()
 
     def _load_note_body(self, body: str) -> None:
         self._loading_body = True
         try:
-            raw = sanitize_md_source(body or "")
-            self._md_source.blockSignals(True)
-            try:
-                self._md_source.setPlainText(raw)
-            finally:
-                self._md_source.blockSignals(False)
+            text = body or ""
+            self._md_truth = text
+            self._edit_dirty = False
+            load_body_into(self._md_source, text)
+            self._md_raw.setPlainText(text)
             self._apply_view_mode(self._view_mode)
         finally:
             self._loading_body = False
+
+    def _active_plain_text(self) -> str:
+        if normalize_view_mode(self._view_mode) == "source":
+            return self._md_raw.toPlainText()
+        return self._md_source.toPlainText()
+
+    def _toggle_efficiency_guide(self) -> None:
+        opening = not self._efficiency_guide.isVisible()
+        self._efficiency_guide.setVisible(opening)
+        self._guide_btn.setText("收起指南" if opening else "效率指南")
+        save_settings({"guide_open": opening})
+
+    def _hide_efficiency_guide(self) -> None:
+        self._efficiency_guide.setVisible(False)
+        self._guide_btn.setText("效率指南")
+        save_settings({"guide_open": False})
 
     def _open_note_record(self, n: dict) -> None:
         self._editor_fmt = "md"
@@ -512,9 +717,13 @@ class QuickNotepadPage(BasePage):
         mode = normalize_view_mode(self._view_mode)
         self._view_tabs_host.setVisible(True)
         writable = mode == "edit"
+        if hasattr(self, "_guide_btn"):
+            self._guide_btn.setText("收起指南" if self._efficiency_guide.isVisible() else "效率指南")
         self._fmt_toolbar_host.setVisible(writable)
         for btn in self._fmt_btns:
             btn.setVisible(writable)
+        for sep in getattr(self, "_fmt_seps", []):
+            sep.setVisible(writable)
         if hasattr(self, "_component_palette"):
             self._component_palette.setVisible(writable)
             if writable:
@@ -526,9 +735,6 @@ class QuickNotepadPage(BasePage):
                 sizes = self._compose_split.sizes()
                 if len(sizes) >= 2 and sizes[1] > 0:
                     self._compose_split.setSizes([sizes[0] + sizes[1], 0])
-
-    def _active_plain_text(self) -> str:
-        return self._md_source.toPlainText()
 
     def _on_body_changed(self) -> None:
         self._update_word_count()
@@ -574,6 +780,14 @@ class QuickNotepadPage(BasePage):
             ("Ctrl+[", self._on_outdent),
             ("Alt+Right", self._on_indent),
             ("Alt+Left", self._on_outdent),
+            ("Ctrl+F", self._open_find_replace),
+            ("Ctrl+\\", self._clear_format),
+            ("Ctrl+K", self._shortcut_link),
+            ("Ctrl+B", self._shortcut_bold),
+            ("Ctrl+I", self._shortcut_italic),
+            ("Ctrl+Shift+X", self._shortcut_strike),
+            ("Ctrl+E", self._shortcut_code),
+            ("Ctrl+Shift+H", self._shortcut_highlight),
         ):
             sc = QShortcut(QKeySequence(seq), win)
             sc.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -585,6 +799,50 @@ class QuickNotepadPage(BasePage):
         self._ensure_shortcuts()
         for sc in self._shortcuts:
             sc.setEnabled(on)
+
+    def _clear_format(self) -> None:
+        from modules.quick_notepad.edit_ops import clear_format
+
+        if normalize_view_mode(self._view_mode) == "preview":
+            return
+        clear_format(self)
+
+    def _open_find_replace(self) -> None:
+        from modules.quick_notepad.edit_ops import open_find_replace
+
+        open_find_replace(self)
+
+    def _shortcut_bold(self) -> None:
+        from modules.quick_notepad.edit_ops import toggle_inline
+
+        toggle_inline(self, "bold")
+
+    def _shortcut_italic(self) -> None:
+        from modules.quick_notepad.edit_ops import toggle_inline
+
+        toggle_inline(self, "italic")
+
+    def _shortcut_strike(self) -> None:
+        from modules.quick_notepad.edit_ops import toggle_inline
+
+        toggle_inline(self, "strike")
+
+    def _shortcut_code(self) -> None:
+        from modules.quick_notepad.edit_ops import toggle_inline
+
+        toggle_inline(self, "inline_code")
+
+    def _shortcut_highlight(self) -> None:
+        from modules.quick_notepad.edit_ops import toggle_inline
+
+        toggle_inline(self, "highlight")
+
+    def _shortcut_link(self) -> None:
+        from modules.quick_notepad.md_actions import fmt_link_md
+
+        if normalize_view_mode(self._view_mode) == "preview":
+            return
+        fmt_link_md(self)
 
     def _sibling_parent_id(self) -> str | None:
         item = self._tree.currentItem()
@@ -804,8 +1062,16 @@ class QuickNotepadPage(BasePage):
                         if bid:
                             self._on_palette_insert(bid)
                     return True
-        if et == QEvent.Type.KeyPress and obj is self._md_source:
+        if et == QEvent.Type.KeyPress and (
+            obj is self._md_source or obj is self._md_source.viewport()
+        ):
             assert isinstance(event, QKeyEvent)
+            if event.key() == Qt.Key.Key_Space and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+                from modules.quick_notepad.edit_ops import try_marker_shortcut
+
+                if try_marker_shortcut(self._md_source):
+                    self._after_md_mutation()
+                    return True
             if event.matches(QKeySequence.StandardKey.Paste):
                 cb = QGuiApplication.clipboard()
                 mime = cb.mimeData() if cb else None

@@ -27,7 +27,8 @@
 切换规则（与 `config/harness.yml` 一致）：
 
 - **现行默认 `surface_mode: embed`（2026-09-11b）**：启动后**套件内嵌**官方 Web；外开须用户自点「在浏览器打开」，**禁止自动弹浏览器**。  
-- **能力不及处明示**：侧栏预览等 Qt WebEngine 做不到完整 Chrome 时，提示「浏览器打开效果更佳」。  
+- **侧栏文件预览（2026-09-22）**：启动前须 `QWebEngineUrlScheme.registerScheme("dsh-resource")`（`Syntax.Host`），否则 JS `new URL('dsh-resource://file/…')` 的 hostname 为空 → 「文件资源服务不可用」。实现：`services/qt_webengine_bootstrap.register_dsh_resource_url_scheme`；门禁 `scripts/verify_dsh_resource_url_scheme.py`。  
+- **能力不及处明示**：其余 Qt WebEngine ≠ 完整 Chrome 的能力，仍提示「浏览器打开效果更佳」。  
 - **启停体验内外一致**：安装 / 启动 / 停止 不因表面分叉；浏览器只是同一 Sidecar 的可选完整 Guest 面。  
 - **禁止**默认自动外开逼用户跳窗；**禁止**第二套 Web 地址或 TOA 自研 Agent 页替代 `dsh web`。  
 - `engine_host_hub`：**Hold**（菜单隐藏）；勿再做成默认入口。

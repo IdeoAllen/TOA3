@@ -150,13 +150,14 @@ def read_installed_manifest(install_root: Path) -> dict[str, Any]:
 def runtime_update_available(
     install_root: Path | None = None,
 ) -> dict[str, Any] | None:
-    """本机 MANIFEST 与 harness.yml 钉扎不一致时返回更新信息。
+    """本机 MANIFEST / 内核与 harness.yml 钉扎不一致时返回更新信息。
 
-    判定：version 不同，或双方均有 sha256 且不同。
+    判定：bundle version 不同，或双方均有 sha256 且不同，或 dsh 内核偏离钉扎。
     仅比对本机与配置钉扎（与 SOP-04 §5「切配置」同节奏），**不**联网扫 CDN。
     无安装树 / 无钉扎 / 完全一致 → None。
     """
-    from services.harness_setup import default_install_root
+    from services.harness_setup import DSH_PINNED_VERSION, default_install_root
+    from services.harness_system_backup import read_installed_dsh_core_version
 
     root = Path(install_root) if install_root is not None else default_install_root()
     if not root.is_dir():
@@ -175,29 +176,47 @@ def runtime_update_available(
         return None
     version_diff = bool(installed and installed != available)
     sha_diff = bool(installed_sha and expect_sha and installed_sha != expect_sha)
+    core = read_installed_dsh_core_version(root)
+    # 代码钉扎优先：CDN 底座可暂慢一拍，内核落后即提示「更新环境」（走 npm 原地升核）
+    pinned_core = DSH_PINNED_VERSION
+    core_drift = bool(core and pinned_core and core != pinned_core)
     # 旧安装无 sha：只能靠 version；同号重建包须改 yml version 或写进 MANIFEST.sha256
-    if not version_diff and not sha_diff:
+    if not version_diff and not sha_diff and not core_drift:
         return None
-    if not installed and not sha_diff:
+    if not installed and not sha_diff and not core_drift:
         return None
     size = spec.get("size_hint_mb")
     try:
         size_mb = int(float(size)) if size is not None else 0
     except (TypeError, ValueError):
         size_mb = 0
+    # 仅内核落后且 CDN 同号：体积提示改为 npm 升核（远小于整包）
+    npm_core_only = bool(core_drift and not version_diff and not sha_diff)
+    if npm_core_only:
+        size_mb = 0
     display_available = available
-    if not version_diff and sha_diff:
+    if core_drift and not version_diff:
+        display_available = f"{pinned_core}（npm 升核，保留会话/插件）"
+    elif not version_diff and sha_diff:
         display_available = f"{available}（程序包更新）"
+    installed_display = installed or "(未知)"
+    if core_drift:
+        installed_display = f"{installed_display} · 内核 {core}"
     return {
         "flavor": flavor,
         "label": FLAVOR_LABELS.get(flavor, flavor),
-        "installed_version": installed or "(未知)",
+        "installed_version": installed_display,
         "available_version": display_available,
         "available_version_raw": available,
         "size_hint_mb": size_mb,
         "url": url,
         "sha_diff": sha_diff,
         "version_diff": version_diff,
+        "core_drift": core_drift,
+        "npm_core_only": npm_core_only,
+        "upgrade_via": "npm" if npm_core_only else "cdn",
+        "dsh_core": core,
+        "dsh_pinned": pinned_core,
     }
 
 
@@ -447,6 +466,18 @@ def install_prefab_bundle(
 
         prog(STAGE_LABELS[STAGE_CONFIGURE], 92, STAGE_CONFIGURE)
         root.mkdir(parents=True, exist_ok=True)
+
+        # 升级前快照用户插件（.dsh 会保留，但 sanitize/官方口味可能洗清单）
+        plugin_snap = None
+        existing_home = root / ".dsh"
+        if keep_user_data and existing_home.is_dir():
+            try:
+                from services.harness_plugins import capture_profile_plugins
+
+                plugin_snap = capture_profile_plugins(existing_home)
+            except Exception as exc:
+                logger.warning("capture plugins before install: %s", exc)
+
         _clear_install_tree(root, keep_dsh=keep_user_data)
 
         for child in payload.iterdir():
@@ -468,6 +499,15 @@ def install_prefab_bundle(
 
         # 官方：仅核心；预制：补必备并保留用户已装（升级禁洗空）
         _ensure_profile_flavor(home, f)
+        if plugin_snap:
+            try:
+                from services.harness_plugins import merge_profile_plugins
+
+                ok_m, msg_m = merge_profile_plugins(home, plugin_snap, flavor=f)
+                if not ok_m:
+                    logger.warning("merge plugins after flavor: %s", msg_m)
+            except Exception as exc:
+                logger.warning("merge plugins failed: %s", exc)
 
         plugins = _profile_extra_plugins(home) if f == FLAVOR_PREFAB else []
         write_manifest(
@@ -475,11 +515,13 @@ def install_prefab_bundle(
             flavor=f,
             version=str(spec.get("version") or ""),
             plugins=plugins,
-            extra={"sha256": digest},
+            extra={"sha256": digest, "plugin_snapshot_count": len((plugin_snap or {}).get("dependencies") or {})},
         )
 
         prog(STAGE_LABELS[STAGE_DONE], 100, STAGE_DONE)
-        return True, f"「{label}」已安装到本机，请保存 API Key 后启动服务"
+        n_ext = len((plugin_snap or {}).get("dependencies") or {})
+        extra = f"（已保留升级前 {n_ext} 个扩展依赖）" if n_ext else ""
+        return True, f"「{label}」已安装到本机{extra}，请保存 API Key 后启动服务"
     except InstallCancelled:
         return False, "已取消安装"
     except OSError as exc:

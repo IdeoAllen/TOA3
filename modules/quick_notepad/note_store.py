@@ -14,7 +14,7 @@ _STORE: list[dict[str, Any]] | None = None
 _SCHEMA_VERSION = 5
 # 产品一源 Markdown；bodies 仅遗留迁移
 _BODY_FMTS = ("txt", "md", "html")
-_VIEW_MODES = ("edit", "preview")
+_VIEW_MODES = ("edit", "source", "preview")
 
 
 def _path() -> Path:
@@ -560,11 +560,12 @@ def normalize_editor_mode(mode: str | None) -> str:
 
 
 def normalize_view_mode(view: str | None) -> str:
-    """两面：edit（编辑/源码）· preview。旧 design/code/source → edit。"""
+    """三面：edit 所见即所得 · source 源码 · preview 只读纸面。旧 design → edit。"""
     v = str(view or "").strip().lower()
     if v in ("preview", "web", "read"):
         return "preview"
-    # design / code / source / txt / encoding / edit → 编辑
+    if v in ("source", "code", "txt", "encoding", "raw"):
+        return "source"
     return "edit"
 
 
@@ -575,6 +576,7 @@ def load_settings() -> dict[str, Any]:
         "view_mode": "edit",
         "image_size": "md",
         "icon_size": "icon",
+        "guide_open": False,
     }
     if not path.is_file():
         return dict(defaults)
@@ -593,6 +595,7 @@ def load_settings() -> dict[str, Any]:
                     str(raw.get("icon_size") or defaults["icon_size"]),
                     fallback="icon",
                 ),
+                "guide_open": bool(raw.get("guide_open")),
             }
     except Exception:
         pass
@@ -611,6 +614,7 @@ def save_settings(settings: dict[str, Any]) -> None:
         str(settings.get("icon_size", cur.get("icon_size") or "icon")),
         fallback="icon",
     )
+    guide_open = settings.get("guide_open", cur.get("guide_open"))
     _settings_path().write_text(
         json.dumps(
             {
@@ -618,6 +622,7 @@ def save_settings(settings: dict[str, Any]) -> None:
                 "view_mode": view,
                 "image_size": image_size,
                 "icon_size": icon_size,
+                "guide_open": bool(guide_open),
             },
             ensure_ascii=False,
             indent=2,

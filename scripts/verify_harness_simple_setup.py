@@ -71,6 +71,12 @@ def main() -> int:
     assert "更新环境" in page_src or "title=\"更新环境\"" in page_src
     assert "show_upgraded_done" in page_src
     assert "DSH_NPM_PACKAGE" in (ROOT / "services" / "harness_setup.py").read_text(encoding="utf-8")
+    assert "upgrade_dsh_core_inplace" in (ROOT / "services" / "harness_setup.py").read_text(
+        encoding="utf-8"
+    )
+    assert "0.1.7-rc.2" in (ROOT / "services" / "harness_setup.py").read_text(encoding="utf-8")
+    assert "upgrade_via" in page_src
+    assert "npm_core_only" in (ROOT / "services" / "harness_prefab.py").read_text(encoding="utf-8")
 
     setup_src = (ROOT / "services" / "harness_setup.py").read_text(encoding="utf-8")
     assert "flavor" in setup_src
@@ -131,6 +137,79 @@ def main() -> int:
             "@deepseek-ai/dsh-base",
             "@deepseek-ai/dsh-web-app",
         ]
+
+    # 升级后合并快照：sanitize 误删后能补回
+    from services.harness_plugins import capture_profile_plugins, merge_profile_plugins
+
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td)
+        pkg = home / "profiles" / "web" / "package.json"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_text(
+            json.dumps(
+                {
+                    "name": "dsh-profile-web",
+                    "private": True,
+                    "dependencies": {
+                        "dsh-notifier": "0.9.5",
+                        "dsh-preview": "0.1.1",
+                    },
+                    "dsh": {
+                        "profile": {
+                            "bundles": [
+                                "@deepseek-ai/dsh-base",
+                                "@deepseek-ai/dsh-web-app",
+                                "dsh-notifier",
+                                "dsh-preview",
+                            ]
+                        }
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        snap = capture_profile_plugins(home)
+        assert "dsh-notifier" in snap["dependencies"]
+        # 模拟升级后被洗成仅核心
+        pkg.write_text(
+            json.dumps(
+                {
+                    "name": "dsh-profile-web",
+                    "private": True,
+                    "dependencies": {},
+                    "dsh": {
+                        "profile": {
+                            "bundles": [
+                                "@deepseek-ai/dsh-base",
+                                "@deepseek-ai/dsh-web-app",
+                            ]
+                        }
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        ok, msg = merge_profile_plugins(home, snap, flavor=FLAVOR_PREFAB)
+        assert ok, msg
+        data3 = json.loads(pkg.read_text(encoding="utf-8"))
+        assert "dsh-notifier" in data3["dependencies"]
+        assert "dsh-preview" in data3["dependencies"]
+        assert "dsh-notifier" in data3["dsh"]["profile"]["bundles"]
+        assert "dsh-preview" in data3["dsh"]["profile"]["bundles"]
+        # denylist 包不得被 merge 补回
+        # 夹具用 dsh-vision-router（仍在 denylist，理由=等 settingsScope 永不激活）。
+        # 2026-10-07：dshmarket / dsh-context 复测移出 denylist 后不再适合作夹具。
+        snap_bad = {
+            "bundles": ["dsh-vision-router"],
+            "dependencies": {"dsh-vision-router": "0.1.0"},
+        }
+        ok2, _ = merge_profile_plugins(home, snap_bad, flavor=FLAVOR_PREFAB)
+        assert ok2
+        data4 = json.loads(pkg.read_text(encoding="utf-8"))
+        assert "dsh-vision-router" not in data4["dependencies"]
+        assert "dsh-vision-router" not in data4["dsh"]["profile"]["bundles"]
 
     print("VERIFY harness_simple_setup OK")
     return 0

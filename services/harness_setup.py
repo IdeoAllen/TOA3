@@ -13,10 +13,11 @@ logger = logging.getLogger(__name__)
 # SetupGate 识别：缺 Node 时展示「去安装 Node.js」
 NEED_NODE_PREFIX = "NEED_NODE:"
 
-# npm 回落钉扎（与已知可用预制核一致；禁止长期漂 latest）
-DSH_NPM_PACKAGE = "@deepseek-ai/dsh@0.1.5-rc.1"
-# 内核 npm 版本；CDN zip 的 bundle_version 可带重建后缀（如 0.1.5-rc.1.1），二者勿混为同一字段
-DSH_PINNED_VERSION = "0.1.5-rc.1"
+# npm 内核钉扎（升级迭代改这里；禁止长期漂 latest）
+# CDN zip 的 bundle_version 可暂慢一拍（底座包）；已装用户靠 upgrade_dsh_core_inplace 升核并保留 .dsh
+DSH_NPM_PACKAGE = "@deepseek-ai/dsh@0.1.7-rc.2"
+# 内核 npm 版本；CDN zip 的 bundle_version 可带重建后缀（如 0.1.7-rc.2.1），二者勿混为同一字段
+DSH_PINNED_VERSION = "0.1.7-rc.2"
 
 
 def _workbuddy_roots() -> list[Path]:
@@ -88,7 +89,7 @@ def default_install_root() -> Path:
     return Path.home() / ".toa3" / "harness-runtime"
 
 
-def npm_install_dsh(node_exe: Path, install_root: Path, *, timeout: float = 300.0) -> tuple[bool, str]:
+def npm_install_dsh(node_exe: Path, install_root: Path, *, timeout: float = 900.0) -> tuple[bool, str]:
     install_root.mkdir(parents=True, exist_ok=True)
     npm = node_exe.parent / "npm.cmd"
     if not npm.is_file():
@@ -105,9 +106,32 @@ def npm_install_dsh(node_exe: Path, install_root: Path, *, timeout: float = 300.
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         if result.returncode != 0:
+            # 超时杀进程后偶发：包其实已装上（大树安装常 >10min）
+            dsh_ok = (install_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js").is_file()
+            if dsh_ok:
+                try:
+                    from services.harness_system_backup import read_installed_dsh_core_version
+
+                    if read_installed_dsh_core_version(install_root) == DSH_PINNED_VERSION:
+                        return True, str(
+                            install_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+                        )
+                except Exception:
+                    pass
             tail = (result.stderr or result.stdout or "").strip()[-400:]
             return False, f"安装失败：{tail or 'npm 退出非零'}"
     except subprocess.TimeoutExpired:
+        dsh = install_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+        if dsh.is_file():
+            try:
+                from services.harness_system_backup import read_installed_dsh_core_version
+
+                ver = read_installed_dsh_core_version(install_root)
+                if ver == DSH_PINNED_VERSION:
+                    return True, str(dsh)
+                return False, f"安装超时且内核为 {ver or '?'}，期望 {DSH_PINNED_VERSION}"
+            except Exception:
+                pass
         return False, "安装超时，请检查网络后重试。"
     except OSError as exc:
         return False, str(exc)
@@ -115,6 +139,119 @@ def npm_install_dsh(node_exe: Path, install_root: Path, *, timeout: float = 300.
     if not dsh.is_file():
         return False, "安装完成但未找到 dsh，请重试或手动检测路径。"
     return True, str(dsh)
+
+
+def upgrade_dsh_core_inplace(
+    *,
+    progress=None,
+    cancel=None,
+    flavor: str | None = None,
+    plugin_snapshot: dict | None = None,
+) -> tuple[bool, str]:
+    """原地升核到 ``DSH_PINNED_VERSION``：保留 ``.dsh`` 会话/Key/插件清单，合并并重装缺失包。
+
+    用于「更新环境」在 CDN zip 尚未跟上钉扎时的主路径；也用于 zip 解压后二次对齐内核。
+    ``plugin_snapshot`` 若由调用方在装前 capture，优先使用（避免 zip 洗包后快照为空）。
+    """
+    from services.harness_plugins import capture_profile_plugins
+    from services.harness_prefab import (
+        FLAVOR_PREFAB,
+        normalize_flavor,
+        portable_node_exe,
+        read_installed_manifest,
+        write_manifest,
+    )
+    from services.harness_system_backup import read_installed_dsh_core_version
+
+    def _prog(msg: str, pct: int = 0, stage: str = "upgrade") -> None:
+        if progress:
+            try:
+                progress(msg, int(pct), stage)
+            except TypeError:
+                progress(msg)
+
+    def _cancelled() -> bool:
+        return bool(cancel and cancel())
+
+    root = default_install_root()
+    home = root / ".dsh"
+    if not root.is_dir():
+        return False, "尚未安装 Harness 运行环境，请先走四步开用。"
+
+    manifest = read_installed_manifest(root) if root.is_dir() else {}
+    f = normalize_flavor(str(flavor or manifest.get("flavor") or FLAVOR_PREFAB))
+    before = read_installed_dsh_core_version(root)
+    if before == DSH_PINNED_VERSION:
+        return True, f"内核已是钉扎版本 {DSH_PINNED_VERSION}，无需升核"
+
+    _prog(f"准备升核 {before or '?'} → {DSH_PINNED_VERSION}…", 5)
+    if _cancelled():
+        return False, "已取消升级"
+
+    plugin_snap = plugin_snapshot
+    if plugin_snap is None:
+        plugin_snap = capture_profile_plugins(home) if home.is_dir() else None
+    _prog("已快照插件清单（升级后合并）", 8)
+
+    try:
+        from services import harness_sidecar
+
+        _prog("正在停止服务…", 10)
+        harness_sidecar.stop(force=True)
+    except Exception as exc:
+        logger.warning("stop before core upgrade: %s", exc)
+
+    if _cancelled():
+        return False, "已取消升级"
+
+    node_p = portable_node_exe(root)
+    if not node_p.is_file():
+        sys_node = find_system_node()
+        if sys_node is None or not sys_node.is_file():
+            return False, "未找到可用 Node（便携或本机），无法升核。"
+        node_p = sys_node
+
+    _prog(f"正在 npm 安装 {DSH_NPM_PACKAGE}（保留会话目录）…", 20)
+    ok_npm, npm_msg = npm_install_dsh(node_p, root, timeout=1200.0)
+    if not ok_npm:
+        return False, npm_msg
+    if _cancelled():
+        return False, "已取消升级"
+
+    dsh_p = root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+    after = read_installed_dsh_core_version(root)
+    if after != DSH_PINNED_VERSION:
+        return False, f"升核后内核为 {after or '?'}，期望 {DSH_PINNED_VERSION}"
+
+    # MANIFEST：程序包号可仍是 CDN 底座；内核钉扎写入 dsh_pinned
+    try:
+        write_manifest(
+            root,
+            flavor=f,
+            version=str(manifest.get("version") or DSH_PINNED_VERSION),
+            plugins=list(manifest.get("plugins") or []),
+            extra={
+                "dsh_pinned": DSH_PINNED_VERSION,
+                "core_upgrade": "npm",
+                "upgraded_from": before or "",
+            },
+        )
+    except Exception as exc:
+        logger.warning("write MANIFEST after core upgrade: %s", exc)
+
+    _prog("正在恢复插件与 Web 组件…", 70)
+    ok_fin, fin_msg = _finalize_runtime(
+        node_p,
+        dsh_p,
+        home,
+        ok_msg=f"内核已升级到 {DSH_PINNED_VERSION}",
+        plugin_snapshot=plugin_snap,
+        flavor=f,
+    )
+    if not ok_fin:
+        return False, fin_msg
+    _prog("升核完成", 100)
+    return True, fin_msg
 
 
 def init_dsh_home(path: Path) -> tuple[bool, str]:
@@ -145,23 +282,73 @@ def runtime_report(node: Path, dsh: Path, home: Path) -> dict[str, Any]:
     }
 
 
-def _finalize_runtime(node_p: Path, dsh_p: Path, home: Path, *, ok_msg: str) -> tuple[bool, str]:
+def _finalize_runtime(
+    node_p: Path,
+    dsh_p: Path,
+    home: Path,
+    *,
+    ok_msg: str,
+    plugin_snapshot: dict | None = None,
+    flavor: str = "prefab",
+) -> tuple[bool, str]:
     from services.harness_config import (
         PRODUCT_SURFACE_MODE,
         load_harness_config,
         save_harness_config,
     )
-    from services.harness_plugins import ensure_web_profile_bundles, sanitize_web_profile_package
+    from services.harness_plugins import (
+        ensure_plugins_after_install,
+        ensure_web_profile_bundles,
+        sanitize_web_profile_package,
+    )
 
     ok_home, _ = init_dsh_home(home)
     if not ok_home:
         return False, "无法创建 DSH 数据目录"
-    ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
-    if not ok_prof:
-        return False, f"Web 界面组件安装失败：{prof_msg}"
-    ok_san, san_msg = sanitize_web_profile_package(home, dsh=dsh_p)
-    if not ok_san:
-        return False, f"清理 profile 插件失败：{san_msg}"
+
+    try:
+        from services.harness_runtime_heal import ensure_runtime_boot_prereqs, node_has_zstd
+
+        # node 在 install_root/node/node.exe → parent.parent = install_root
+        root_guess = node_p.parent.parent
+        if not (root_guess / "node_modules").is_dir():
+            root_guess = default_install_root()
+        ok_rt, rt_msg = ensure_runtime_boot_prereqs(root_guess)
+        if not ok_rt:
+            return False, rt_msg or "运行时前置检查失败"
+        # heal 可能已把配置切到本机 Node；收尾写回时沿用
+        try:
+            healed = Path(str(load_harness_config(force=True).get("node_exe") or ""))
+            if healed.is_file() and node_has_zstd(healed):
+                node_p = healed
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.warning("finalize runtime heal skipped: %s", exc)
+        rt_msg = ""
+
+    plugin_note = ""
+    if plugin_snapshot:
+        ok_plug, plug_msg = ensure_plugins_after_install(
+            home,
+            plugin_snapshot,
+            flavor=flavor,
+            node=node_p,
+            dsh=dsh_p,
+        )
+        plugin_note = plug_msg
+        if not ok_plug:
+            return False, f"插件恢复失败：{plug_msg}"
+    else:
+        ok_prof, prof_msg = ensure_web_profile_bundles(node_p, dsh_p, home)
+        if not ok_prof:
+            return False, f"Web 界面组件安装失败：{prof_msg}"
+        ok_san, san_msg = sanitize_web_profile_package(home, dsh=dsh_p)
+        if not ok_san:
+            return False, f"清理 profile 插件失败：{san_msg}"
+        if san_msg and "移除" in san_msg:
+            plugin_note = san_msg
+
     save_harness_config(
         {
             "enabled": True,
@@ -180,6 +367,9 @@ def _finalize_runtime(node_p: Path, dsh_p: Path, home: Path, *, ok_msg: str) -> 
         ensure_official_default_model()
     except Exception:
         pass
+    extras = [x for x in (plugin_note, rt_msg) if x and "无插件" not in x and "跳过" not in x]
+    if extras:
+        return True, f"{ok_msg}；" + "；".join(extras)
     return True, ok_msg
 
 
@@ -206,6 +396,7 @@ def install_harness_runtime(
 
 def _install_flavor_inner(flavor: str, *, progress=None, cancel=None) -> tuple[bool, str]:
     from services.harness_config import align_harness_runtime_config
+    from services.harness_plugins import capture_profile_plugins
     from services.harness_prefab import (
         FLAVOR_LABELS,
         dsh_bin_under,
@@ -218,6 +409,8 @@ def _install_flavor_inner(flavor: str, *, progress=None, cancel=None) -> tuple[b
     f = normalize_flavor(flavor)
     label = FLAVOR_LABELS.get(f, f)
     root = default_install_root()
+    home_pre = root / ".dsh"
+    plugin_snap = capture_profile_plugins(home_pre) if home_pre.is_dir() else None
     ok, msg = install_prefab_bundle(
         f,
         install_root=root,
@@ -245,11 +438,34 @@ def _install_flavor_inner(flavor: str, *, progress=None, cancel=None) -> tuple[b
     home = root / ".dsh"
     if not node_p.is_file() or not dsh_p.is_file():
         return False, f"「{label}」解压后校验失败，请重试或改装另一版本。"
+
+    # CDN 底座可能慢于代码钉扎：解压后原地 npm 升核，会话/插件快照已在上方 capture
+    from services.harness_system_backup import read_installed_dsh_core_version
+
+    core_now = read_installed_dsh_core_version(root)
+    if core_now and core_now != DSH_PINNED_VERSION:
+        if progress:
+            try:
+                progress(f"预制包内核 {core_now}，对齐钉扎 {DSH_PINNED_VERSION}…", 88, "upgrade")
+            except TypeError:
+                progress(f"预制包内核 {core_now}，对齐钉扎 {DSH_PINNED_VERSION}…")
+        ok_up, up_msg = upgrade_dsh_core_inplace(
+            progress=progress,
+            cancel=cancel,
+            flavor=f,
+            plugin_snapshot=plugin_snap,
+        )
+        if not ok_up:
+            return False, f"{msg}；升核失败：{up_msg}"
+        return True, f"{msg}；{up_msg}"
+
     return _finalize_runtime(
         node_p,
         dsh_p,
         home,
         ok_msg=msg,
+        plugin_snapshot=plugin_snap,
+        flavor=f,
     )
 
 

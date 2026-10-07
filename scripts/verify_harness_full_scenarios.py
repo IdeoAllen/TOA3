@@ -105,9 +105,11 @@ def test_upgrade_shows_gate_and_forces_snapshot() -> None:
     assert "_upgrade_in_progress" in page
     assert "_force_good_snapshot" in page
     assert 'reason="upgrade"' in page or "reason='upgrade'" in page
-    assert "self._body_stack.setCurrentIndex(0)" in page
+    # 升级留在工作区（index 1）看 UpgradeStrip 进度，不切装门抢焦点
+    assert "self._body_stack.setCurrentIndex(1)" in page
     assert "self._upgrade_in_progress = True" in page
-    print("OK D3 更新环境可见装门进度 + 强制 last_good")
+    assert "upgrade_via" in page
+    print("OK D3 更新环境可见进度条 + 强制 last_good")
 
 
 def test_maintain_is_daily_surface() -> None:
@@ -117,7 +119,7 @@ def test_maintain_is_daily_surface() -> None:
     assert "_open_settings" in page and "_open_maintain" in page
     maintain = _read("modules/harness_agent/maintain_dialog.py")
     assert "修一下" in maintain
-    assert "回到上次能用的样子" in maintain
+    assert "回到上次能用的配置" in maintain or "回到上次能用的样子" in maintain
     assert "更新环境" in maintain
     print("OK D1 日常配置面=环境维护")
 
@@ -242,13 +244,15 @@ def test_runtime_update_nudge_contract() -> None:
         if pinned and pinned != "0.0.0-test":
             assert info is not None
             assert info["installed_version"] == "0.0.0-test"
-            assert info["available_version"] == pinned
+            assert info["available_version_raw"] == pinned
         (root / "MANIFEST.json").write_text(
             json.dumps({"flavor": "prefab", "version": pinned or "same"}, ensure_ascii=False),
             encoding="utf-8",
         )
         if pinned:
-            assert hp.runtime_update_available(root) is None
+            # 同号 CDN 底座且无本机内核树 → 无弱提示；内核落后由本机真实安装另测
+            again = hp.runtime_update_available(root)
+            assert again is None or again.get("npm_core_only") is True
     print("OK 升级弱提示契约（确认才下 + 今日不提醒 + 升级后启服）")
 
 
