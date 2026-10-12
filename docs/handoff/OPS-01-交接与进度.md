@@ -30,7 +30,7 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**发版进行中 v3.1.24（2026-10-12）**：商业发行收口包；`APP_VERSION=3.1.24`。上传+运营台预登记后 **主理人只点「设为当前」** → Agent `--from-live --require-match --commit`。  
+**发版待点按钮 v3.1.24（2026-10-12）**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.24.exe ；运营台已预登记（`is_current=false`，id=19）。git `cdf8c71`。**主理人只点「设为当前」** → Agent 再 `--from-live --require-match --commit`。  
 **商业发行整改（同日）**：CDN TLS 已恢复；`verify_license_gate` 进门禁；生产禁 DMS fallback；侧栏收口凑数 mvp/Wave F；SOP-08 Skill。近程产品闸仍是 **主理人点验 Wave★**（勿假清 gaps）。商用冒烟人工 1–5 仍须勾。  
 **Harness 启动（2026-09-28）**：用户 `harness.yml` 的 `dsh_bin` 指到 `dsh-guard.mjs` 后，3.1.23 按五级父目录把启动器写到 `C:\Users\toa_dsh_launch.mjs` → Errno 13。已改回正式 `bin.js`；源码改为包装脚本直接执行、启动器只落 `~/.toa3/harness-runtime`。主理人需完全退出运营宝再开。  
 **发版 v3.1.23**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe ；toa-service stable manifest 已回报 **3.1.23**（2026-10-12 探测）。若列表尚未「设为当前」→ 主理人点一次；已切版 → Agent `--from-live --require-match --commit`。  
