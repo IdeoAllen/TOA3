@@ -7,7 +7,9 @@ auth:
 license:
   service_url: https://toa-service.yczh.tech/api/toa-license
   activate_timeout_seconds: 15
-  dms_base_url: https://dms.yczh.tech
+  # 生产禁止回落 DMS；空 service_url 时直接失败，勿静默打到 dms.yczh.tech
+  allow_dms_fallback: false
+  dms_base_url: ""
   offline_grace_days: 2
   dev_grant_all: false
 edition:
@@ -18,6 +20,11 @@ update:
   timeout_seconds: 3
   manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
   download_page: https://www.yczh.tech/downloads/
+log_config:
+  enable_console_log: false
+  log_level: INFO
+  log_rotation: daily
+  max_log_files: "14"
 window:
   theme: dms_copper
   default_fullscreen: false

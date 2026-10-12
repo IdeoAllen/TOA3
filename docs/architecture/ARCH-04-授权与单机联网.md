@@ -233,11 +233,16 @@ WCS 退役后，DMS 仍 = 交付 + 企微触达等系统能力（归档说明见
 
 ---
 
-## 9. 主理人待确认（TOA 专属）
+## 9. 商业参数（2026-10-12 发行收口 · 默认已钉）
 
-1. `local_free` 模块清单  
-2. 试用天数 / 次数  
-3. License 服务挂 **独立子域** 还是 **Portal 后端**  
-4. 过渡期内是否保留 DMS 发码页给内部用  
+| 项 | 现行默认 | 真相源 |
+|----|----------|--------|
+| `local_free` 清单 | `home` / `system_settings` / `notifications` / `job_scheduler` / `quick_notepad` / `pomodoro` / `screenshot_tool` / `clipboard_history` / `quadrant_tasks` / `llm_assistant` / `harness_agent` | `config/feature_packs.yml` |
+| 单机体验天数 | **30** 天（`standalone_experience_days`） | `config/app.yml` |
+| 可售 SKU | 仅 **`tiyan`**（全功能；`validity_days: 365`） | `feature_packs.yml` |
+| License 服务 | **独立子域** `https://toa-service.yczh.tech` | `license.service_url` |
+| DMS fallback | **生产禁止**（`app.release.yml`：`allow_dms_fallback: false`，`dms_base_url: ""`） | release 覆盖 |
+| 内部发码页 | DMS `AdminToaLicense` **可保留作过渡工具**，非运行时依赖 | 运营约定 |
 
+主理人若要改天数/免费清单/SKU，只改上表真相源并过 `verify_license_gate`。  
 DMS 自身报价/计费属 DMS 产品侧；本文只约束 **TOA 授权与双产品无强绑定**。禁止再写「DMS 始终免费」。

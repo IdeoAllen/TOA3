@@ -45,3 +45,7 @@ DMS 下载说明只建 draft，人审后部署（≠ TOA 安装包上传）。
 4. 确认后：`python scripts/sync_harness_bundles.py --from-dist --version {ver} --apply --verify-cdn`（可选 `--commit`）
 
 禁止把 Harness zip 打进 Setup；禁止未确认就改 `config/harness.yml` / shipped。
+
+## 称可商用前
+
+设当前版 / 对外「可商用」须过 **A10.4**：走 Skill `toa3-sop-commercial-release`（SOP-08），勿只跑本 Skill 五步。

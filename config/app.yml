@@ -107,7 +107,8 @@ license:
   activate_timeout_seconds: 15
   # 目标：TOA 云服务（授权/试用/订单），与 DMS 无强绑定
   service_url: https://toa-service.yczh.tech/api/toa-license
-  # 过渡：未部署 TOA 云服务前 fallback；迁移完成后删除
+  # 开发可临时开 fallback；生产由 app.release.yml 强制 allow_dms_fallback: false
+  allow_dms_fallback: true
   dms_base_url: https://dms.yczh.tech
   offline_grace_days: 2
   # 登录「进入软件」离线基础版时长（天）；到期后提示升级 upgrade_target_label
@@ -263,7 +264,8 @@ menu:
     order: 50
     feature_id: llm_assistant
     requires_license: false
-    show: true
+    # 商业发行收口：非 §0.6 D 点验池；入口可经配置恢复
+    show: false
   - class_name: OpenPencilPage
     desc: 开源设计编辑器 · 检查安装、启动本地服、内嵌使用（与 Harness 同构）
     group: engines
@@ -341,7 +343,8 @@ menu:
     order: 30
     feature_id: batch_rename
     requires_license: true
-    show: true
+    # 商业发行：Wave F 未点验，暂隐避免演示翻车；点验后恢复
+    show: false
   - class_name: PdfToolkitPage
     desc: PDF 合并、拆分、按页提取（仅 PDF；多图合成请用文档合成器）
     group: files
@@ -352,7 +355,8 @@ menu:
     order: 40
     feature_id: pdf_toolkit
     requires_license: true
-    show: true
+    # 商业发行：Wave F 未点验，暂隐
+    show: false
   - class_name: FilePackagerPage
     desc: 选文件/文件夹预览后规范命名打包 zip（可剔空目录与后缀，可选清单）
     group: files
@@ -363,7 +367,8 @@ menu:
     order: 50
     feature_id: file_packager
     requires_license: true
-    show: true
+    # 商业发行：Wave F 未点验，暂隐
+    show: false
   - class_name: MigrationPlaceholderPage
     desc: Excel 空行/重复行清洗与格式规范化（本波不做，占位）
     group: files
@@ -594,7 +599,8 @@ menu:
     order: 10
     feature_id: schedule_reminder
     requires_license: true
-    show: true
+    # 商业发行收口：钉钉/邮件联动未齐，非近程点验池
+    show: false
   - class_name: ScheduleFormatConverterPage
     desc: 排程格式转换，简化导入与共享
     group: business

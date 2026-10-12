@@ -1417,8 +1417,8 @@ class ScreenshotOverlay(QWidget):
 
                     show_warning(self, "未识别到文字。请在系统设置中配置 OCR。")
                     return
-                from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
-                from modules.clipboard_history.history_store import push_text
+                from services.clipboard_history_store import push_text
+                from services.clipboard_watcher import get_clipboard_watcher
 
                 get_clipboard_watcher().suppress_once()
                 QGuiApplication.clipboard().setText(text)
@@ -1516,8 +1516,8 @@ class ScreenshotOverlay(QWidget):
             return
         path = _save_pixmap(pix)
         try:
-            from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
-            from modules.clipboard_history.history_store import push_image
+            from services.clipboard_history_store import push_image
+            from services.clipboard_watcher import get_clipboard_watcher
 
             # 抑制监听一轮，避免与显式入库重复
             get_clipboard_watcher().suppress_once()

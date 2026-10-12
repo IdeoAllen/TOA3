@@ -308,7 +308,7 @@ class JobScheduler(QObject):
 
     def _action_schedule_scan(self, params: dict) -> None:
         try:
-            from modules.schedule_reminder.reminder_service import scan_due_events
+            from services.schedule_reminder_scan import scan_due_events
 
             n = scan_due_events()
             from services.notify_bus import NotifyLevel, notify

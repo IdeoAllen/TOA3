@@ -42,6 +42,16 @@ def license_service_url() -> str:
     return license_api_base()
 
 
+def allow_dms_fallback() -> bool:
+    """是否允许空 service_url 时回落 DMS。生产 release 须为 false。"""
+    cfg = _cfg()
+    raw = cfg.get("allow_dms_fallback")
+    if raw is None:
+        # 未显式配置时：有 dms_base_url 则兼容旧行为（开发）；空则禁止
+        return bool(str(cfg.get("dms_base_url") or "").strip())
+    return bool(raw)
+
+
 def license_api_base() -> str:
     """授权 API 根路径，固定以 /api/toa-license 结尾（无尾斜杠）。"""
     cfg = _cfg()
@@ -50,6 +60,10 @@ def license_api_base() -> str:
         if "/api/toa-license" not in url:
             url = f"{url}/api/toa-license"
         return url
+    if not allow_dms_fallback():
+        raise RuntimeError(
+            "未配置 license.service_url，且生产已禁止 DMS fallback（allow_dms_fallback=false）"
+        )
     return f"{dms_base_url().rstrip('/')}/api/toa-license"
 
 

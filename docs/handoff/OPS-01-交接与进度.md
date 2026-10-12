@@ -19,7 +19,7 @@
 | 产品话术 | `docs/PROD-02-商务产品手册.md`；运行时 `config/product.yml` |
 | 工程标准 | `docs/规范/STD-01-工程标准与流程.md` |
 
-**Skill 全套**：`toa3-dev-suite`（入口）· `toa3-sop-new-feature` · `toa3-sop-theme-control` · `toa3-sop-module-accept` · `toa3-sop-quality-pipeline` · `toa3-sop-packaging` · `toa3-sop-debug-crash` · `toa3-sop-user-extension` · `toa3-sop-docs-handoff`
+**Skill 全套**：`toa3-dev-suite`（入口）· `toa3-sop-new-feature` · `toa3-sop-theme-control` · `toa3-sop-module-accept` · `toa3-sop-quality-pipeline` · `toa3-sop-packaging` · `toa3-sop-commercial-release`（SOP-08 商业发行验收）· `toa3-sop-debug-crash` · `toa3-sop-user-extension` · `toa3-sop-docs-handoff`
 
 ```powershell
 python scripts/verify_all.py
@@ -30,9 +30,11 @@ python -m app.main
 
 ## 1. 一句话现状
 
+**发版进行中 v3.1.24（2026-10-12）**：商业发行收口包；`APP_VERSION=3.1.24`。上传+运营台预登记后 **主理人只点「设为当前」** → Agent `--from-live --require-match --commit`。  
+**商业发行整改（同日）**：CDN TLS 已恢复；`verify_license_gate` 进门禁；生产禁 DMS fallback；侧栏收口凑数 mvp/Wave F；SOP-08 Skill。近程产品闸仍是 **主理人点验 Wave★**（勿假清 gaps）。商用冒烟人工 1–5 仍须勾。  
 **Harness 启动（2026-09-28）**：用户 `harness.yml` 的 `dsh_bin` 指到 `dsh-guard.mjs` 后，3.1.23 按五级父目录把启动器写到 `C:\Users\toa_dsh_launch.mjs` → Errno 13。已改回正式 `bin.js`；源码改为包装脚本直接执行、启动器只落 `~/.toa3/harness-runtime`。主理人需完全退出运营宝再开。  
-**发版待点按钮 v3.1.23（2026-09-28）**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe ；运营台已预登记（说明齐、`is_current=false`）。**主理人只点「设为当前」** → Agent 再 `--from-live --require-match --commit`。分工已写入 SOP-04 / toa3-sop-packaging。  
-**v3.1.22** 上一版：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.22.exe 。  
+**发版 v3.1.23**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe ；toa-service stable manifest 已回报 **3.1.23**（2026-10-12 探测）。若列表尚未「设为当前」→ 主理人点一次；已切版 → Agent `--from-live --require-match --commit`。  
+**v3.1.24** 上一版：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.22.exe 。  
 **发版提交口径**：上传脚本自动 commit 多数跳过；**设当前版后 Agent 必须再跑** `--from-live --require-match --commit` 并回报 hash。  
 **全局介入档案**：`ARCH-11` + `global_shell_features` + `verify_global_shell`；Mac 仅口径。  
 **v3.1.17** 热键/预览；**v3.1.16** Harness CDN；**v3.1.14** 图片预览。
@@ -143,7 +145,7 @@ python -m app.main
 **Harness profile 插件清单恢复（同日）**：`~/.toa3/harness-runtime/.dsh/profiles/web/package.json` 曾被历次 `*-before-repair-*` 修复削到只剩 3 个 `@dachengge` link，而 `pnpm-lock.yaml` 完整保留 11 项声明。按 lock 补回 8 项（skill-explorer / archify / config-manager / ffmpeg / notifier / ppt-master / preview / skillhub）+ dshmarket / dsh-context，`pnpm install --prefer-offline` 复用本地 store（reused 133 / downloaded 0）。现 13 bundle 全绿。备份 `profiles/_backup_before_plugin_restore_20261007/`。
 **video-checker 追平 link/file 依赖判定（同日）**：该仓库 9/16 由 TOA3 脚手架分叉，`harness_plugins.py` 停在该日版本，缺 `_dep_keepable` / `_link_dep_target`，且无 `harness_dsh_launch.py`（故不能整文件覆盖）。已精确移植两函数 + `sanitize_web_profile_package` 两处判定（link 目标存在即保留，未进 bundles 时补回），`py_compile` 通过。该分叉与本机 profile 同一 `dsh_home`，属实际风险面。备份 `services/_backup_harness_plugins_20261007.py`。
 **门禁夹具同步（同日）**：`verify_harness_simple_setup.py` L201-210 原以 `dshmarket` 作 denylist 夹具，移出后断言必崩（已复现 AssertionError）。改用仍在 denylist 的 `dsh-vision-router`，断言语义不变；`verify_all` 该项恢复绿。
-**遗留 · CDN 证书过期（同日，非本次改动）**：`www.yczh.tech` TLS 证书已过期，`verify_version_align.py` / `verify_harness_cdn.py` 报 `CERTIFICATE_VERIFY_FAILED`。影响 CDN 门禁与「更新环境」下载校验，**需续签证书**。
+**CDN 证书（2026-10-12）**：`www.yczh.tech` TLS 已恢复（HTTPS 200）；原「证书过期挡 verify」遗留关闭。
 
 ---
 
@@ -163,8 +165,10 @@ python -m app.main
 - [x] **未完成清单核实**（manifest×菜单×关键路径；番茄钟已隐藏）  
 - [x] **侧栏收掉非点验 mvp；点验池推上 TOA**（§0.6 D）  
 - [x] **四象限 · 状态看板**（待办/进行中/已完成）  
-- [ ] **主理人点验池**（唯一近程产品闸）：Wave★ + Wave F + 换装/招聘/看板 + 邮箱/翻译/OCR/记事本  
-- [ ] **运营台设当前版 v3.1.18** 后对齐 commit  
+- [x] **商业发行 P0 工程收口**（2026-10-12）：release 日志/授权护栏/侧栏/诚实说明/`verify_license_gate`  
+- [ ] **主理人点验池**（唯一近程产品闸）：Wave★ + 换装/招聘/看板 + 邮箱/翻译/OCR/记事本（Wave F 侧栏暂隐至点验）  
+- [ ] **SOP-04 商用冒烟人工 1–5**（自动项见 `commercial_smoke_checklist.py`）  
+- [ ] **确认运营台 3.1.23 已设当前** 后 Agent `--from-live --require-match --commit`  
 
 机读任务：同目录 `collab_tasks.json`。
 
@@ -178,6 +182,9 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 
 | 项 | 说明 |
 |----|------|
+| 更新 | 2026-10-12 · 商业发行验收整改 + **SOP-08 Skill** |
+| 改了哪些 | 同上波整改；新增 `docs/规范/SOP-08-商业发行验收.md` · Skill `toa3-sop-commercial-release`；挂入 00清单 / toa3-dev-suite / STD-01 / SOP-04·07 / OPS |
+| 待主理人 | Wave★ 点验清 gaps；商用冒烟人工项；确认设当前版后吩咐 sync commit |
 | 更新 | 2026-10-07 · Harness denylist 复测移出 + profile 插件清单恢复 |
 | 改了哪些 | `services/harness_plugins.py`（denylist 减 2 键）；`profiles/web/package.json`（+10 插件）；`scripts/verify_harness_simple_setup.py`（denylist 夹具 dshmarket→dsh-vision-router） |
 | 核实结果 | 15 bundle 全绿；`--dump-config` exit=0 无 `did not activate`；`verify_all` 仅剩 2 项环境失败（CDN 证书过期） |

@@ -11,6 +11,7 @@ from core.base_page import BasePage
 from core.exceptions import IntegrationError
 from core.status_service import StatusLevel
 from core.user_messages import show_info, show_warning
+from services.ocr_result_stash import peek_last_result, stash_last_result
 from widgets import (
     FormSection,
     HintLabel,
@@ -28,13 +29,9 @@ class OcrToolPage(BasePage):
     page_id = "ocr_tool"
     page_title = "图片转文字"
 
-    _last_text: str = ""
-    _last_path: str = ""
-
     @classmethod
     def stash_last_result(cls, text: str, *, path: str = "") -> None:
-        cls._last_text = text or ""
-        cls._last_path = path or ""
+        stash_last_result(text, path=path)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -127,10 +124,11 @@ class OcrToolPage(BasePage):
         scroll.add_widget(out)
         scroll.add_stretch(1)
 
-        if OcrToolPage._last_text:
-            self._text.setPlainText(OcrToolPage._last_text)
-        if OcrToolPage._last_path:
-            self._show_thumb(OcrToolPage._last_path)
+        last_text, last_path = peek_last_result()
+        if last_text:
+            self._text.setPlainText(last_text)
+        if last_path:
+            self._show_thumb(last_path)
 
     def _show_thumb(self, path: str) -> None:
         from PySide6.QtCore import Qt
@@ -163,11 +161,12 @@ class OcrToolPage(BasePage):
         from services.screenshot_service import run_screenshot_ocr
 
         text = run_screenshot_ocr(self, full=full)
-        if text is None and not OcrToolPage._last_path:
+        last_text, last_path = peek_last_result()
+        if text is None and not last_path:
             return
-        self._text.setPlainText(OcrToolPage._last_text or (text or ""))
-        if OcrToolPage._last_path:
-            self._show_thumb(OcrToolPage._last_path)
+        self._text.setPlainText(last_text or (text or ""))
+        if last_path:
+            self._show_thumb(last_path)
         if text:
             self.report_status(f"已识别并复制 {len(text)} 字", level=StatusLevel.SUCCESS)
 
@@ -306,8 +305,9 @@ class OcrToolPage(BasePage):
 
     def on_enter(self) -> None:
         # 进页只恢复上次结果，禁止同步长联网 / 语言包探测拖死 UI
-        if OcrToolPage._last_text and not self._text.toPlainText().strip():
-            self._text.setPlainText(OcrToolPage._last_text)
-        if OcrToolPage._last_path:
-            self._show_thumb(OcrToolPage._last_path)
+        last_text, last_path = peek_last_result()
+        if last_text and not self._text.toPlainText().strip():
+            self._text.setPlainText(last_text)
+        if last_path:
+            self._show_thumb(last_path)
         self.report_status("图片转文字 · Alt+O 框选直出")

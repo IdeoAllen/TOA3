@@ -339,6 +339,7 @@ SOP：`docs/规范/SOP-06-用户扩展开发.md` · Skill：`toa3-sop-user-exten
 | 写码过门 / Top3 | A10.2 | **B1 · B10.1** · SOP-01 |
 | 测试验收 | A10.1 | B5 · SOP-03 |
 | 打包 | A8 · **A10.4 商用交付** | B6 · SOP-04 |
+| 商业发行验收 | **A10.4** | SOP-08 · `toa3-sop-commercial-release` |
 | 授权/SKU | A9 | ARCH-04 |
 | 闪退排查 | A4.6 | SOP-05 |
 | 用户扩展 | — | B8 · SOP-06 |

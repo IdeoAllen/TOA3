@@ -18,7 +18,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from services.config_service import get_path_config, load_config, resolve_path
 
-# 拆开存放的 pepper 片段（避免明文一整段密钥）
+# 拆开存放的 pepper 片段（避免明文一整段密钥）。
+# 商用：云账本 activate/check 为权威；本机 HMAC 仅验码形。
+# 运维可设环境变量 TOA_LICENSE_ISSUER_SECRET（UTF-8）覆盖内置 pepper（发码端与校验端须一致）。
 _P1 = bytes([0x59, 0x43, 0x5A, 0x48, 0x2D, 0x54, 0x4F, 0x41])  # YCZH-TOA
 _P2 = b"YunYingBao"
 _P3 = bytes.fromhex("a7c3e91f4b6280d5e2f7a04c91b6d83e")
@@ -72,6 +74,9 @@ def _b64d(text: str) -> bytes:
 
 
 def _issuer_secret() -> bytes:
+    env = (os.environ.get("TOA_LICENSE_ISSUER_SECRET") or "").strip()
+    if env:
+        return hashlib.sha256(env.encode("utf-8")).digest()
     material = _P1 + b"|" + _P2 + b"|" + _P3 + b"|" + _P4 + b"|v2"
     return hashlib.sha256(material).digest()
 
@@ -945,7 +950,7 @@ class LicenseManager:
             self.save_license()
 
     def activate_with_code(self, license_key: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-        """验码并激活本机。联网模式下必须先通过 DMS，再写本地。"""
+        """验码并激活本机。联网模式下必须先通过 TOA License 云服务，再写本地。"""
         ok, msg, payload = self.verify_license_code(license_key)
         if not ok or not payload:
             return False, msg, None
@@ -961,7 +966,7 @@ class LicenseManager:
         now_s = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         code_id = str(payload.get("_code_id") or self._code_id(license_key))
 
-        # 1) 先联网：DMS 为权威源；失败则本机保持未激活
+        # 1) 先联网：TOA License 云服务为权威源；失败则本机保持未激活
         net_payload: Optional[Dict[str, Any]] = None
         try:
             from services.dms_license_client import (

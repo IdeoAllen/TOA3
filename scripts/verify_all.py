@@ -47,6 +47,7 @@ def main() -> int:
         "verify_shell_hardening.py",
         "verify_global_shell.py",
         "verify_version_align.py",
+        "verify_license_gate.py",
         "verify_screenshot_pin.py",
         "verify_screenshot_tool_gaps.py",
         "verify_watermark_ai.py",

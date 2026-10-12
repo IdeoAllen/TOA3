@@ -213,12 +213,13 @@
 
 ### D · 侧栏可见策略（2026-09-14 · 主理人「收掉未完成 / 推点验」）
 
-- **开**：`done` 模块 + 近程点验池（Wave★ 侧栏项 · Wave F · 培训串链/换装/招聘 · `email_client` · `quadrant_tasks` · **`column_preview` 桌面浏览**）  
+- **开**：`done` 模块 + 近程点验池（Wave★ 侧栏项 · 培训串链/换装/招聘 · `email_client` · `quadrant_tasks` · **`column_preview` 桌面浏览**）  
 - **开（引擎顶栏）**：`harness_agent` · `open_pencil` · `drawio_web`（及图片组 `media_studio`）；**勿**整组 `show:false` 导致顶栏「引擎」消失  
-- **隐**：其余凑数 `mvp`（网页工作台、图转/扫描、扩展/调度/通知、通用生成轻量等）及全部 Hold/stub  
+- **隐**：其余凑数 `mvp`（网页工作台、图转/扫描、通知、通用生成轻量、`llm_assistant`、`schedule_reminder` 等）及全部 Hold/stub  
+- **商业发行暂隐（2026-10-12）**：Wave F（`pdf_toolkit` / `file_packager` / `batch_rename`）未点验前侧栏隐藏，点验后恢复  
 - **仍隐（裁定）**：`engine_host_hub` · `comfyui_web` · `pomodoro` 等 Hold  
 - **仍无侧栏**：`ocr_tool` / `screenshot_translate`（挂截图工具栏点验）  
-- **主理人纠偏（同日）**：收口时误隐「桌面浏览」→ 已恢复 `show:true`（点验池）  
+- **主理人纠偏**：扩展/调度曾收口后按需恢复 `show:true`；桌面浏览保持点验池可见  
 
 ---
 

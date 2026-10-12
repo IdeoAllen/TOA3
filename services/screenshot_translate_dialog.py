@@ -246,8 +246,8 @@ class TranslateResultDialog(BaseDialog):
 
     def _push_clipboard(self, text: str) -> None:
         try:
-            from modules.clipboard_history.clipboard_watcher import get_clipboard_watcher
-            from modules.clipboard_history.history_store import push_text
+            from services.clipboard_history_store import push_text
+            from services.clipboard_watcher import get_clipboard_watcher
 
             get_clipboard_watcher().suppress_once()
             push_text(text, source="ocr")

@@ -16,7 +16,6 @@ MODULES = ROOT / "modules"
 # 相对 modules/ 的路径 → 债务说明（还债波次见 architecture/14）
 STYLE_DEBT_ALLOWLIST: dict[str, str] = {
     "screenshot_tool/screenshot_tool_page.py": "控件库例外：截图历史缩略预览",
-    "watermark_remover/watermark_remover_page.py": "债务：Wave★-5 收敛硬编码深色底",
     "image_creator/image_creator_page.py": "债务：Hold/非八件套；色板预览边框",
 }
 

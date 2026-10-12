@@ -431,9 +431,9 @@ def run_screenshot_ocr(parent=None, *, full: bool = False) -> str | None:
             pass
         # 把结果挂到 OCR 页（若已打开/稍后进入）
         try:
-            from modules.ocr_tool.ocr_tool_page import OcrToolPage
+            from services.ocr_result_stash import stash_last_result
 
-            OcrToolPage.stash_last_result(text, path=str(path))
+            stash_last_result(text, path=str(path))
         except Exception:
             logger.debug("stash ocr result failed", exc_info=True)
         if not text:
