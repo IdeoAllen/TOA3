@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""导出 TOA3 菜单目录 → toa-cloud/config/menu_catalog.yml（运营台 SKU 校验用）。"""
+"""导出 TOA3 菜单目录 → cloud/config/menu_catalog.yml（运营台 SKU 校验用）。"""
 from __future__ import annotations
 
 import sys
@@ -92,11 +92,11 @@ def build_catalog() -> dict:
 
 def main() -> int:
     catalog = build_catalog()
-    out_path = ROOT.parent / "toa-cloud" / "config" / "menu_catalog.yml"
+    out_path = ROOT / "cloud" / "config" / "menu_catalog.yml"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     header = (
         "# TOA3 菜单目录（由 scripts/export_menu_catalog.py 生成，勿手改）\n"
-        "# 同步：toa-cloud/scripts/sync_toa3_product_catalog.ps1\n"
+        "# 同步：cloud/scripts/sync_toa3_product_catalog.ps1\n"
     )
     out_path.write_text(header + yaml.safe_dump(catalog, allow_unicode=True, sort_keys=False), encoding="utf-8")
     print(f"exported {len(catalog['modules'])} modules -> {out_path}")

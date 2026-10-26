@@ -33,6 +33,8 @@ python -m app.main
 | A0.7 | **意见入库**：主理人对规范/流程的反馈，必须在当次或紧随会话写入 STD/SOP/ARCH/PROD 对应文件并更新 OPS-01 一句；禁止「知道了」却不改规范。 |
 | A0.8 | **并行直开（主理人 2026-09-14 再裁）**：**去掉开工障碍门禁**（不再要求 Top3/`approved`/专家组过门/WIP 上限才写码）。有需求即可分头并行开发。仍须守分层与 A1–A6 工程事实；**禁止**把未过 A10.4 的包称为可商用当前版。 |
 | A0.9 | **统筹角色**：主会话负责进度（OPS-01）、合入冲突、发版（SOP-04 / A10.4）、壳/授权等全局；分轨尽量只改本模块。目标：快交付 + 对外版仍可商用。 |
+| A0.11 | **一个项目一个仓库（主理人 2026-10-26）**：TOA3 仓库统管本产品全部子项目——桌面客户端（仓库根 `app/` `services/` `modules/` `packaging/` …）+ 云服务 `cloud/`（`backend/` 后端 · `admin/` 运营台 · `download/` 下载页 · `deploy/` 部署）。不得再在仓库外另立 `toa-cloud` 等平行目录；云侧规范/发版流程只认 `docs/规范/`，`cloud/` 内不另写流程文档。运行数据（`cloud/data/`、`.env`、`*.db`）不入库、不随部署包上传。 |
+| A0.12 | **下载地址唯一**：下载页 + 安装包 + Harness 包统一 `https://toa-service.yczh.tech/download/`（真相源 `cloud/backend/config.py`；细则 SOP-04 §2 下载地址约定）。 |
 | A0.10 | **研究非门禁**：`docs/research/*-top3.md` 与专家组评审改为 **鼓励、可后补**；不挡开轨写码。 |
 
 ## A1. 分层与依赖
@@ -263,20 +265,20 @@ modules/*  →  widgets/* + ui/*.ui  →  app/shell · theme_loader · core/* ·
 
 ## B6. 打包发版
 
-说「发版」= 五步（细则 SOP-04 / `toa-cloud/docs/版本发布SOP.md`）：
+说「发版」= 五步（细则 SOP-04）：
 
 发版说明与版本对齐清单见 **SOP-04 §2.1–2.2**（`release_notes` / 运营台粘贴模板；未切版禁止 `--from-live` 回旧号）。  
 全局介入配置点：`ARCH-11` · `scripts/verify_global_shell.py`。
 
 1. 确认 `APP_VERSION`；shipped_config 干净；`verify_all`（或 mvp + 护栏）  
 2. `python packaging/build_windows.py --clean --msi` + `release_config_guard`  
-3. **Agent 上传**：`../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`（禁止只交本地 dist；安装包落 `toa-service.yczh.tech/downloads/`，见 SOP-04 直链约定）  
+3. **Agent 上传**：`cloud/deploy/upload_installer.ps1 -ReleaseVersion x.y.z`（禁止只交本地 dist；下载页与安装包统一 `toa-service.yczh.tech/download/`，见 SOP-04 下载地址约定）  
 4. **主理人**运营台：试链 → 设为当前版（更新说明必填）  
 5. **Agent 立刻** `python scripts/sync_release_version.py --from-live --require-match --commit` 并回报 hash（上传脚本自动 commit 多数会跳过，不算完成）  
 
 若涉及 DMS 仅更新下载说明：只建 draft，**人审后**再部署（见工作区 `dms-release-deploy.mdc`）；**≠** TOA 安装包 Portal 上传。
 
-**Harness 双包 CDN**（与 Setup 分离 · SOP-04 §5）：构包 → `sync_portal_harness.ps1` 上传 → **主理人确认切配置** → `sync_harness_bundles.py --apply --verify-cdn`。禁止把 `harness-*.zip` 打进 Setup。
+**Harness 双包 CDN**（与 Setup 分离 · SOP-04 §5）：构包 → `upload_harness.ps1` 上传 → **主理人确认切配置** → `sync_harness_bundles.py --apply --verify-cdn`。禁止把 `harness-*.zip` 打进 Setup。
 
 细则：`docs/规范/SOP-04-打包发版.md`
 

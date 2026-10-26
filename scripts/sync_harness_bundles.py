@@ -5,10 +5,10 @@
 真相源：
   - 构包产物：`packaging/dist/harness/harness-bundles-<ver>.json` + zip/.sha256
   - 客户端钉扎：`config/harness.yml` + `packaging/shipped_config/harness.yml`（须一致）
-  - CDN：`https://www.yczh.tech/downloads/harness-{official,prefab}-<ver>.zip`
+  - CDN：`https://toa-service.yczh.tech/download/harness-{official,prefab}-<ver>.zip`
 
 两段式（SOP-04 §5）：
-  ① 上传：`../toa-cloud/deploy/sync_portal_harness.ps1 -BundleVersion <ver>`
+  ① 上传：`cloud/deploy/upload_harness.ps1 -BundleVersion <ver>`
   ② 主理人确认「切配置」后：本脚本 `--apply --verify-cdn`
 
 用法::
@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-CDN_BASE = "https://www.yczh.tech/downloads"
+CDN_BASE = "https://toa-service.yczh.tech/download"
 DIST_DIR = ROOT / "packaging" / "dist" / "harness"
 PRODUCT_YML = ROOT / "config" / "harness.yml"
 SHIPPED_YML = ROOT / "packaging" / "shipped_config" / "harness.yml"

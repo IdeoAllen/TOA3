@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f2744" />
+  <title>TOA 运营台 · 登录</title>
+  <link rel="icon" type="image/svg+xml" href="https://www.yczh.tech/brand/products/mark-toa.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="login-page">
+  <div class="login-page__atmosphere" aria-hidden="true"></div>
+  <div class="login-card">
+    <div class="login-brand">
+      <img class="login-brand__mark" src="https://www.yczh.tech/brand/products/mark-toa.svg" alt="TOA" width="40" height="40" />
+      <div class="login-brand__copy">
+        <strong>TOA 运营台</strong>
+        <span>Training Operations Assistant</span>
+      </div>
+    </div>
+    <h1>授权与版本服务</h1>
+    <p class="subtitle">授权发卡 · 产品方案 · 订单履约 · 桌面发版</p>
+    <p class="login-version" id="svc-version">TOA Cloud · 加载中…</p>
+    <label>用户名<input id="username" autocomplete="username" placeholder="admin" autofocus /></label>
+    <label>密码<input id="password" type="password" autocomplete="current-password" /></label>
+    <button id="btn-login" type="button" class="primary">登录运营台</button>
+    <p id="login-error" class="error" hidden></p>
+    <nav class="product-links" aria-label="相关入口">
+      <span class="product-links__label">相关入口</span>
+      <a href="/download/">TOA3 下载</a>
+      <a href="https://dms.yczh.tech/#/login">DMS 登录</a>
+      <a href="https://www.yczh.tech/">平台首页</a>
+    </nav>
+  </div>
+  <script>
+    const api = location.origin;
+    const tokenKey = 'toa_cloud_token';
+    if (localStorage.getItem(tokenKey)) location.href = 'app.html';
+    fetch(api + '/api/health')
+      .then((r) => r.json())
+      .then((d) => {
+        const el = document.getElementById('svc-version');
+        if (el) el.textContent = `TOA Cloud · ${d.service || 'ok'} · ${location.host}`;
+      })
+      .catch(() => {
+        const el = document.getElementById('svc-version');
+        if (el) el.textContent = `TOA Cloud · ${location.host}`;
+      });
+    document.getElementById('btn-login').onclick = async () => {
+      const err = document.getElementById('login-error');
+      err.hidden = true;
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true;
+      btn.textContent = '登录中…';
+      try {
+        const res = await fetch(api + '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || '登录失败');
+        localStorage.setItem(tokenKey, data.token);
+        localStorage.setItem('toa_cloud_perms', JSON.stringify(data.permissions || {}));
+        location.href = 'app.html';
+      } catch (e) {
+        err.textContent = e.message || '登录失败';
+        err.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '登录运营台';
+      }
+    };
+    document.getElementById('password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-login').click();
+    });
+    document.getElementById('username').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('password').focus();
+      }
+    });
+    window.addEventListener('load', () => {
+      document.getElementById('username')?.focus();
+    });
+  </script>
+</body>
+</html>

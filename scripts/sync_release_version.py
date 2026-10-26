@@ -40,8 +40,8 @@ MANIFEST_URL = (
     "https://toa-service.yczh.tech/api/toa/releases/manifest"
     "?product=TOA3&channel=stable&format=json"
 )
-DOWNLOAD_PAGE = "https://www.yczh.tech/downloads/"
-INSTALLER_BASE = "https://toa-service.yczh.tech/downloads/"
+DOWNLOAD_PAGE = "https://toa-service.yczh.tech/download/"
+INSTALLER_BASE = DOWNLOAD_PAGE
 
 # 发版提交默认纳入的路径（相对仓库根；不含日志/产物）
 # 含版本钉扎 + 本波常进包的壳/热键/Harness；其它业务仍靠日常提交，勿只靠本名单。

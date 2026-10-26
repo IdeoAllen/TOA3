@@ -55,7 +55,7 @@ def find_upgrade_script() -> Path | None:
 
 def it_upgrade_clipboard_text(result: UpdateCheckResult) -> str:
     ver = result.latest_version or ""
-    page = result.download_page or "https://www.yczh.tech/downloads/"
+    page = result.download_page or "https://toa-service.yczh.tech/download/"
     exe = result.download_url or ""
     script = find_upgrade_script()
     lines = [

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f2744" />
+  <title>TOA 运营台</title>
+  <link rel="icon" type="image/svg+xml" href="https://www.yczh.tech/brand/products/mark-toa.svg" />
+  <link rel="stylesheet" href="style.css?v=20260902-menu" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="https://www.yczh.tech/brand/products/mark-toa.svg" alt="TOA" width="32" height="32" />
+        <div>
+          <strong>TOA 运营台</strong>
+          <small>授权 · 插件 · 发版</small>
+        </div>
+      </div>
+      <nav class="sidebar-nav" aria-label="主导航">
+        <button type="button" class="nav-item active" data-tab="dashboard"><span class="nav-icon">◉</span>概览</button>
+        <button type="button" class="nav-item" data-tab="license"><span class="nav-icon">◆</span>授权管理</button>
+        <button type="button" class="nav-item" data-tab="customers"><span class="nav-icon">◎</span>用户管理</button>
+        <button type="button" class="nav-item" data-tab="plugins"><span class="nav-icon">◇</span>办公插件</button>
+        <button type="button" class="nav-item" data-tab="traffic"><span class="nav-icon">⇄</span>上下载记录</button>
+        <button type="button" class="nav-item" data-tab="packs"><span class="nav-icon">▣</span>产品方案</button>
+        <button type="button" class="nav-item" data-tab="menu"><span class="nav-icon">☰</span>菜单信息</button>
+        <button type="button" class="nav-item" data-tab="orders"><span class="nav-icon">▤</span>订单管理</button>
+        <button type="button" class="nav-item" data-tab="release"><span class="nav-icon">↑</span>版本发布</button>
+      </nav>
+      <div class="sidebar-footer">
+        <p class="muted">toa-service.yczh.tech</p>
+        <button type="button" id="btn-logout" class="link">退出登录</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <header class="main-header">
+        <div>
+          <h1 class="page-title" id="page-title">运营概览</h1>
+          <p class="page-subtitle" id="page-subtitle">授权台账、订单履约与桌面发版一站式管理</p>
+        </div>
+      </header>
+
+      <div class="main-content">
+        <section id="panel-dashboard" class="panel">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">有效授权</div>
+              <div class="stat-value" id="stat-licenses">—</div>
+              <div class="stat-hint">状态为 active 的账号</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">待处理订单</div>
+              <div class="stat-value" id="stat-pending-orders">—</div>
+              <div class="stat-hint">待确认收款的订单</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">当前版本</div>
+              <div class="stat-value" id="stat-current-version">—</div>
+              <div class="stat-hint">TOA3 stable 渠道</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">可售产品方案</div>
+              <div class="stat-value" id="stat-sellable-packs">—</div>
+              <div class="stat-hint">与 TOA3 feature_packs 同源</div>
+            </div>
+          </div>
+          <p class="notice">停用/解绑请在运营宝终端「授权管理」操作后同步；运营台负责发卡、订单履约与版本发布。</p>
+        </section>
+
+        <section id="panel-license" class="panel" hidden>
+          <p class="notice">体验授权：授权管理直接签发（内测/体验）。正式版：订单管理履约。固定管理员自动登记、不可清除；勿用管理员手机号下测试订单（可同号并存但易混淆）。</p>
+          <div class="toolbar">
+            <input id="lic-q" placeholder="搜索姓名或手机号" />
+            <button type="button" id="lic-reload">刷新</button>
+            <button type="button" id="lic-create" class="primary">新增授权</button>
+            <button type="button" id="lic-clear" class="danger">清除其他账号</button>
+          </div>
+          <div id="lic-list" class="data-table-wrap"></div>
+        </section>
+
+        <section id="panel-packs" class="panel" hidden>
+          <div class="release-sop">
+            <div class="release-sop__head">
+              <h4>SKU 与终端菜单对齐</h4>
+              <span class="muted">产品真相在 TOA3 仓库；此处只读 + 校验 module_id</span>
+            </div>
+            <p class="muted" style="margin:0;font-size:0.86rem;">
+              基础版 <code>local_free</code> 为单机免费层。收费包通过订单履约签发授权码。
+              模块 ID 来自 <code>app.yml</code>，由 <code>sync_toa3_product_catalog.ps1</code> 同步至云。
+            </p>
+          </div>
+          <div id="pack-catalog-meta" class="release-current-card"></div>
+          <div class="toolbar toolbar--packs">
+            <div class="toolbar__actions">
+              <button type="button" id="pack-reload">刷新目录</button>
+              <button type="button" id="pack-create" class="primary">新建产品方案</button>
+            </div>
+            <div class="toolbar__filters">
+              <label class="toolbar-toggle" for="pack-show-cleared">
+                <input type="checkbox" id="pack-show-cleared" />
+                <span>显示已清除</span>
+              </label>
+            </div>
+          </div>
+          <p id="pack-list-summary" class="pack-list-summary muted"></p>
+          <div id="pack-list" class="data-table-wrap"></div>
+        </section>
+
+        <section id="panel-menu" class="panel" hidden>
+          <p class="notice">与终端「设置 · 菜单」结构一致：按子模块分组展示功能模块。目录由终端管理员同步；此处只读查询。</p>
+          <div id="menu-catalog-meta" class="release-current-card"></div>
+          <div class="toolbar">
+            <input id="menu-q" placeholder="搜索名称 / 模块 ID / 分组" />
+            <label class="toolbar-toggle" for="menu-show-hidden">
+              <input type="checkbox" id="menu-show-hidden" />
+              <span>显示隐藏项</span>
+            </label>
+            <select id="menu-tier-filter" aria-label="基础/付费筛选">
+              <option value="all">全部层级</option>
+              <option value="base">仅基础</option>
+              <option value="paid">仅付费</option>
+            </select>
+            <button type="button" id="menu-reload">刷新</button>
+          </div>
+          <p id="menu-list-summary" class="pack-list-summary muted"></p>
+          <div class="menu-info-layout">
+            <div id="menu-tree" class="menu-info-tree" role="tree"></div>
+            <aside id="menu-detail" class="menu-info-detail">
+              <p class="muted">选择左侧模块查看详情</p>
+            </aside>
+          </div>
+        </section>
+
+        <section id="panel-pack-edit" class="panel pack-edit-page" hidden>
+          <div class="inner-page-head">
+            <button type="button" id="pack-edit-back" class="btn-chip">← 返回产品方案列表</button>
+            <div class="inner-page-head__text">
+              <h2 class="inner-page-title" id="pack-edit-title">编辑产品方案</h2>
+              <p class="muted inner-page-lead">配置功能选配、有效期与定价；保存后用于订单履约（一订单一授权码）。</p>
+            </div>
+          </div>
+          <form id="form-pack-edit" class="pack-edit-form">
+            <div class="pack-edit-grid">
+              <div class="pack-edit-card">
+                <h3 class="pack-edit-card__title">基本信息</h3>
+                <div class="form-grid-2">
+                  <label>方案 ID
+                    <input name="id" id="pack-edit-id" required pattern="^[a-z][a-z0-9_]{1,48}$" autocomplete="off" placeholder="如 starter" />
+                  </label>
+                  <label>名称<input name="name" id="pack-edit-name" required placeholder="对外展示名" /></label>
+                </div>
+                <div class="form-grid-2">
+                  <label>定价（元）
+                    <input name="price_yuan" id="pack-edit-price" type="number" min="0" step="1" required />
+                  </label>
+                  <label>有效期（天）
+                    <input name="validity_days" id="pack-edit-validity" type="number" min="1" step="1" required value="365" />
+                  </label>
+                </div>
+                <label class="label-checkbox"><span>售卖</span>
+                  <span class="checkbox-row"><input type="checkbox" name="sellable" id="pack-edit-sellable" checked /> 可售（0 元可用于体验方案）</span>
+                </label>
+                <label>说明<textarea name="desc" id="pack-edit-desc" rows="3" placeholder="方案说明，终端与运营台均可见"></textarea></label>
+              </div>
+              <div class="pack-edit-card pack-edit-card--modules">
+                <h3 class="pack-edit-card__title">包含终端 module</h3>
+                <p class="muted pack-edit-card__hint">与 TOA3 菜单 <code>requires_license:false</code> 对齐：<strong>基础功能</strong>已自动勾选且不可取消；请勾选本方案额外开放的<strong>付费模块</strong>。</p>
+                <div id="pack-module-picker" class="module-picker module-picker--page"></div>
+              </div>
+            </div>
+            <div class="inner-page-actions">
+              <button type="button" id="pack-edit-disable" hidden>停用售卖</button>
+              <button type="button" id="pack-edit-enable" hidden>恢复售卖</button>
+              <button type="button" id="pack-edit-clear" class="danger" hidden>清除方案</button>
+              <span class="inner-page-actions__spacer"></span>
+              <button type="button" id="pack-edit-cancel">取消</button>
+              <button type="submit" class="primary">保存产品方案</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="panel-orders" class="panel" hidden>
+          <p class="notice" id="order-notice">创建订单 → 确认收款并签发授权码。真实支付接入后由 webhook 自动履约；当前阶段可在运营台手动确认。</p>
+          <div class="toolbar">
+            <select id="ord-status">
+              <option value="">全部状态</option>
+              <option value="pending">待付款</option>
+              <option value="fulfilled">已履约</option>
+              <option value="cancelled">已取消</option>
+            </select>
+            <button type="button" id="ord-reload">刷新</button>
+            <button type="button" id="ord-create" class="primary">新建订单</button>
+          </div>
+          <div id="ord-list" class="data-table-wrap"></div>
+        </section>
+
+        <section id="panel-release" class="panel" hidden>
+          <div class="release-sop">
+            <div class="release-sop__head">
+              <h4>发版单点维护</h4>
+              <span class="muted">manifest 仅在此登记；部署脚本不再自动改版本</span>
+            </div>
+            <ol class="release-sop__steps">
+              <li><strong>上传安装包</strong> → <code>/download/</code>（服务器 <code>/opt/toa-cloud/download/</code>，脚本 <code>cloud/deploy/upload_installer.ps1</code>），文件名 <code>TOA3-Setup-v{版本号}.exe</code></li>
+              <li><strong>试链</strong> → 确认直链可下载（本页「发布新版本」内可试链）</li>
+              <li><strong>运营台发布</strong> → 填写版本号与更新说明，勾选「设为当前版」</li>
+              <li><strong>验收</strong> → 桌面「关于 → 检查更新」或下方 manifest 预览</li>
+            </ol>
+          </div>
+          <div id="rel-current-card" class="release-current-card">
+            <div class="release-current-card__main">
+              <span class="release-current-card__label">当前 stable manifest</span>
+              <strong id="rel-current-version">加载中…</strong>
+              <p id="rel-current-url" class="muted"></p>
+            </div>
+            <div class="release-current-card__actions">
+              <button type="button" id="rel-copy-manifest" class="btn-chip">复制 manifest JSON</button>
+              <a class="text-link" id="rel-manifest-link" href="#" target="_blank" rel="noopener">manifest 预览（格式化）</a>
+              <a class="text-link" href="/download/" target="_blank" rel="noopener">打开下载页</a>
+            </div>
+          </div>
+          <div class="toolbar">
+            <button type="button" id="rel-reload">刷新</button>
+            <button type="button" id="rel-create" class="primary">发布新版本</button>
+          </div>
+          <div id="rel-list" class="data-table-wrap"></div>
+        </section>
+
+        <section id="panel-customers" class="panel" hidden>
+          <p class="notice">用户主数据：由<strong>授权台账</strong>与<strong>订单履约</strong>自动登记（手机号对齐）。停用仅影响社区插件上传/下载，不影响桌面授权。</p>
+          <div class="toolbar">
+            <input id="cust-q" placeholder="搜索姓名或手机号" />
+            <select id="cust-enabled">
+              <option value="">全部状态</option>
+              <option value="1">仅启用</option>
+              <option value="0">仅停用</option>
+            </select>
+            <button type="button" id="cust-reload">刷新</button>
+          </div>
+          <div id="cust-list" class="data-table-wrap"></div>
+        </section>
+
+        <section id="panel-plugins" class="panel" hidden>
+          <p class="notice">办公插件无偿流通：审核通过后上架公示；可下架或紧急停用。人审操作，禁止自动通过。</p>
+          <div class="toolbar">
+            <input id="plug-q" placeholder="搜索名称 / plugin_id / 作者" />
+            <select id="plug-status">
+              <option value="">全部审态</option>
+              <option value="submitted">待审</option>
+              <option value="approved">已通过</option>
+              <option value="rejected">已驳回</option>
+              <option value="delisted">已下架</option>
+            </select>
+            <button type="button" id="plug-reload">刷新</button>
+          </div>
+          <div id="plug-list" class="data-table-wrap"></div>
+        </section>
+
+        <section id="panel-traffic" class="panel" hidden>
+          <p class="notice">上传 / 下载流水（不计费）。可按类型筛选；异常可回账号或插件页处置。</p>
+          <div class="toolbar">
+            <select id="traf-kind">
+              <option value="">全部事件</option>
+              <option value="upload">上传</option>
+              <option value="download">下载</option>
+            </select>
+            <input id="traf-plugin" placeholder="plugin_id（可选）" />
+            <input id="traf-customer" placeholder="customer_id（可选）" type="number" />
+            <button type="button" id="traf-reload">刷新</button>
+          </div>
+          <div id="traf-list" class="data-table-wrap"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-root" aria-live="polite"></div>
+
+  <dialog id="dlg-lic-create">
+    <form method="dialog">
+      <h3>新增授权账号</h3>
+      <label>授权类型
+        <select name="entitlement" id="lic-entitlement">
+          <option value="trial" selected>体验版（授权管理 · 有期限）</option>
+          <option value="paid">付费补发（无订单记账 · 慎用）</option>
+        </select>
+      </label>
+      <label>姓名<input name="name" required placeholder="勿用「管理员」" /></label>
+      <label>手机<input name="phone" required maxlength="11" placeholder="11 位手机号" /></label>
+      <label>产品方案
+        <select name="pack_id" id="lic-pack-select">
+          <option value="">体验全开 (all)</option>
+        </select>
+      </label>
+      <label>有效天数
+        <select name="days">
+          <option value="30">30 天</option>
+          <option value="90">90 天</option>
+          <option value="180">180 天</option>
+          <option value="365" selected>365 天</option>
+          <option value="730">730 天</option>
+        </select>
+      </label>
+      <p class="muted">签发后请立刻复制授权码交给用户。</p>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" formnovalidate>取消</button>
+        <button type="submit" value="ok" class="primary">签发授权码</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-lic-key">
+    <form method="dialog">
+      <h3>TOA 授权码</h3>
+      <pre id="lic-key-text"></pre>
+      <div class="dialog-actions">
+        <button type="button" id="lic-copy">复制</button>
+        <button type="submit" value="ok" class="primary">关闭</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-ord-create">
+    <form method="dialog">
+      <h3>新建订单</h3>
+      <label>产品方案<select name="pack_id" id="ord-pack-select" required></select></label>
+      <label>客户姓名<input name="customer_name" required /></label>
+      <label>手机<input name="phone" required maxlength="11" placeholder="11 位手机号" /></label>
+      <label>参考价（元）<input name="amount_yuan" type="number" min="0" step="1" placeholder="留空使用目录价" /></label>
+      <label>授权天数<input name="license_days" type="number" min="1" value="365" /></label>
+      <label>备注<input name="remark" placeholder="可选" /></label>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" formnovalidate>取消</button>
+        <button type="submit" value="ok" class="primary">创建待付款订单</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-rel-create" class="dialog-release">
+    <form method="dialog" id="form-rel-create">
+      <h3>发布新版本</h3>
+      <p class="dialog-lead" id="rel-create-hint">当前 stable：<strong id="rel-current-label">—</strong></p>
+      <input type="hidden" name="product" value="TOA3" />
+      <div class="form-grid-2">
+        <label>渠道
+          <select name="channel" id="rel-channel">
+            <option value="stable" selected>stable · 正式通道</option>
+            <option value="beta">beta · 内测通道</option>
+          </select>
+        </label>
+        <label>版本号
+          <input name="version" id="rel-version" required placeholder="如 3.1.1" pattern="^\d+\.\d+\.\d+$" autocomplete="off" />
+        </label>
+      </div>
+      <div class="version-bump-row" id="rel-bump-row">
+        <span class="muted">基于当前版递增：</span>
+        <button type="button" class="btn-chip" data-bump="patch">补丁 +0.0.1</button>
+        <button type="button" class="btn-chip" data-bump="minor">次版本 +0.1.0</button>
+        <button type="button" class="btn-chip" data-bump="major">主版本 +1.0.0</button>
+      </div>
+      <label>安装包直链
+        <div class="input-with-action">
+          <input name="download_url" id="rel-download-url" placeholder="https://toa-service.yczh.tech/download/TOA3-Setup-v3.1.1.exe" />
+          <button type="button" class="btn-inline" id="rel-url-test" title="服务端 HEAD 校验安装包直链">试链</button>
+        </div>
+        <span class="field-hint">文件名约定 <code>TOA3-Setup-v{版本号}.exe</code>；发布前请确认 <code>/download/</code> 已上传同名安装包。</span>
+      </label>
+      <label>下载页
+        <input name="download_page" id="rel-download-page" value="https://toa-service.yczh.tech/download/" />
+      </label>
+      <div class="form-grid-2">
+        <label>最低可升级版本
+          <input name="min_version" id="rel-min-version" placeholder="可选，如 3.0.0" />
+        </label>
+        <label class="label-checkbox"><span>发布选项</span>
+          <span class="checkbox-row"><input type="checkbox" name="is_current" id="rel-is-current" checked /> 设为该渠道当前版本</span>
+        </label>
+      </div>
+      <label>更新说明 <span class="muted">（设为当前版时必填 · 桌面「检查更新」可见）</span>
+        <textarea name="release_notes" id="rel-notes" rows="5" required placeholder="本次升级要点，例如：热键修复；拖入开桌面可关；…"></textarea>
+      </label>
+      <p class="field-hint dialog-preview" id="rel-manifest-preview"></p>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" formnovalidate>取消</button>
+        <button type="submit" value="ok" class="primary" id="rel-submit">发布</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-rel-edit" class="dialog-release">
+    <form method="dialog" id="form-rel-edit">
+      <header class="dialog-head">
+        <h3>编辑发布说明</h3>
+        <p class="muted" id="rel-edit-version-label">v—</p>
+      </header>
+      <input type="hidden" id="rel-edit-id" value="" />
+      <label>安装包直链
+        <div class="input-with-action">
+          <input id="rel-edit-download-url" placeholder="https://toa-service.yczh.tech/download/TOA3-Setup-v….exe" />
+          <button type="button" class="btn-inline" id="rel-edit-url-test" title="服务端 HEAD 校验">试链</button>
+        </div>
+      </label>
+      <label>最低可升级版本
+        <input id="rel-edit-min-version" placeholder="可选，如 3.0.0" />
+      </label>
+      <label>更新说明
+        <textarea id="rel-edit-notes" rows="6" placeholder="桌面检查更新与 Portal 展示…"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" formnovalidate>取消</button>
+        <button type="submit" value="ok" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js?v=20260902-ia"></script>
+</body>
+</html>

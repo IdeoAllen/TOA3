@@ -241,7 +241,7 @@ TOA Setup 发版 **≠** 强制换 Harness 程序树。切 `harness.yml` CDN 钉
 
 | 项 | 现状 | 整改门槛 |
 |----|------|----------|
-| CDN URL | **已填** `yczh.tech/downloads/harness-*-0.1.5-rc.1.zip` | `verify_harness_cdn` HEAD 可达；sha256 与 shipped 对齐 |
+| CDN URL | **已填** `toa-service.yczh.tech/download/harness-*-0.1.5-rc.1.1.zip` | `verify_harness_cdn` HEAD 可达；sha256 与 shipped 对齐 |
 | 必备插件白名单 | `[]`（主理人 2026-09-11：**先用现有能力**，不扩包） | 预制 zip ≈ 官方同核；日后加插件须 denylist 联审再建包 |
 | 诊断包 | **已落地**「环境维护 → 导出诊断包」 | 脱敏 zip；不落 Key / credentials |
 | 体积预期 | CDN zip ≈ **456 MB**；本机解压后约 **0.8 GB**（含 `.dsh` 会话会再涨） | 装门文案要说清「等一会儿」；禁静默大包 |
@@ -281,7 +281,7 @@ TOA Setup 发版 **≠** 强制换 Harness 程序树。切 `harness.yml` CDN 钉
 
 ```text
 ① 上传（Agent）：
-     powershell -File ../toa-cloud/deploy/sync_portal_harness.ps1 -BundleVersion <ver>
+     powershell -File cloud/deploy/upload_harness.ps1 -BundleVersion <ver>
    → official + prefab 两 zip（及 .sha256 / meta）进 /opt/yczh-portal/downloads/
 ② HEAD 直链（脚本内已做）≈ size_hint
 ③ 【人工闸门】主理人确认「切配置」——未确认禁止改 yml

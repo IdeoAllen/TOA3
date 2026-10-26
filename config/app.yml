@@ -119,7 +119,7 @@ update:
   timeout_seconds: 3
   check_on_startup: true
   manifest_url: https://toa-service.yczh.tech/api/toa/releases/manifest?product=TOA3&channel=stable
-  download_page: https://www.yczh.tech/downloads/
+  download_page: https://toa-service.yczh.tech/download/
 log_config:
   enable_console_log: true
   log_format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

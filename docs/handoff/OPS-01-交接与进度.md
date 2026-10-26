@@ -58,7 +58,7 @@ python -m app.main
 **Harness 小白原则（同日）**：主理人裁定——用户不懂技术，复杂配置是摆设；日常只走引擎页四步，系统设置 Harness 标「高级排障 · 日常勿改」（ARCH-05 §4.2）。  
 **Harness 整改波次（2026-09-11）**：G0 live 启停修通过（无 WorkBuddy）；钉扎 `dsh@0.1.5-rc.1`；便携 Node；双包已上 `yczh.tech/downloads/harness-*-0.1.5-rc.1.zip`（nginx 已放行）；更多→升级运行时；设置页默认内嵌；ARCH-10 执行中，待干净机点验。  
 **预制版构包（2026-09-11）**：已从本机 runtime 打出分离 CDN 双包至 `packaging/dist/harness/`（各 ~459MB）；**未**打进 TOA Setup（gitignore + release_config_guard）。  
-**Harness CDN 发版自动化（同日）**：对标 Setup 两段式——`sync_portal_harness.ps1` 上传 → **主理人确认切配置** → `sync_harness_bundles.py --apply --verify-cdn`（SOP-04 §5）。当前新包待步 2 上传。  
+**Harness CDN 发版自动化（同日）**：对标 Setup 两段式——`upload_harness.ps1` 上传 → **主理人确认切配置** → `sync_harness_bundles.py --apply --verify-cdn`（SOP-04 §5）。当前新包待步 2 上传。  
 **Harness 已装升级（同日）**：进页提示（更新 / 不更新 / 今日不提醒）→ 确认后更新 → **页示已升级完成并提示启动服务**；禁静默下大包。基础版白名单已含 `harness_agent`。  
 **Harness cost-manager（同日晚）**：本地 link `@dachengge/dsh-cost-manager` 因 tool 无 output schema 启动注册失败拖死；已入 `_BOOT_KILLER_PLUGINS` 剔除并重启 `3082`（日志仅剩 skill-catalog）。  
 **W1 screenshot_tool（2026-09-14）**：钉图 HiDPI 逻辑尺寸+锚点夹紧；loupe 逻辑取样/框选免全图 compose；热键 `QTimer.singleShot` 延后抓屏；`verify_screenshot_tool_gaps.py` 绿。主理人点验 gaps 仍留。  
@@ -182,9 +182,10 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 
 | 项 | 说明 |
 |----|------|
-| 更新 | 2026-10-26 · **主理人裁定：发版安装包改传 `toa-service.yczh.tech/downloads/`** |
-| 改了哪些 | 线上 nginx `toa-service.conf` 加 `/downloads/`（alias `/opt/toa-cloud/downloads/`，目录首页 302 官网下载页；备份在 `/root/toa-service.conf.bak.downloads-*`）；3.1.24 已硬链接过去试链 200；`sync_portal_installer.ps1`（exe 改传新目录 + HEAD 校验）· `prepare_ops_release.py` · 运营台 `admin/app.js|html`（已上线）· `scripts/sync_release_version.py` 默认直链；SOP-04 直链约定 · STD-01 B6 · packaging Skill 回写 |
-| 不变 | `download_page` 仍官网 `www…/downloads/`；≤3.1.24 已登记直链不回改；Harness CDN 仍走 www |
+| 更新 | 2026-10-26 · **主理人裁定：① 下载页/安装包/Harness 统一 `toa-service.yczh.tech/download/` ② toa-cloud 并入 TOA3 `cloud/` 同仓管理**（STD-01 A0.11/A0.12 · SOP-04 §2） |
+| 改了哪些 | `../toa-cloud` → `TOA3/cloud/`（上层仓库撤暂存；`cloud/.gitignore` 排 data/.env/db）；`cloud/download/index.html` 自带下载页；`config.py` 单一地址源 + `GET /api/toa/releases/download-config`；脚本改名 `upload_installer.ps1` / `upload_harness.ps1`；`deploy.ps1` 部署包整体排除 `data/`；删平行文档 `cloud/docs/版本发布SOP.md`；客户端 `app*.yml` · `harness.yml`（含 shipped）· 更新对话框 · `sync_release_version.py` 改新地址 |
+| 线上 | nginx `/download/`（`/downloads/` 301 过来；www `/downloads/` 经两跳到达）；`/opt/toa-cloud/download/` 硬链接 3.1.16–3.1.24 + Harness 双包；`.env` `TOA_CLOUD_DOWNLOAD_PAGE` 改新址；后端/运营台已重启上线；当前版 3.1.24（id=19）直链与下载页 PATCH 到新址（未动当前版）；备份 `/root/toa-cloud-bak-download-20261026143235/` |
+| 待主理人 | 官网 `wcs-www.conf` 中 harness 正则与 `/downloads/` 301 属官网线，可择机直指 `/download/` 省一跳 |
 | 更新 | 2026-10-12 · 商业发行验收整改 + **SOP-08 Skill** |
 | 改了哪些 | 同上波整改；新增 `docs/规范/SOP-08-商业发行验收.md` · Skill `toa3-sop-commercial-release`；挂入 00清单 / toa3-dev-suite / STD-01 / SOP-04·07 / OPS |
 | 待主理人 | Wave★ 点验清 gaps；商用冒烟人工项；确认设当前版后吩咐 sync commit |

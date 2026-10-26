@@ -2,11 +2,11 @@
 
 > **编号**：SOP-04 · **Skill**：`toa3-sop-packaging`  
 > **依据**：STD-01 · A8 · **A10.4（商用可交付）** · B6 · **B9（统筹发版）**  
-> **云侧细则**：`toa-cloud/docs/版本发布SOP.md`（五步真相源）
+> **云侧**：TOA3 子项目 `cloud/`（后端 + 运营台 + 下载页 + 部署脚本，见 `cloud/README.md`）；发版流程只认本 SOP
 
 ## 1. 目的
 
-产出可安装的 Windows 包并上到 Portal；不含本机密钥与用户数据。  
+产出可安装的 Windows 包并上传到 `toa-service.yczh.tech/download/`；不含本机密钥与用户数据。  
 **对外称可商用 / 设为当前版前**：必须满足 STD-01 **A10.4**（含商用冒烟）与 **A9.4**（升显权）。并行分轨合入后由 **统筹** 跑门禁再发版（B9）。重大门禁变更须过专家组（B10）。
 
 ## 1.1 商用冒烟（设当前版前 · 统筹勾选）
@@ -30,11 +30,11 @@
 | 步 | 动作 | 判据 |
 |----|------|------|
 | 1 | 升 `APP_VERSION` → 写好更新说明 → verify → `python packaging/build_windows.py --clean --msi` | `packaging/dist/TOA3-Setup-v{ver}.exe` |
-| 2 | **上传安装包**（Agent 必做） | `powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion {ver}` → exe 传到 toa-service `/opt/toa-cloud/downloads/`，脚本 HEAD 试链 200 + 大小一致 |
-| 3 | **Agent 预登记运营台**（说明+直链已填，`is_current=false`） | `python ../toa-cloud/scripts/prepare_ops_release.py --version {ver} --notes "…"` → 列表可见该版 |
+| 2 | **上传安装包**（Agent 必做） | `powershell -File cloud/deploy/upload_installer.ps1 -ReleaseVersion {ver}` → exe + 下载页传到 `/opt/toa-cloud/download/`，脚本 HEAD 试链 200 + 大小一致 |
+| 3 | **Agent 预登记运营台**（说明+直链已填，`is_current=false`） | `python cloud/scripts/prepare_ops_release.py --version {ver} --notes "…"` → 列表可见该版 |
 | 4 | **主理人只点「设为当前」** | 运营台列表该行点一次即可；禁止再让主理人粘贴说明 |
 | 5 | 对齐并提交 | 切版后 Agent：`python scripts/sync_release_version.py --from-live --require-match --commit` 并回报 hash |
-| 5 | 验收 | 桌面「检查更新」+ https://www.yczh.tech/downloads/ 与 `APP_VERSION` 同号 |
+| 6 | 验收 | 桌面「检查更新」+ https://toa-service.yczh.tech/download/ 与 `APP_VERSION` 同号 |
 
 ### 本地打包门禁（步 1 内）
 
@@ -52,11 +52,17 @@
 | 生产 stable | 运营台 manifest |
 | 本机离线回退 | `config/update_manifest.yml`（须与 stable 同号） |
 
-直链约定（主理人 2026-10-26 裁定，自 3.1.25 起）：**安装包一律上传到** `https://toa-service.yczh.tech/downloads/TOA3-Setup-v{ver}.exe`（服务器 `/opt/toa-cloud/downloads/`，nginx `toa-service.conf` 的 `location /downloads/`）。
+下载地址约定（主理人 2026-10-26 裁定 · **唯一入口**）：
 
-- 下载页 UI 仍是官网 `https://www.yczh.tech/downloads/`（`download_page` 不变，页面按 manifest 链到上面的直链）；`toa-service…/downloads/` 目录首页 302 到官网下载页。
-- ≤3.1.24 已登记的 `download_url` 仍指向 `www…/downloads/`，不回改。
-- Harness CDN 包（§5）**不在此范围**，仍走 `www…/downloads/`。
+| 项 | 地址 |
+|----|------|
+| 下载页（`download_page`） | `https://toa-service.yczh.tech/download/` |
+| 安装包直链（`download_url`） | `https://toa-service.yczh.tech/download/TOA3-Setup-v{ver}.exe` |
+| Harness 双包 | `https://toa-service.yczh.tech/download/harness-{official,prefab}-{ver}.zip` |
+
+- 服务器目录 `/opt/toa-cloud/download/`（下载页 `cloud/download/index.html` 读 manifest，与安装包同目录）；nginx 见 `cloud/deploy/nginx-toa-service.yczh.tech.conf`。
+- 真相源：`cloud/backend/config.py`（`DOWNLOAD_BASE_URL` / `installer_url()`）；运营台读 `GET /api/toa/releases/download-config`；客户端 `config/app*.yml` `update.download_page` 同值。**禁止**在别处另写下载域名。
+- 旧地址 `toa-service…/downloads/`、`www.yczh.tech/downloads/` 一律 301 到 `/download/`（历史包已硬链接过来）；不得再作为新登记地址。
 
 ### 2.1 发版说明（运营台 / update_manifest 必填）
 
@@ -94,7 +100,7 @@
 |---|--------|-------------|
 | 1 | 代码版本 | `app/version.py` → `APP_VERSION` |
 | 2 | 打包产物文件名 | `packaging/dist/TOA3-Setup-v{ver}.exe` |
-| 3 | 安装包直链 200 | `https://toa-service.yczh.tech/downloads/TOA3-Setup-v{ver}.exe` |
+| 3 | 安装包直链 200 | `https://toa-service.yczh.tech/download/TOA3-Setup-v{ver}.exe` |
 | 4 | 运营台当前版 = `{ver}` | 主理人勾选后才算 |
 | 5 | 本地 manifest | `config/update_manifest.yml` `version` / `download_url` |
 | 6 | 全局壳门禁 | `python scripts/verify_global_shell.py`（`verify_all` 已挂） |
@@ -124,15 +130,15 @@
 | 步 | 动作 | 判据 |
 |----|------|------|
 | 1 | 已知可用机构包 | `python scripts/build_harness_prefab.py --source <runtime> --out packaging/dist/harness --version {ver}` → 双 zip + `.sha256` + `harness-bundles-{ver}.json` |
-| 2 | **上传 CDN**（Agent 必做，禁止只丢本地路径） | `powershell -File ../toa-cloud/deploy/sync_portal_harness.ps1 -BundleVersion {ver}` → 两直链 HEAD 200 |
+| 2 | **上传 CDN**（Agent 必做，禁止只丢本地路径） | `powershell -File cloud/deploy/upload_harness.ps1 -BundleVersion {ver}` → 两直链 HEAD 200 |
 | 3 | **主理人确认「切配置」**（人工闸门） | 切 yml = 用户立刻下到新包；未确认前**禁止**改 `harness.yml` |
 | 4 | 回写钉扎并验收 | `python scripts/sync_harness_bundles.py --from-dist --version {ver} --apply --verify-cdn`（可选 `--commit`） |
 | 5 | 门禁 | `python scripts/verify_harness_cdn.py` 绿；Setup 体积未因 zip 暴涨 |
 
 直链约定：
 
-- `https://www.yczh.tech/downloads/harness-official-{ver}.zip`
-- `https://www.yczh.tech/downloads/harness-prefab-{ver}.zip`
+- `https://toa-service.yczh.tech/download/harness-official-{ver}.zip`
+- `https://toa-service.yczh.tech/download/harness-prefab-{ver}.zip`
 
 配置双写（须一致）：`config/harness.yml` · `packaging/shipped_config/harness.yml`  
 字段：`official_bundle_*` / `prefab_bundle_*`（url / sha256 / version / size_hint_mb）。

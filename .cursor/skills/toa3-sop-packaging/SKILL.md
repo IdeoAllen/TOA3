@@ -9,7 +9,7 @@ description: >-
 # SOP-04 · 打包发版（Skill）
 
 **正文**：`docs/规范/SOP-04-打包发版.md`  
-**云侧**：`toa-cloud/docs/版本发布SOP.md`  
+**云侧**：TOA3 子项目 `cloud/`（`cloud/README.md`）  
 **标准**：STD-01 · A8 · B6  
 **Harness 生命周期**：`docs/architecture/ARCH-10-Harness全生命周期.md` §4.4
 
@@ -18,10 +18,10 @@ description: >-
 **分工（主理人裁定 2026-09-22）**：Agent 备齐版本号/说明/直链/运营台预登记；**主理人只点「设为当前」**；切版后 Agent 立刻对齐提交。
 
 1. bump `APP_VERSION` → 写好 `release_notes`（SOP-04 §2.1 模板）→ `verify_all` → `packaging/build_windows.py --clean --msi`  
-2. **立刻上传**：`powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`  
-   → 安装包落 `https://toa-service.yczh.tech/downloads/TOA3-Setup-vx.y.z.exe`（主理人 2026-10-26 裁定；下载页仍是官网 `www…/downloads/`）  
+2. **立刻上传**：`powershell -File cloud/deploy/upload_installer.ps1 -ReleaseVersion x.y.z`  
+   → 下载页 + 安装包统一 `https://toa-service.yczh.tech/download/`（主理人 2026-10-26 裁定；禁写别的下载域名）  
 3. **Agent 预登记运营台**（`is_current=false`，说明/直链已填）：  
-   `python ../toa-cloud/scripts/prepare_ops_release.py --version x.y.z --notes "……"`  
+   `python cloud/scripts/prepare_ops_release.py --version x.y.z --notes "……"`  
 4. **停住**：请主理人只点「设为当前」（禁止让主理人再填说明）  
 5. **主理人确认已切版后立刻提交**：  
    `python scripts/sync_release_version.py --from-live --require-match --commit`  
@@ -41,7 +41,7 @@ DMS 下载说明只建 draft，人审后部署（≠ TOA 安装包上传）。
 ## 说「发 Harness 包 / 上 CDN」必须做完（与 Setup 分离）
 
 1. 构包：`python scripts/build_harness_prefab.py --source <runtime> --out packaging/dist/harness --version {ver}`  
-2. **立刻上传**：`powershell -File ../toa-cloud/deploy/sync_portal_harness.ps1 -BundleVersion {ver}`  
+2. **立刻上传**：`powershell -File cloud/deploy/upload_harness.ps1 -BundleVersion {ver}`  
 3. **停住**：请主理人确认 **切配置**（切 yml = 用户立刻下新包）  
 4. 确认后：`python scripts/sync_harness_bundles.py --from-dist --version {ver} --apply --verify-cdn`（可选 `--commit`）
 

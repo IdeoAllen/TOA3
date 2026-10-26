@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "tool_phone_mask"
+name = "手机号脱敏"
+group = "business"
+order = 10
+version = "1.0.0"
+requires_license = false
+feature_id = ""
+author = "TOA 官方"
+description = "粘贴含手机号的文本，一键中间四位打码，便于转发与存档。"
+
+[entry]
+module_path = "modules.tool_phone_mask.tool_phone_mask_page"
+class_name = "ToolPhoneMaskPage"
+page_id = "tool_phone_mask"
+
+[storage]
+data_key = "tool_phone_mask"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

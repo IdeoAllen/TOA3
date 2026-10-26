@@ -18,11 +18,11 @@ harness:
   web_readability_boost: false
   theme_harmonize: false
   feed_auto_inject: false
-  official_bundle_url: https://www.yczh.tech/downloads/harness-official-0.1.5-rc.1.1.zip
+  official_bundle_url: https://toa-service.yczh.tech/download/harness-official-0.1.5-rc.1.1.zip
   official_sha256: 0d655f2ee47684fcbb54c0bac0454545ab074d48839c3a8cea1087dfb89fe3af
   official_bundle_version: "0.1.5-rc.1.1"
   official_size_hint_mb: 459
-  prefab_bundle_url: https://www.yczh.tech/downloads/harness-prefab-0.1.5-rc.1.1.zip
+  prefab_bundle_url: https://toa-service.yczh.tech/download/harness-prefab-0.1.5-rc.1.1.zip
   prefab_sha256: 8b50ba656873e64eabe0ce54940b2aac8b2c07336e1f81118f50c08cc87fafdb
   prefab_bundle_version: "0.1.5-rc.1.1"
   prefab_size_hint_mb: 459

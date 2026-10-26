@@ -12,7 +12,7 @@
   各含 MANIFEST.json（无 .credentials.yaml / 会话）
 
 注意：本脚本只构包。上传与切配置走 SOP-04 §5：
-  powershell -File ../toa-cloud/deploy/sync_portal_harness.ps1 -BundleVersion <ver>
+  powershell -File cloud/deploy/upload_harness.ps1 -BundleVersion <ver>
   # 主理人确认「切配置」后：
   python scripts/sync_harness_bundles.py --from-dist --version <ver> --apply --verify-cdn
 """
@@ -237,7 +237,7 @@ def main() -> int:
         if not plugins:
             print("  警告：prefab_essential_plugins 为空，预制包与官方包插件集相同。")
 
-    cdn_base = "https://www.yczh.tech/downloads"
+    cdn_base = "https://toa-service.yczh.tech/download"
     arts_payload = []
     for f, z, d in results:
         size_mb = max(1, int(round(z.stat().st_size / (1024 * 1024))))
@@ -273,7 +273,7 @@ def main() -> int:
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"meta: {meta_path}")
     print("下一步（SOP-04 §5）：")
-    print(f"  powershell -File ../toa-cloud/deploy/sync_portal_harness.ps1 -BundleVersion {version}")
+    print(f"  powershell -File cloud/deploy/upload_harness.ps1 -BundleVersion {version}")
     print(f"  # 主理人确认切配置后：")
     print(
         f"  python scripts/sync_harness_bundles.py --from-dist --version {version} "

@@ -1,0 +1,29 @@
+# 产品方案定价 — 现阶段仅体验版 tiyan
+default_license_days: 365
+
+pack_prices_yuan:
+  tiyan: 0
+
+mock_payment:
+  enabled: true
+  channel: mock
+  note: 运营台或终端模拟支付；真实通道请配置 webhook.secret 并关闭 mock
+
+webhook:
+  secret: ""
+  allowed_channels:
+    - mock
+    - wechat
+    - alipay
+
+real_payment:
+  enabled: false
+  note: 为 true 时终端 mock 支付关闭，仅 webhook / 运营台可履约
+
+# 试用：手机 + machine_id → 签发短期体验版授权
+trial:
+  enabled: true
+  days: 30
+  pack_id: tiyan
+  max_per_phone: 1
+  max_per_machine: 1

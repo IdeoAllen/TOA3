@@ -70,7 +70,7 @@
 **开发/bootstrap**（首次灌库，之后以 DB 为准）：
 
 ```powershell
-powershell -File toa-cloud/scripts/sync_toa3_product_catalog.ps1
+powershell -File cloud/scripts/sync_toa3_product_catalog.ps1
 ```
 
 **日常**：

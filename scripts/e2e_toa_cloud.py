@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-CLOUD_BACKEND = ROOT.parent / "toa-cloud" / "backend"
+CLOUD_BACKEND = ROOT / "cloud" / "backend"
 
 
 def test_toa3_wiring() -> None:

@@ -22,7 +22,7 @@ def main() -> int:
     print("version", APP_VERSION)
     print("tray", mids)
     print("manifest", r.latest_version, r.has_update, r.source)
-    cloud = ROOT.parent / "toa-cloud" / "backend" / "services" / "toa_license_service.py"
+    cloud = ROOT / "cloud" / "backend" / "services" / "toa_license_service.py"
     assert cloud.is_file()
     text = cloud.read_text(encoding="utf-8")
     assert "def start_trial" in text

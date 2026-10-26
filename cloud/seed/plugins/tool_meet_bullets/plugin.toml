@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "tool_meet_bullets"
+name = "会议要点整理"
+group = "business"
+order = 11
+version = "1.0.0"
+requires_license = false
+feature_id = ""
+author = "TOA 官方"
+description = "粘贴杂乱会议笔记，一键去空行与序号噪音，输出干净要点列表。"
+
+[entry]
+module_path = "modules.tool_meet_bullets.tool_meet_bullets_page"
+class_name = "ToolMeetBulletsPage"
+page_id = "tool_meet_bullets"
+
+[storage]
+data_key = "tool_meet_bullets"
+
+[safety]
+allow_network = false
+allow_shell = false
+integrations = []

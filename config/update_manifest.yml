@@ -3,18 +3,27 @@
 product: TOA3
 version: 3.1.24
 channel: stable
-release_notes: >-
-  【版本】v3.1.24
+release_notes: '【版本】v3.1.24
+
   【本版要点】
+
   1. 商业发行收口：生产日志降噪；授权仅 toa-service（禁 DMS 回落）；license 门禁进 verify_all
+
   2. 侧栏收口非点验凑数项与未点验 Wave F；发版说明补已知限制
+
   3. 剪贴板/日程/OCR 暂存下沉 services；新增 SOP-08 商业发行验收 Skill
+
   【全局介入/热键】
+
   - 无
+
   【已知限制】
+
   - Wave★（截图/剪贴板/记事/四象限/去水印/翻译）仍待主理人点验；Wave F 侧栏暂隐
+
   - 付费激活需联网 toa-service；Harness CDN 底座与内核钉扎可能不一致
-  【验收】安装包直链试链通过；检查更新可见本号
-download_page: https://www.yczh.tech/downloads/
-download_url: https://www.yczh.tech/downloads/TOA3-Setup-v3.1.24.exe
+
+  【验收】安装包直链试链通过；检查更新可见本号'
+download_page: https://toa-service.yczh.tech/download/
+download_url: https://toa-service.yczh.tech/download/TOA3-Setup-v3.1.24.exe
 min_version: 3.0.0

@@ -203,7 +203,7 @@ def seed_local_license() -> dict[str, str]:
 
 
 def seed_toa_cloud(codes: dict[str, str]) -> None:
-    cloud_root = ROOT.parent / "toa-cloud"
+    cloud_root = ROOT / "cloud"
     backend = cloud_root / "backend"
     if not backend.is_dir():
         print("跳过 toa-cloud：目录不存在")

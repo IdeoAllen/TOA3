@@ -1,0 +1,15 @@
+[Unit]
+Description=TOA Cloud (license, commerce, releases)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/toa-cloud/backend
+EnvironmentFile=/opt/toa-cloud/.env
+ExecStart=/opt/toa-cloud/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8090
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

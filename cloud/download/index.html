@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TOA3 运营宝 · 下载</title>
+  <meta name="description" content="TOA3 运营宝安装包下载。版本与下载地址以 TOA 运营台当前 stable manifest 为准。" />
+  <style>
+    :root {
+      --bg: #f1f5f9; --surface: #fff; --text: #0f172a; --muted: #64748b;
+      --primary: #2563eb; --primary-hover: #1d4ed8; --border: #e2e8f0; --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; }
+    h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    .sub { margin: 0 0 28px; color: var(--muted); }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 24px 24px 20px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+    .ver { font-size: 1.15rem; font-weight: 600; margin: 0 0 4px; }
+    .meta { margin: 0 0 18px; color: var(--muted); font-size: .9rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 44px;
+      padding: 0 20px; border-radius: 10px; font: inherit; font-weight: 600; text-decoration: none;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    }
+    .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+    .notes h2 { font-size: 1rem; margin: 22px 0 8px; }
+    .notes pre {
+      margin: 0; padding: 14px 16px; background: var(--bg); border-radius: 12px;
+      white-space: pre-wrap; word-break: break-word; font: inherit; font-size: .92rem;
+    }
+    .err { color: var(--danger); }
+    footer { margin-top: 28px; color: var(--muted); font-size: .85rem; }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>TOA3 运营宝</h1>
+    <p class="sub">办公效率套件 · Windows 安装包</p>
+
+    <section class="card" aria-live="polite">
+      <p class="ver" id="dl-version">正在读取版本信息…</p>
+      <p class="meta" id="dl-meta">版本信息来自 TOA 云服务 manifest，与桌面「检查更新」同源。</p>
+      <div class="actions">
+        <a class="btn btn-primary" id="dl-primary" href="#" aria-disabled="true">等待版本信息</a>
+        <a class="btn" id="dl-manifest" href="/api/toa/releases/manifest?product=TOA3&amp;channel=stable" target="_blank" rel="noopener">查看 manifest</a>
+      </div>
+      <div class="notes" id="dl-notes" hidden>
+        <h2>更新说明</h2>
+        <pre id="dl-notes-text"></pre>
+      </div>
+    </section>
+
+    <footer>
+      已安装用户：打开 TOA3「关于 → 检查更新」即可升级。 ·
+      <a href="/admin/">TOA 运营台</a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const url = '/api/toa/releases/manifest?product=TOA3&channel=stable&format=json';
+      fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' })
+        .then((r) => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then((m) => {
+          const ver = String(m.latest_version || m.version || '').replace(/^v/i, '');
+          const dl = String(m.download_url || '').trim();
+          $('dl-version').textContent = ver ? 'v' + ver + '（stable）' : '暂无发布版本';
+          const parts = [];
+          if (m.published_at) parts.push('发布于 ' + String(m.published_at).slice(0, 10));
+          if (m.min_version) parts.push('最低可升级版本 v' + String(m.min_version).replace(/^v/i, ''));
+          if (m.installer_filename) parts.push(m.installer_filename);
+          if (parts.length) $('dl-meta').textContent = parts.join(' · ');
+          const btn = $('dl-primary');
+          if (dl) {
+            btn.href = dl;
+            btn.removeAttribute('aria-disabled');
+            btn.textContent = '下载 v' + ver;
+          } else {
+            btn.textContent = '安装包尚未发布';
+          }
+          const notes = String(m.release_notes || m.notes || '').trim();
+          if (notes) {
+            $('dl-notes-text').textContent = notes;
+            $('dl-notes').hidden = false;
+          }
+        })
+        .catch((e) => {
+          $('dl-version').innerHTML = '<span class="err">manifest 不可用</span>';
+          $('dl-meta').textContent = '无法读取运营台 manifest（' + e.message + '），请稍后刷新。';
+          $('dl-primary').textContent = '暂不可下载';
+        });
+    })();
+  </script>
+</body>
+</html>

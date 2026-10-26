@@ -1,0 +1,40 @@
+# 产品方案（SKU）— 当前仅保留「体验版」可售；pack_id = plan_id
+# 授权码 / 订单 features 可写 menu_id、pack_id 或 all
+
+packs:
+  tiyan:
+    name: 体验版
+    desc: TOA 唯一产品方案；试用与购买均走此方案，含全部付费模块
+    sellable: true
+    validity_days: 365
+    features:
+      - all
+
+  # 扩展开发能力（可单独挂订单 features；与 harness_agent 常一起卖）
+  # 增长中心口径见 docs/architecture/29-扩展增长中心与模型接入及软资产.md
+  extension_studio:
+    name: 扩展开发
+    desc: 增长中心「扩展」+ 智能体协助自建业务（feature_id=user_extensions）；场景模板/导出包见 doc 29
+    sellable: false
+    validity_days: 365
+    features:
+      - user_extensions
+      - harness_agent
+
+  # 单机免费层（不联网；登录「体验版」入口，非本方案售卖）
+  local_free:
+    name: 单机基础版
+    desc: 装完即用；离线本地小工具
+    sellable: false
+    features:
+      - home
+      - system_settings
+      - notifications
+      - job_scheduler
+      - quick_notepad
+      - pomodoro
+      - screenshot_tool
+      - clipboard_history
+      - quadrant_tasks
+      - llm_assistant
+      - harness_agent
