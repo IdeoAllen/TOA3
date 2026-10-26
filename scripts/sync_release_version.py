@@ -40,6 +40,8 @@ MANIFEST_URL = (
     "https://toa-service.yczh.tech/api/toa/releases/manifest"
     "?product=TOA3&channel=stable&format=json"
 )
+DOWNLOAD_PAGE = "https://www.yczh.tech/downloads/"
+INSTALLER_BASE = "https://toa-service.yczh.tech/downloads/"
 
 # 发版提交默认纳入的路径（相对仓库根；不含日志/产物）
 # 含版本钉扎 + 本波常进包的壳/热键/Harness；其它业务仍靠日常提交，勿只靠本名单。
@@ -123,9 +125,8 @@ def _write_update_manifest(
         "version": version,
         "channel": "stable",
         "release_notes": notes,
-        "download_page": download_page or "https://www.yczh.tech/downloads/",
-        "download_url": download_url
-        or f"https://www.yczh.tech/downloads/TOA3-Setup-v{version}.exe",
+        "download_page": download_page or DOWNLOAD_PAGE,
+        "download_url": download_url or f"{INSTALLER_BASE}TOA3-Setup-v{version}.exe",
         "min_version": min_version or "3.0.0",
     }
     text = (
@@ -145,11 +146,11 @@ def _read_local_manifest() -> dict:
 
 def sync_from_app(*, release_notes: str = "") -> dict:
     ver = _read_app_version()
-    url = f"https://www.yczh.tech/downloads/TOA3-Setup-v{ver}.exe"
+    url = f"{INSTALLER_BASE}TOA3-Setup-v{ver}.exe"
     _write_update_manifest(
         version=ver,
         download_url=url,
-        download_page="https://www.yczh.tech/downloads/",
+        download_page=DOWNLOAD_PAGE,
         release_notes=release_notes or f"TOA3 {ver}",
     )
     return _read_local_manifest()
@@ -164,7 +165,7 @@ def sync_from_live() -> dict:
         version=ver,
         download_url=str(live.get("download_url") or "").strip(),
         download_page=str(live.get("download_page") or "").strip()
-        or "https://www.yczh.tech/downloads/",
+        or DOWNLOAD_PAGE,
         release_notes=str(live.get("release_notes") or "").strip() or f"TOA3 {ver}",
         min_version=str(live.get("min_version") or "3.0.0"),
     )

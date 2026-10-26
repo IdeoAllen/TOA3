@@ -19,6 +19,7 @@ description: >-
 
 1. bump `APP_VERSION` → 写好 `release_notes`（SOP-04 §2.1 模板）→ `verify_all` → `packaging/build_windows.py --clean --msi`  
 2. **立刻上传**：`powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`  
+   → 安装包落 `https://toa-service.yczh.tech/downloads/TOA3-Setup-vx.y.z.exe`（主理人 2026-10-26 裁定；下载页仍是官网 `www…/downloads/`）  
 3. **Agent 预登记运营台**（`is_current=false`，说明/直链已填）：  
    `python ../toa-cloud/scripts/prepare_ops_release.py --version x.y.z --notes "……"`  
 4. **停住**：请主理人只点「设为当前」（禁止让主理人再填说明）  

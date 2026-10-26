@@ -182,6 +182,9 @@ python scripts/seed_collab_tasks.py --edition both --wipe-collab
 
 | 项 | 说明 |
 |----|------|
+| 更新 | 2026-10-26 · **主理人裁定：发版安装包改传 `toa-service.yczh.tech/downloads/`** |
+| 改了哪些 | 线上 nginx `toa-service.conf` 加 `/downloads/`（alias `/opt/toa-cloud/downloads/`，目录首页 302 官网下载页；备份在 `/root/toa-service.conf.bak.downloads-*`）；3.1.24 已硬链接过去试链 200；`sync_portal_installer.ps1`（exe 改传新目录 + HEAD 校验）· `prepare_ops_release.py` · 运营台 `admin/app.js|html`（已上线）· `scripts/sync_release_version.py` 默认直链；SOP-04 直链约定 · STD-01 B6 · packaging Skill 回写 |
+| 不变 | `download_page` 仍官网 `www…/downloads/`；≤3.1.24 已登记直链不回改；Harness CDN 仍走 www |
 | 更新 | 2026-10-12 · 商业发行验收整改 + **SOP-08 Skill** |
 | 改了哪些 | 同上波整改；新增 `docs/规范/SOP-08-商业发行验收.md` · Skill `toa3-sop-commercial-release`；挂入 00清单 / toa3-dev-suite / STD-01 / SOP-04·07 / OPS |
 | 待主理人 | Wave★ 点验清 gaps；商用冒烟人工项；确认设当前版后吩咐 sync commit |

@@ -30,7 +30,7 @@
 | 步 | 动作 | 判据 |
 |----|------|------|
 | 1 | 升 `APP_VERSION` → 写好更新说明 → verify → `python packaging/build_windows.py --clean --msi` | `packaging/dist/TOA3-Setup-v{ver}.exe` |
-| 2 | **上传安装包**（Agent 必做） | `powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion {ver}` → 直链 200 |
+| 2 | **上传安装包**（Agent 必做） | `powershell -File ../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion {ver}` → exe 传到 toa-service `/opt/toa-cloud/downloads/`，脚本 HEAD 试链 200 + 大小一致 |
 | 3 | **Agent 预登记运营台**（说明+直链已填，`is_current=false`） | `python ../toa-cloud/scripts/prepare_ops_release.py --version {ver} --notes "…"` → 列表可见该版 |
 | 4 | **主理人只点「设为当前」** | 运营台列表该行点一次即可；禁止再让主理人粘贴说明 |
 | 5 | 对齐并提交 | 切版后 Agent：`python scripts/sync_release_version.py --from-live --require-match --commit` 并回报 hash |
@@ -52,7 +52,11 @@
 | 生产 stable | 运营台 manifest |
 | 本机离线回退 | `config/update_manifest.yml`（须与 stable 同号） |
 
-直链约定：`https://www.yczh.tech/downloads/TOA3-Setup-v{ver}.exe`
+直链约定（主理人 2026-10-26 裁定，自 3.1.25 起）：**安装包一律上传到** `https://toa-service.yczh.tech/downloads/TOA3-Setup-v{ver}.exe`（服务器 `/opt/toa-cloud/downloads/`，nginx `toa-service.conf` 的 `location /downloads/`）。
+
+- 下载页 UI 仍是官网 `https://www.yczh.tech/downloads/`（`download_page` 不变，页面按 manifest 链到上面的直链）；`toa-service…/downloads/` 目录首页 302 到官网下载页。
+- ≤3.1.24 已登记的 `download_url` 仍指向 `www…/downloads/`，不回改。
+- Harness CDN 包（§5）**不在此范围**，仍走 `www…/downloads/`。
 
 ### 2.1 发版说明（运营台 / update_manifest 必填）
 
@@ -90,7 +94,7 @@
 |---|--------|-------------|
 | 1 | 代码版本 | `app/version.py` → `APP_VERSION` |
 | 2 | 打包产物文件名 | `packaging/dist/TOA3-Setup-v{ver}.exe` |
-| 3 | CDN 直链 200 | `https://www.yczh.tech/downloads/TOA3-Setup-v{ver}.exe` |
+| 3 | 安装包直链 200 | `https://toa-service.yczh.tech/downloads/TOA3-Setup-v{ver}.exe` |
 | 4 | 运营台当前版 = `{ver}` | 主理人勾选后才算 |
 | 5 | 本地 manifest | `config/update_manifest.yml` `version` / `download_url` |
 | 6 | 全局壳门禁 | `python scripts/verify_global_shell.py`（`verify_all` 已挂） |

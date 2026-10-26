@@ -270,7 +270,7 @@ modules/*  →  widgets/* + ui/*.ui  →  app/shell · theme_loader · core/* ·
 
 1. 确认 `APP_VERSION`；shipped_config 干净；`verify_all`（或 mvp + 护栏）  
 2. `python packaging/build_windows.py --clean --msi` + `release_config_guard`  
-3. **Agent 上传**：`../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`（禁止只交本地 dist）  
+3. **Agent 上传**：`../toa-cloud/deploy/sync_portal_installer.ps1 -ReleaseVersion x.y.z`（禁止只交本地 dist；安装包落 `toa-service.yczh.tech/downloads/`，见 SOP-04 直链约定）  
 4. **主理人**运营台：试链 → 设为当前版（更新说明必填）  
 5. **Agent 立刻** `python scripts/sync_release_version.py --from-live --require-match --commit` 并回报 hash（上传脚本自动 commit 多数会跳过，不算完成）  
 
