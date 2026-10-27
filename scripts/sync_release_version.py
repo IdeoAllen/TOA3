@@ -147,6 +147,10 @@ def _read_local_manifest() -> dict:
 def sync_from_app(*, release_notes: str = "") -> dict:
     ver = _read_app_version()
     url = f"{INSTALLER_BASE}TOA3-Setup-v{ver}.exe"
+    if not release_notes:
+        local = _read_local_manifest()
+        if str(local.get("version") or "").strip() == ver:
+            release_notes = str(local.get("release_notes") or "").strip()
     _write_update_manifest(
         version=ver,
         download_url=url,

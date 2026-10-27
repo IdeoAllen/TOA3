@@ -1,17 +1,17 @@
 # 本地回退清单（远程 manifest 不可达时使用）
 # 须与运营台当前 stable 对齐；由 scripts/sync_release_version.py 在发版后同步。
 product: TOA3
-version: 3.1.24
+version: 3.1.25
 channel: stable
-release_notes: '【版本】v3.1.24
+release_notes: '【版本】v3.1.25
 
   【本版要点】
 
-  1. 商业发行收口：生产日志降噪；授权仅 toa-service（禁 DMS 回落）；license 门禁进 verify_all
+  1. 品牌焕新：桌面程序、安装包、任务栏/托盘、关于与登录页 Logo 统一换为新圆形徽标；开发版保留橙色 DEV 角标
 
-  2. 侧栏收口非点验凑数项与未点验 Wave F；发版说明补已知限制
+  2. 下载地址统一：检查更新与下载页统一为 https://toa-service.yczh.tech/download/（旧地址自动跳转）
 
-  3. 剪贴板/日程/OCR 暂存下沉 services；新增 SOP-08 商业发行验收 Skill
+  3. 运营台与下载页同步换新 Logo，不再依赖官网资源
 
   【全局介入/热键】
 
@@ -19,11 +19,11 @@ release_notes: '【版本】v3.1.24
 
   【已知限制】
 
-  - Wave★（截图/剪贴板/记事/四象限/去水印/翻译）仍待主理人点验；Wave F 侧栏暂隐
+  - Windows 资源管理器可能缓存旧图标，重装后若仍显示旧图标，注销或重启一次即可
 
-  - 付费激活需联网 toa-service；Harness CDN 底座与内核钉扎可能不一致
+  - Wave★（截图/剪贴板/记事/四象限/去水印/翻译）仍待主理人点验；付费激活需联网 toa-service
 
   【验收】安装包直链试链通过；检查更新可见本号'
 download_page: https://toa-service.yczh.tech/download/
-download_url: https://toa-service.yczh.tech/download/TOA3-Setup-v3.1.24.exe
+download_url: https://toa-service.yczh.tech/download/TOA3-Setup-v3.1.25.exe
 min_version: 3.0.0

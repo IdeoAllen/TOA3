@@ -30,8 +30,10 @@ if ($LASTEXITCODE -ne 0) { throw "SSH 失败" }
 Write-Host "==> 上传 $fileName ($('{0:N1}' -f ((Get-Item $local).Length / 1MB)) MB)" -ForegroundColor Cyan
 scp $local "${sshTarget}:${DownloadDir}/$fileName"
 if ($LASTEXITCODE -ne 0) { throw "上传安装包失败" }
-scp $pageLocal "${sshTarget}:${DownloadDir}/index.html"
-if ($LASTEXITCODE -ne 0) { throw "上传下载页失败" }
+foreach ($f in Get-ChildItem (Split-Path $pageLocal -Parent) -File) {
+  scp $f.FullName "${sshTarget}:${DownloadDir}/$($f.Name)"
+  if ($LASTEXITCODE -ne 0) { throw "上传下载页文件失败: $($f.Name)" }
+}
 
 Write-Host "==> 试链 $expectedUrl" -ForegroundColor Cyan
 $head = Invoke-WebRequest -Uri $expectedUrl -Method Head -UseBasicParsing

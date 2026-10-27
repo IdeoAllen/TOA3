@@ -37,7 +37,6 @@ def _ensure_storage_tree() -> None:
 
 def _ensure_app_icon(root: Path) -> None:
     dest = root / "resources" / "icons" / "app_logo.ico"
-    # TOA3：始终用带 3.0 角标的蓝色图标，避免与 2.0 混淆
     try:
         from scripts.gen_toa3_brand_icon import generate_toa3_brand_assets
 
@@ -59,17 +58,17 @@ def _ensure_app_icon(root: Path) -> None:
 
 
 def _ensure_brand_logo(root: Path) -> None:
-    """生成 / 同步 TOA3 蓝色品牌 Logo（带 3.0 角标）。"""
+    """由 resources/brand 母版生成 TOA3 品牌 Logo / 图标。"""
     try:
         from scripts.gen_toa3_brand_icon import generate_toa3_brand_assets
 
-        # 多尺寸 ICO / PNG；stamp 升级强制重生
-        stamp = root / "resources" / "icons" / ".toa3_brand_v3"
+        # 多尺寸 ICO / PNG；换母版时升 stamp 强制重生
+        stamp = root / "resources" / "icons" / ".toa3_brand_v4"
         force = not stamp.is_file()
         generate_toa3_brand_assets(root, force=force)
         if force:
-            stamp.write_text("toa3-brand-blue-3.0-v3-multisize-ico\n", encoding="utf-8")
-            logger.info("已生成 TOA3 蓝色品牌图标（3.0 多尺寸 ICO）")
+            stamp.write_text("toa3-brand-v4-emblem-master\n", encoding="utf-8")
+            logger.info("已由母版生成 TOA3 品牌图标（v4）")
         return
     except Exception as e:
         logger.warning("生成 TOA3 Logo 失败，尝试回退: %s", e)

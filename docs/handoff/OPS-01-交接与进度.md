@@ -30,11 +30,12 @@ python -m app.main
 
 ## 1. 一句话现状
 
-**发版待点按钮 v3.1.24（2026-10-12）**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.24.exe ；运营台已预登记（`is_current=false`，id=19）。git `cdf8c71`。**主理人只点「设为当前」** → Agent 再 `--from-live --require-match --commit`。  
+**发版待点按钮 v3.1.25 · 品牌 Logo 焕新（2026-10-26）**：终端图标/托盘/安装包/关于页换新母版（`resources/brand/toa_logo_master.png` + `toa_lockup_master.png`，脚本 `scripts/gen_toa3_brand_icon.py`，stamp `.toa3_brand_v4`；换 Logo 只换母版并升 stamp）；运营台 favicon/登录页 + 下载页 lockup 已上线（备份 `/root/toa-admin-bak-logo-*`）。直链 200 · https://toa-service.yczh.tech/download/TOA3-Setup-v3.1.25.exe ；运营台预登记 `is_current=false` id=20。**主理人只点「设为当前」** → Agent `--from-live --require-match --commit`。环境：hermes venv pandas 2.0.0 与 numpy 2.4 不兼容致日程页弹窗卡死 verify_all，已升 pandas 2.3.3。  
+**发版 v3.1.24（2026-10-12）**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.24.exe ；运营台已预登记（`is_current=false`，id=19）。git `cdf8c71`。**主理人只点「设为当前」** → Agent 再 `--from-live --require-match --commit`。  
 **商业发行整改（同日）**：CDN TLS 已恢复；`verify_license_gate` 进门禁；生产禁 DMS fallback；侧栏收口凑数 mvp/Wave F；SOP-08 Skill。近程产品闸仍是 **主理人点验 Wave★**（勿假清 gaps）。商用冒烟人工 1–5 仍须勾。  
 **Harness 启动（2026-09-28）**：用户 `harness.yml` 的 `dsh_bin` 指到 `dsh-guard.mjs` 后，3.1.23 按五级父目录把启动器写到 `C:\Users\toa_dsh_launch.mjs` → Errno 13。已改回正式 `bin.js`；源码改为包装脚本直接执行、启动器只落 `~/.toa3/harness-runtime`。主理人需完全退出运营宝再开。  
 **发版 v3.1.23**：直链 200 · https://www.yczh.tech/downloads/TOA3-Setup-v3.1.23.exe ；toa-service stable manifest 已回报 **3.1.23**（2026-10-12 探测）。若列表尚未「设为当前」→ 主理人点一次；已切版 → Agent `--from-live --require-match --commit`。  
-**v3.1.24** 上一版：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.22.exe 。  
+**v3.1.25** 上一版：https://www.yczh.tech/downloads/TOA3-Setup-v3.1.22.exe 。  
 **发版提交口径**：上传脚本自动 commit 多数跳过；**设当前版后 Agent 必须再跑** `--from-live --require-match --commit` 并回报 hash。  
 **全局介入档案**：`ARCH-11` + `global_shell_features` + `verify_global_shell`；Mac 仅口径。  
 **v3.1.17** 热键/预览；**v3.1.16** Harness CDN；**v3.1.14** 图片预览。

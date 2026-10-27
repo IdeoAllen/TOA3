@@ -5,7 +5,7 @@
 #define MyAppDirName "TOA3"
 #ifndef MyAppVersion
 ; 手跑 ISCC 时的兜底；正式打包由 build_windows.py /DMyAppVersion=APP_VERSION 覆盖
-#define MyAppVersion "3.1.24"
+#define MyAppVersion "3.1.25"
 #endif
 #define MyAppPublisher "YCZH"
 #define MyAppExeName "TOA3.exe"
