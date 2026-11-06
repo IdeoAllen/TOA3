@@ -1,3 +1,12 @@
 
 # Don't index SpecStory auto-save files, but allow explicit context inclusion via @ references
 .specstory/**
+
+# 运行时与打包产物（GB 级，已 gitignore）
+packaging/dist/**
+packaging/build/**
+output/**
+data/**
+cache/**
+artifacts/**
+cloud/data/**
