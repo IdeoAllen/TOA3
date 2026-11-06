@@ -46,6 +46,8 @@ class ToaLicense(Base):
     entitlement = Column(String(20), nullable=False, default="")  # trial | paid | admin
     plan_id = Column(String(64), default="")
     order_no = Column(String(64), default="")
+    # 巨龙数变场用户 id（一码通；见 julong-platform/docs/protocol/一码通_注册码与账号.md）
+    platform_user_id = Column(String(64), default="")
     issued_by_id = Column(Integer, ForeignKey("admin_users.id"), nullable=True)
     revoked_by_id = Column(Integer, ForeignKey("admin_users.id"), nullable=True)
     revoked_at = Column(DateTime, nullable=True)

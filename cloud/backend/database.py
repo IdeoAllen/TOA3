@@ -42,6 +42,7 @@ def _migrate_sqlite():
         "ALTER TABLE toa_soft_assets ADD COLUMN recommended BOOLEAN DEFAULT 0",
         "ALTER TABLE toa_menu_modules ADD COLUMN sort_order INTEGER DEFAULT 0",
         "ALTER TABLE toa_menu_modules ADD COLUMN group_order INTEGER DEFAULT 99",
+        "ALTER TABLE toa_licenses ADD COLUMN platform_user_id VARCHAR(64) DEFAULT ''",
     ]
     with engine.begin() as conn:
         for sql in alters:

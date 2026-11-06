@@ -2,15 +2,51 @@
 """运营助手（TOA）授权 API — 与 DMS / TOA3 桌面协议兼容。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import hmac
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
 from deps import require_perm
 from models import AdminUser
+from services import platform_bridge
 from services import toa_license_service as svc
 
 router = APIRouter(prefix="/api/toa-license", tags=["toa-license"])
+
+
+def require_julong_internal(request: Request) -> None:
+    """巨龙服务间调用：只认本机直连（经 nginx 转发会带 X-Real-IP）+ 共享密钥。"""
+    from config import JULONG_INTERNAL_SECRET
+
+    if not JULONG_INTERNAL_SECRET:
+        raise HTTPException(503, "服务间密钥未配置")
+    if request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(403, "仅限服务间调用")
+    got = request.headers.get("x-internal-secret", "")
+    if not hmac.compare_digest(got.encode(), JULONG_INTERNAL_SECRET.encode()):
+        raise HTTPException(401, "服务间密钥无效")
+
+
+@router.post("/platform-issue", dependencies=[Depends(require_julong_internal)])
+def platform_issue(data: dict, db: Session = Depends(get_db)):
+    """巨龙注册 / 个人中心：按手机号签发或返回当前 TOA 注册码。"""
+    try:
+        return platform_bridge.platform_issue(
+            db,
+            phone=str((data or {}).get("phone") or ""),
+            name=str((data or {}).get("name") or ""),
+            platform_user_id=str((data or {}).get("platform_user_id") or ""),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.post("/platform-verify", dependencies=[Depends(require_julong_internal)])
+def platform_verify(data: dict, db: Session = Depends(get_db)):
+    """巨龙用注册码换密钥 / 校验推送权益。"""
+    return platform_bridge.platform_verify(db, license_key=str((data or {}).get("license_key") or ""))
 
 
 @router.post("/trial-start")

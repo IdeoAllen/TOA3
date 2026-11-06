@@ -1010,6 +1010,56 @@ def _effective_status(row: ToaLicense) -> str:
     return "active"
 
 
+PLATFORM_REMARK_TAG = "platform"
+
+
+def trial_settings() -> Dict[str, Any]:
+    """读取 cloud/config/commerce.yml 的 trial 段（试用与巨龙预发共用）。"""
+    from pathlib import Path
+
+    import yaml
+
+    commerce_path = Path(__file__).resolve().parents[2] / "config" / "commerce.yml"
+    trial_cfg: Dict[str, Any] = {}
+    if commerce_path.is_file():
+        data = yaml.safe_load(commerce_path.read_text(encoding="utf-8")) or {}
+        trial_cfg = data.get("trial") or {}
+    return {
+        "enabled": trial_cfg.get("enabled") is not False,
+        "days": int(trial_cfg.get("days") or 14),
+        "pack_id": str(trial_cfg.get("pack_id") or "tiyan").strip() or "tiyan",
+    }
+
+
+def is_unclaimed_platform_code(row: ToaLicense) -> bool:
+    """巨龙预发且从未在任何机器激活过的码。"""
+    remark = str(row.remark or "")
+    return PLATFORM_REMARK_TAG in remark.split("|") and not (row.activated_machine_id or "").strip()
+
+
+def _bind_and_describe(
+    db: Session, row: ToaLicense, machine_id: str, *, pack_id: str, days: int
+) -> Dict[str, Any]:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    row.activated_machine_id = machine_id
+    row.activated_at = now
+    row.last_check_at = now
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "license_key": row.license_key,
+        "expire_date": row.expire_date,
+        "name": row.name,
+        "phone": row.phone,
+        "pack_id": pack_id,
+        "trial_days": days,
+        "code_id": row.code_id,
+        "entitlement": _infer_entitlement(row),
+        "features": _features_from_row(row),
+    }
+
+
 def start_trial(
     db: Session,
     *,
@@ -1019,10 +1069,6 @@ def start_trial(
     app_version: str = "",
 ) -> Dict[str, Any]:
     """手机号试用：每手机/每机器限一次；签发短期码并绑定。"""
-    from pathlib import Path
-
-    import yaml
-
     mid = (machine_id or "").strip()
     phone = str(phone or "").strip()
     if not mid:
@@ -1030,16 +1076,12 @@ def start_trial(
     if not phone or not (len(phone) == 11 and phone.isdigit()):
         raise ValueError("请填写 11 位手机号")
 
-    commerce_path = Path(__file__).resolve().parents[2] / "config" / "commerce.yml"
-    trial_cfg: Dict[str, Any] = {}
-    if commerce_path.is_file():
-        data = yaml.safe_load(commerce_path.read_text(encoding="utf-8")) or {}
-        trial_cfg = data.get("trial") or {}
-    if trial_cfg.get("enabled") is False:
+    trial = trial_settings()
+    if not trial["enabled"]:
         raise ValueError("试用入口已关闭，请联系运营台获取授权码")
 
-    days = int(trial_cfg.get("days") or 14)
-    pack_id = str(trial_cfg.get("pack_id") or "tiyan").strip() or "tiyan"
+    days = trial["days"]
+    pack_id = trial["pack_id"]
     display = str(name or "").strip() or f"试用用户{phone[-4:]}"
 
     existing_phone = (
@@ -1050,10 +1092,14 @@ def start_trial(
     )
     if existing_phone is not None:
         st = _effective_status(existing_phone)
+        if st == "active" and is_unclaimed_platform_code(existing_phone):
+            # 巨龙注册时预发、尚未激活的码：本机直接认领，路径 B 与路径 A 汇合
+            return _bind_and_describe(db, existing_phone, mid, pack_id=pack_id, days=days)
         if st == "active":
             raise ValueError("该手机号已有有效授权，请直接使用授权码登录或续费")
         remark = str(existing_phone.remark or "")
-        if "trial" in remark.lower() or "试用" in remark:
+        never_used = is_unclaimed_platform_code(existing_phone)
+        if not never_used and ("trial" in remark.lower() or "试用" in remark):
             raise ValueError("该手机号已使用过试用，请购买正式授权")
 
     existing_machine = (

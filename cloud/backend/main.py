@@ -36,18 +36,22 @@ async def lifespan(app: FastAPI):
         lic_svc.ensure_bootstrap_admin_license(db)
         lic_svc.sync_all_licenses_to_customers(db)
         if not release_service.get_current_release(db, product="TOA3", channel="stable"):
-            release_service.publish_release(
-                db,
-                {
-                    "product": "TOA3",
-                    "channel": "stable",
-                    "version": "3.0.0",
-                    "download_url": "",
-                    "download_page": DEFAULT_DOWNLOAD_PAGE,
-                    "release_notes": "TOA3 初始发布。请上传安装包后在此更新 download_url。",
-                    "is_current": True,
-                },
-            )
+            try:
+                release_service.publish_release(
+                    db,
+                    {
+                        "product": "TOA3",
+                        "channel": "stable",
+                        "version": "3.0.0",
+                        "download_url": "",
+                        "download_page": DEFAULT_DOWNLOAD_PAGE,
+                        "release_notes": "TOA3 初始发布。请上传安装包后在此更新 download_url。",
+                        "is_current": True,
+                    },
+                )
+            except ValueError:
+                # 空库冷启动：当前版须有安装包直链，留给运营台发布
+                pass
         product_catalog_service.seed_from_yaml_files(db)
     finally:
         db.close()

@@ -24,6 +24,9 @@ PUBLIC_BASE_URL = os.getenv("TOA_CLOUD_PUBLIC_BASE_URL", "https://toa-service.yc
 
 WEBHOOK_SECRET = os.getenv("TOA_CLOUD_WEBHOOK_SECRET", os.getenv("TOA_CLOUD_PAYMENT_WEBHOOK_SECRET", ""))
 
+# 巨龙数变场服务间调用（platform-issue / platform-verify）；未配置则接口一律 503
+JULONG_INTERNAL_SECRET = os.getenv("JULONG_INTERNAL_SECRET", "").strip()
+
 # 下载页与安装包同一目录（服务器 /opt/toa-cloud/download/）；全链路只认这里
 DOWNLOAD_BASE_URL = f"{PUBLIC_BASE_URL}/download/"
 DEFAULT_DOWNLOAD_PAGE = os.getenv("TOA_CLOUD_DOWNLOAD_PAGE", DOWNLOAD_BASE_URL)
